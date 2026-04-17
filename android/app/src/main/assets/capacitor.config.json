@@ -1,0 +1,8 @@
+{
+	"appId": "com.elnode.erp",
+	"appName": "EL NODE ERP",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https"
+	}
+}
