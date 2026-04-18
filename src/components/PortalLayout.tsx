@@ -32,7 +32,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { APP_NAME, SCHOOL_NAME } from '../constants';
+import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserRole } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -146,8 +146,13 @@ export default function PortalLayout({ children, role, userName, customHeader }:
 
           {/* Logo */}
           <div className="p-8 flex items-center gap-4">
-            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-600/20 shrink-0">
-              <ShieldCheck className="w-7 h-7" />
+            <div className="w-12 h-12 flex items-center justify-center shrink-0">
+              <img 
+                src={APP_LOGO} 
+                className="w-full h-full object-contain" 
+                alt={APP_NAME}
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div className={cn("transition-opacity duration-300", !isSidebarOpen && "lg:opacity-0 lg:hidden")}>
               <h1 className="text-xl font-black text-gray-900 tracking-tight leading-none">{APP_NAME}</h1>

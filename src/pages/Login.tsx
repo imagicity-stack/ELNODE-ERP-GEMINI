@@ -3,8 +3,8 @@ import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
-import { SCHOOL_NAME, APP_NAME, SCHOOL_DOMAIN } from '../constants';
-import { GraduationCap, Users, UserCog, Lock, Mail, Hash } from 'lucide-react';
+import { SCHOOL_NAME, APP_NAME, SCHOOL_DOMAIN, APP_LOGO } from '../constants';
+import { Users, UserCog, Lock, Mail, Hash } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion } from 'motion/react';
 
@@ -70,10 +70,15 @@ export default function Login() {
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
       >
         <div className="p-8 text-center bg-gray-50 border-b">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-            <GraduationCap className="w-8 h-8 text-blue-600" />
+          <div className="inline-flex items-center justify-center w-20 h-20 mb-4">
+            <img 
+              src={APP_LOGO} 
+              alt={APP_NAME} 
+              className="w-full h-full object-contain"
+              referrerPolicy="no-referrer"
+            />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">{APP_NAME}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{APP_NAME}</h1>
           <p className="text-gray-500 text-sm mt-1">{SCHOOL_NAME} ERP</p>
         </div>
 
