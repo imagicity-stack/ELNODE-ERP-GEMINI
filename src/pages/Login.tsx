@@ -190,10 +190,17 @@ export default function Login() {
           )}
         </div>
 
-        <div className="p-6 bg-gray-50 border-t text-center">
+        <div className="p-6 bg-gray-50 border-t text-center space-y-2">
           <p className="text-xs text-gray-500">
             &copy; {new Date().getFullYear()} {SCHOOL_NAME}. All rights reserved.
           </p>
+          <div className="flex justify-center gap-4">
+            <a href="/privacy.html" target="_blank" className="text-[10px] text-gray-400 hover:text-blue-600 transition-colors">
+              Privacy Policy
+            </a>
+            <span className="text-[10px] text-gray-300">|</span>
+            <span className="text-[10px] text-gray-400">Support: administration@{SCHOOL_DOMAIN}</span>
+          </div>
         </div>
       </motion.div>
     </div>
