@@ -1,24 +1,29 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, where, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { Exam, Class, Subject, GradingScale, Student, UserProfile } from '../../types';
-import {
-  Plus,
-  Calendar,
-  Clock,
+import { Exam, Class, Subject, GradingScale, ExamResult, Student, UserProfile } from '../../types';
+import { 
+  Plus, 
+  Search, 
+  Filter, 
+  Calendar, 
+  FileText, 
+  CheckCircle2, 
+  Clock, 
+  AlertCircle,
   ChevronRight,
+  MoreVertical,
   X,
+  Trash2,
+  Edit2,
   Download,
-  CheckSquare,
-  FileText
+  Eye,
+  CheckSquare
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import {
-  PageHeader, Card, Badge, Button, IconButton, Modal,
-  FormField, Input, Select, Textarea, Table, Thead, Th, Tbody, Tr, Td, EmptyState, Avatar
-} from '../../components/ui';
 
 export default function ExamManagement({ user }: { user: UserProfile }) {
   const [exams, setExams] = useState<Exam[]>([]);
@@ -130,14 +135,14 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
       });
       setIsExamModalOpen(false);
       fetchExams();
-      setExamForm({
-        name: '',
-        term: 'Term 1',
-        startDate: '',
-        endDate: '',
-        classIds: [],
-        subjectId: '',
-        maxMarks: 100,
+      setExamForm({ 
+        name: '', 
+        term: 'Term 1', 
+        startDate: '', 
+        endDate: '', 
+        classIds: [], 
+        subjectId: '', 
+        maxMarks: 100, 
         gradingScaleId: gradingScales[0]?.id || '',
         type: 'scheduled',
         syllabusText: '',
@@ -154,7 +159,7 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
     setSelectedExam(exam);
     setSelectedClass(classId);
     setLoading(true);
-
+    
     // Fetch students of this class
     const q = query(collection(db, 'students'), where('classId', '==', classId));
     const studentSnapshot = await getDocs(q);
@@ -163,7 +168,7 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
 
     // Fetch existing marks if any
     const resultsQ = query(
-      collection(db, 'examResults'),
+      collection(db, 'examResults'), 
       where('examId', '==', exam.id),
       where('classId', '==', classId)
     );
@@ -177,7 +182,7 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
       }, {});
     });
     setMarksData(resultsMap);
-
+    
     setIsMarksModalOpen(true);
     setLoading(false);
   };
@@ -217,7 +222,7 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
         const totalMarks = subjectResults.reduce((sum, res) => sum + res.marksObtained, 0);
         const totalMaxMarks = subjectResults.length * 100;
         const percentage = (totalMarks / totalMaxMarks) * 100;
-
+        
         let overallGrade = 'F';
         if (scale) {
           const range = scale.ranges.find(r => percentage >= r.min && percentage <= r.max);
@@ -248,20 +253,20 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
 
   const generateReportCard = (student: Student, result: any) => {
     const doc = new jsPDF();
-
+    
     // Header
     doc.setFontSize(22);
     doc.setTextColor(30, 58, 138); // Indigo-900
     doc.text('ELDEN HEIGHTS ACADEMY', 105, 20, { align: 'center' });
-
+    
     doc.setFontSize(12);
     doc.setTextColor(100);
     doc.text('Academic Progress Report', 105, 28, { align: 'center' });
-
+    
     // Student Info
     doc.setDrawColor(200);
     doc.line(20, 35, 190, 35);
-
+    
     doc.setFontSize(10);
     doc.setTextColor(0);
     doc.text(`Student Name: ${student.name}`, 20, 45);
@@ -297,7 +302,7 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
     doc.text(`Total Marks: ${result.totalMarks} / ${result.subjectResults.length * 100}`, 20, finalY);
     doc.text(`Percentage: ${result.percentage.toFixed(2)}%`, 20, finalY + 10);
     doc.text(`Overall Grade: ${result.overallGrade}`, 120, finalY);
-
+    
     // Footer
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
@@ -309,286 +314,335 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
     doc.save(`${student.name}_Report_Card.pdf`);
   };
 
-  const examStatusVariant = (status: string): 'info' | 'warning' | 'success' => {
-    if (status === 'scheduled') return 'info';
-    if (status === 'ongoing') return 'warning';
-    return 'success';
-  };
-
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="Examination Management"
-        subtitle="Schedule exams, enter marks, and generate report cards."
-        icon={FileText}
-        iconColor="gradient-indigo"
-        actions={
-          <Button icon={Plus} onClick={() => setIsExamModalOpen(true)}>
-            Schedule Exam
-          </Button>
-        }
-      />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Examination Management</h1>
+          <p className="text-gray-500 text-sm">Schedule exams, enter marks, and generate report cards.</p>
+        </div>
+        <button 
+          onClick={() => setIsExamModalOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          Schedule Exam
+        </button>
+      </div>
 
       {/* Exam List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {exams.map((exam) => (
-          <Card key={exam.id} hover>
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-11 h-11 gradient-indigo rounded-xl flex items-center justify-center text-white shrink-0">
-                <Calendar className="w-5 h-5" />
+          <motion.div 
+            key={exam.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden group hover:shadow-md transition-all"
+          >
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                  <Calendar className="w-6 h-6" />
+                </div>
+                <span className={cn(
+                  "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
+                  exam.status === 'scheduled' ? "bg-blue-50 text-blue-600" :
+                  exam.status === 'ongoing' ? "bg-amber-50 text-amber-600" :
+                  "bg-emerald-50 text-emerald-600"
+                )}>
+                  {exam.status}
+                </span>
               </div>
-              <Badge variant={examStatusVariant(exam.status)}>{exam.status}</Badge>
-            </div>
-            <h3 className="text-base font-bold text-slate-900 mb-0.5">{exam.name}</h3>
-            <p className="text-xs text-slate-500 font-medium mb-4">{exam.term}</p>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">{exam.name}</h3>
+              <p className="text-xs text-gray-500 font-medium mb-4">{exam.term}</p>
+              
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <Clock className="w-4 h-4 text-gray-400" />
+                  <span>{new Date(exam.startDate).toLocaleDateString()} - {new Date(exam.endDate).toLocaleDateString()}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <CheckSquare className="w-4 h-4 text-gray-400" />
+                  <span>{exam.classIds.length} Classes Enrolled</span>
+                </div>
+              </div>
 
-            <div className="space-y-2 mb-5">
-              <div className="flex items-center gap-2 text-xs text-slate-600">
-                <Clock className="w-3.5 h-3.5 text-slate-400" />
-                <span>{new Date(exam.startDate).toLocaleDateString()} – {new Date(exam.endDate).toLocaleDateString()}</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-600">
-                <CheckSquare className="w-3.5 h-3.5 text-slate-400" />
-                <span>{exam.classIds.length} Classes Enrolled</span>
+              <div className="space-y-2">
+                {exam.classIds.map(classId => (
+                  <button 
+                    key={classId}
+                    onClick={() => openMarksEntry(exam, classId)}
+                    className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition-all text-xs font-bold text-gray-700"
+                  >
+                    Class {classId}
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                ))}
               </div>
             </div>
-
-            <div className="space-y-1.5">
-              {exam.classIds.map(classId => (
-                <button
-                  key={classId}
-                  onClick={() => openMarksEntry(exam, classId)}
-                  className="w-full flex items-center justify-between p-2.5 bg-slate-50 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition-all text-xs font-bold text-slate-700"
-                >
-                  Class {classId}
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              ))}
-            </div>
-          </Card>
+          </motion.div>
         ))}
       </div>
 
-      {exams.length === 0 && (
-        <Card>
-          <EmptyState
-            icon={Calendar}
-            title="No exams scheduled"
-            description="Schedule your first examination to get started."
-            action={
-              <Button icon={Plus} size="sm" onClick={() => setIsExamModalOpen(true)}>
-                Schedule Exam
-              </Button>
-            }
-          />
-        </Card>
-      )}
-
       {/* New Exam Modal */}
-      <Modal
-        isOpen={isExamModalOpen}
-        onClose={() => setIsExamModalOpen(false)}
-        title="Schedule New Exam"
-        footer={
-          <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={() => setIsExamModalOpen(false)}>Cancel</Button>
-            <Button form="exam-form" type="submit" loading={loading} icon={Calendar}>
-              Schedule Exam
-            </Button>
-          </div>
-        }
-      >
-        <form id="exam-form" onSubmit={handleCreateExam} className="space-y-4">
-          <FormField label="Exam Name" required>
-            <Input
-              type="text"
-              required
-              value={examForm.name}
-              onChange={(e) => setExamForm({ ...examForm, name: e.target.value })}
-              placeholder="e.g. Mid-Term Examination"
+      <AnimatePresence>
+        {isExamModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsExamModalOpen(false)}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             />
-          </FormField>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="Subject" required>
-              <Select
-                required
-                value={examForm.subjectId}
-                onChange={(e) => setExamForm({ ...examForm, subjectId: e.target.value })}
-              >
-                <option value="">Select Subject</option>
-                {subjects.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </Select>
-            </FormField>
-            <FormField label="Term">
-              <Select
-                value={examForm.term}
-                onChange={(e) => setExamForm({ ...examForm, term: e.target.value })}
-              >
-                <option>Term 1</option>
-                <option>Term 2</option>
-                <option>Final Term</option>
-              </Select>
-            </FormField>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="Start Date" required>
-              <Input
-                type="date"
-                required
-                value={examForm.startDate}
-                onChange={(e) => setExamForm({ ...examForm, startDate: e.target.value })}
-              />
-            </FormField>
-            <FormField label="End Date" required>
-              <Input
-                type="date"
-                required
-                value={examForm.endDate}
-                onChange={(e) => setExamForm({ ...examForm, endDate: e.target.value })}
-              />
-            </FormField>
-          </div>
-
-          <FormField label="Syllabus (Text)">
-            <Textarea
-              value={examForm.syllabusText}
-              onChange={(e) => setExamForm({ ...examForm, syllabusText: e.target.value })}
-              placeholder="Type the syllabus here..."
-              rows={3}
-            />
-          </FormField>
-
-          <FormField label="Syllabus (Photo)">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setExamForm({ ...examForm, syllabusPhoto: e.target.files?.[0] || null })}
-              className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-            />
-          </FormField>
-
-          <FormField label="Select Classes">
-            <div className="grid grid-cols-2 gap-2 mt-1">
-              {classes.map(cls => (
-                <label key={cls.id} className="flex items-center gap-2 p-2.5 border border-slate-100 rounded-xl cursor-pointer hover:bg-slate-50 transition-all">
-                  <input
-                    type="checkbox"
-                    checked={examForm.classIds.includes(cls.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setExamForm({ ...examForm, classIds: [...examForm.classIds, cls.id] });
-                      } else {
-                        setExamForm({ ...examForm, classIds: examForm.classIds.filter(id => id !== cls.id) });
-                      }
-                    }}
-                    className="rounded text-indigo-600"
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative z-10"
+            >
+              <div className="p-6 border-b flex items-center justify-between bg-gray-50">
+                <h2 className="text-xl font-bold text-gray-900">Schedule New Exam</h2>
+                <button onClick={() => setIsExamModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <form onSubmit={handleCreateExam} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Exam Name</label>
+                  <input 
+                    type="text" required
+                    value={examForm.name}
+                    onChange={(e) => setExamForm({...examForm, name: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 outline-none"
+                    placeholder="e.g. Mid-Term Examination"
                   />
-                  <span className="text-xs font-medium text-slate-700">Class {cls.name}</span>
-                </label>
-              ))}
-            </div>
-          </FormField>
-        </form>
-      </Modal>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                    <select 
+                      required
+                      value={examForm.subjectId}
+                      onChange={(e) => setExamForm({...examForm, subjectId: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 outline-none"
+                    >
+                      <option value="">Select Subject</option>
+                      {subjects.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Term</label>
+                    <select 
+                      value={examForm.term}
+                      onChange={(e) => setExamForm({...examForm, term: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 outline-none"
+                    >
+                      <option>Term 1</option>
+                      <option>Term 2</option>
+                      <option>Final Term</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                    <input 
+                      type="date" required
+                      value={examForm.startDate}
+                      onChange={(e) => setExamForm({...examForm, startDate: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                    <input 
+                      type="date" required
+                      value={examForm.endDate}
+                      onChange={(e) => setExamForm({...examForm, endDate: e.target.value})}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Syllabus (Text)</label>
+                  <textarea 
+                    value={examForm.syllabusText}
+                    onChange={(e) => setExamForm({...examForm, syllabusText: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-600/20 outline-none h-24 resize-none"
+                    placeholder="Type the syllabus here..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Syllabus (Photo)</label>
+                  <input 
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setExamForm({...examForm, syllabusPhoto: e.target.files?.[0] || null})}
+                    className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Classes</label>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {classes.map(cls => (
+                      <label key={cls.id} className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50 transition-all">
+                        <input 
+                          type="checkbox"
+                          checked={examForm.classIds.includes(cls.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setExamForm({...examForm, classIds: [...examForm.classIds, cls.id]});
+                            } else {
+                              setExamForm({...examForm, classIds: examForm.classIds.filter(id => id !== cls.id)});
+                            }
+                          }}
+                          className="rounded text-indigo-600"
+                        />
+                        <span className="text-xs font-medium">Class {cls.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50 mt-4"
+                >
+                  {loading ? 'Scheduling...' : 'Schedule Exam'}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Marks Entry Modal */}
-      <Modal
-        isOpen={isMarksModalOpen}
-        onClose={() => setIsMarksModalOpen(false)}
-        title={`Marks Entry: ${selectedExam?.name}`}
-        subtitle={`Class ${selectedClass} • ${subjects.length} Subjects`}
-        size="xl"
-        footer={
-          <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={() => setIsMarksModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveMarks} loading={loading}>
-              Save All Marks
-            </Button>
-          </div>
-        }
-      >
-        <Table>
-          <Thead>
-            <Tr>
-              <Th>Student Name</Th>
-              {subjects.map(sub => (
-                <Th key={sub.id} className="text-center min-w-[100px]">{sub.name}</Th>
-              ))}
-              <Th className="text-center">Report</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {students.map(student => (
-              <Tr key={student.id}>
-                <Td>
-                  <div className="flex items-center gap-2">
-                    <Avatar name={student.name} size="sm" />
-                    <span className="font-semibold text-slate-900 whitespace-nowrap">{student.name}</span>
-                  </div>
-                </Td>
-                {subjects.map(sub => (
-                  <Td key={sub.id}>
-                    <input
-                      type="number"
-                      max={100}
-                      min={0}
-                      value={marksData[student.id]?.[sub.id] || ''}
-                      onChange={(e) => {
-                        setMarksData({
-                          ...marksData,
-                          [student.id]: {
-                            ...(marksData[student.id] || {}),
-                            [sub.id]: e.target.value
-                          }
-                        });
-                      }}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-center text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none"
-                    />
-                  </Td>
-                ))}
-                <Td className="text-center">
-                  <IconButton
-                    icon={Download}
-                    variant="ghost"
-                    size="sm"
-                    title="Generate Report Card"
-                    onClick={() => {
-                      const studentMarks = marksData[student.id] || {};
-                      const subjectResults = subjects.map(sub => ({
-                        subjectId: sub.id,
-                        marksObtained: Number(studentMarks[sub.id]) || 0,
-                        maxMarks: 100,
-                        grade: calculateGrade(Number(studentMarks[sub.id]) || 0),
-                      }));
-                      const totalMarks = subjectResults.reduce((sum, res) => sum + res.marksObtained, 0);
-                      const percentage = totalMarks / (subjects.length * 100) * 100;
-                      const overallGrade = calculateGrade(percentage);
+      <AnimatePresence>
+        {isMarksModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMarksModalOpen(false)}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden relative z-10 flex flex-col"
+            >
+              <div className="p-6 border-b flex items-center justify-between bg-gray-50">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Marks Entry: {selectedExam?.name}</h2>
+                  <p className="text-sm text-gray-500">Class {selectedClass} • {subjects.length} Subjects</p>
+                </div>
+                <button onClick={() => setIsMarksModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-auto p-6">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b">
+                      <th className="px-4 py-3 sticky left-0 bg-gray-50 z-10">Student Name</th>
+                      {subjects.map(sub => (
+                        <th key={sub.id} className="px-4 py-3 text-center min-w-[100px]">{sub.name}</th>
+                      ))}
+                      <th className="px-4 py-3 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {students.map(student => (
+                      <tr key={student.id} className="hover:bg-gray-50 transition-all">
+                        <td className="px-4 py-4 sticky left-0 bg-white z-10 border-r">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs">
+                              {student.name.charAt(0)}
+                            </div>
+                            <span className="text-sm font-bold text-gray-900">{student.name}</span>
+                          </div>
+                        </td>
+                        {subjects.map(sub => (
+                          <td key={sub.id} className="px-4 py-4">
+                            <input 
+                              type="number"
+                              max={100}
+                              min={0}
+                              value={marksData[student.id]?.[sub.id] || ''}
+                              onChange={(e) => {
+                                setMarksData({
+                                  ...marksData,
+                                  [student.id]: {
+                                    ...(marksData[student.id] || {}),
+                                    [sub.id]: e.target.value
+                                  }
+                                });
+                              }}
+                              className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-center text-sm focus:ring-2 focus:ring-indigo-600/20 outline-none"
+                            />
+                          </td>
+                        ))}
+                        <td className="px-4 py-4 text-center">
+                          <button 
+                            onClick={() => {
+                              const studentMarks = marksData[student.id] || {};
+                              const subjectResults = subjects.map(sub => ({
+                                subjectId: sub.id,
+                                marksObtained: Number(studentMarks[sub.id]) || 0,
+                                maxMarks: 100,
+                                grade: calculateGrade(Number(studentMarks[sub.id]) || 0),
+                              }));
+                              const totalMarks = subjectResults.reduce((sum, res) => sum + res.marksObtained, 0);
+                              const percentage = totalMarks / (subjects.length * 100) * 100;
+                              const overallGrade = calculateGrade(percentage);
+                              
+                              generateReportCard(student, {
+                                subjectResults,
+                                totalMarks,
+                                percentage,
+                                overallGrade
+                              });
+                            }}
+                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                            title="Generate Report Card"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-                      generateReportCard(student, {
-                        subjectResults,
-                        totalMarks,
-                        percentage,
-                        overallGrade
-                      });
-                    }}
-                  />
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
-        {students.length === 0 && (
-          <EmptyState
-            icon={FileText}
-            title="No students in this class"
-            description="Enroll students to this class first."
-          />
+              <div className="p-6 border-t bg-gray-50 flex items-center justify-end gap-4">
+                <button 
+                  onClick={() => setIsMarksModalOpen(false)}
+                  className="px-6 py-2.5 border border-gray-200 rounded-xl text-sm font-bold text-gray-600 hover:bg-white transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleSaveMarks}
+                  disabled={loading}
+                  className="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50"
+                >
+                  {loading ? 'Saving...' : 'Save All Marks'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
-      </Modal>
+      </AnimatePresence>
     </div>
   );
 }

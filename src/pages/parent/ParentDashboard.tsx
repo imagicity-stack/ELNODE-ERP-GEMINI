@@ -1,25 +1,24 @@
-import {
-  CreditCard,
-  ClipboardCheck,
-  CheckSquare,
-  Bell,
-  UserCircle,
+import { 
+  CreditCard, 
+  ClipboardCheck, 
+  CheckSquare, 
+  Bell, 
+  UserCircle, 
+  ArrowRight,
+  TrendingUp,
+  AlertCircle,
+  Clock,
   FileText,
   Users,
   DollarSign as DollarIcon
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { UserProfile, Student, Notice, FeeRequest, Attendance, Homework, ExamResult } from '../../types';
+import { cn } from '../../lib/utils';
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import {
-  PageHeader,
-  Card,
-  StatCard,
-  Badge,
-  EmptyState,
-} from '../../components/ui';
 
 interface ParentDashboardProps {
   user: UserProfile;
@@ -41,9 +40,9 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
       try {
         // Fetch Notices
         const noticesQ = query(
-          collection(db, 'notices'),
+          collection(db, 'notices'), 
           where('targetRoles', 'array-contains', 'parent'),
-          orderBy('createdAt', 'desc'),
+          orderBy('createdAt', 'desc'), 
           limit(3)
         );
         const noticesSnap = await getDocs(noticesQ);
@@ -97,11 +96,13 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
 
   if (!selectedStudent) {
     return (
-      <EmptyState
-        icon={Users}
-        title="No Students Linked"
-        description="There are no student profiles linked to this parent account. Please contact the administration."
-      />
+      <div className="flex flex-col items-center justify-center p-12 bg-white rounded-2xl border border-dashed border-gray-200">
+        <Users className="w-12 h-12 text-gray-300 mb-4" />
+        <h3 className="text-lg font-bold text-gray-900">No Students Linked</h3>
+        <p className="text-gray-500 text-center max-w-xs">
+          There are no student profiles linked to this parent account. Please contact the administration.
+        </p>
+      </div>
     );
   }
 
@@ -113,135 +114,166 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="Parent Dashboard"
-        subtitle={`Monitoring progress for ${selectedStudent.name}`}
-        icon={UserCircle}
-        iconColor="gradient-violet"
-        actions={
+      {/* Welcome Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Parent Dashboard</h1>
+          <p className="text-gray-500">Monitoring progress for <span className="text-indigo-600 font-bold">{selectedStudent.name}</span>.</p>
+        </div>
+        <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">School Number</p>
-            <p className="text-sm font-bold text-violet-600">{selectedStudent.schoolNumber}</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">School Number</p>
+            <p className="text-sm font-bold text-indigo-600">{selectedStudent.schoolNumber}</p>
           </div>
-        }
-      />
+          <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+            <UserCircle className="w-6 h-6" />
+          </div>
+        </div>
+      </div>
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard
-          label="Pending Fees"
-          value={`₹${pendingFees}`}
-          icon={CreditCard}
-          gradient="gradient-violet"
-          index={0}
-        />
-        <StatCard
-          label="Attendance"
-          value={`${attendancePercentage}%`}
-          icon={ClipboardCheck}
-          gradient="gradient-violet"
-          index={1}
-        />
-        <StatCard
-          label="Homework"
-          value={`${homework.length} Active`}
-          icon={CheckSquare}
-          gradient="gradient-violet"
-          index={2}
-        />
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4"
+        >
+          <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center text-red-600">
+            <CreditCard className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Pending Fees</p>
+            <p className="text-2xl font-bold text-gray-900">₹{pendingFees}</p>
+          </div>
+        </motion.div>
+
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4"
+        >
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+            <ClipboardCheck className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Attendance</p>
+            <p className="text-2xl font-bold text-gray-900">{attendancePercentage}%</p>
+          </div>
+        </motion.div>
+
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4"
+        >
+          <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+            <CheckSquare className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Homework</p>
+            <p className="text-2xl font-bold text-gray-900">{homework.length} Active</p>
+          </div>
+        </motion.div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Fee Tracking */}
         <div className="lg:col-span-2 space-y-6">
-          <Card>
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-violet-600" />
-                Fee Status &amp; Payments
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-indigo-600" />
+                Fee Status & Payments
               </h3>
-              <Link to="/parent/fees" className="text-sm text-violet-600 font-medium hover:underline">View All</Link>
+              <Link to="/parent/fees" className="text-sm text-indigo-600 font-medium hover:underline">View All</Link>
             </div>
             <div className="space-y-4">
               {feeRequests.length > 0 ? feeRequests.map((fee) => (
-                <div key={fee.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                <div key={fee.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                   <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${fee.status === 'paid' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                    <div className={cn(
+                      "w-10 h-10 rounded-lg flex items-center justify-center",
+                      fee.status === 'paid' ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"
+                    )}>
                       <DollarIcon className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900">{fee.month} Fees</h4>
-                      <p className="text-xs text-slate-500">Due: {fee.dueDate} • ₹{fee.totalAmount}</p>
+                      <h4 className="text-sm font-bold text-gray-900">{fee.month} Fees</h4>
+                      <p className="text-xs text-gray-500">Due: {fee.dueDate} • ₹{fee.totalAmount}</p>
                     </div>
                   </div>
-                  <Badge variant={fee.status === 'paid' ? 'success' : 'warning'}>
+                  <span className={cn(
+                    "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
+                    fee.status === 'pending' ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+                  )}>
                     {fee.status}
-                  </Badge>
+                  </span>
                 </div>
               )) : (
-                <p className="text-sm text-slate-500 italic text-center py-4">No fee records found.</p>
+                <p className="text-sm text-gray-500 italic text-center py-4">No fee records found.</p>
               )}
             </div>
-          </Card>
+          </div>
 
           {/* Exam Results */}
-          <Card>
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-violet-600" />
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-indigo-600" />
                 Recent Exam Results
               </h3>
-              <Link to="/parent/exams" className="text-sm text-violet-600 font-bold hover:underline">View Full Report</Link>
+              <Link to="/parent/exams" className="text-sm text-indigo-600 font-bold hover:underline">View Full Report</Link>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {examResults.length > 0 ? examResults.map((result) => (
-                <div key={result.id} className="p-4 border border-slate-100 rounded-xl hover:bg-slate-50 transition-all">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Overall Result</p>
+                <div key={result.id} className="p-4 border border-gray-100 rounded-xl hover:bg-gray-50 transition-all">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Overall Result</p>
                   <div className="flex items-end justify-between mt-2">
-                    <h4 className="text-xl font-bold text-slate-900">{result.percentage}%</h4>
-                    <span className="text-lg font-black text-violet-600">{result.overallGrade}</span>
+                    <h4 className="text-xl font-bold text-gray-900">{result.percentage}%</h4>
+                    <span className="text-lg font-black text-indigo-600">{result.overallGrade}</span>
                   </div>
                 </div>
               )) : (
-                <p className="text-sm text-slate-500 italic text-center py-4 col-span-2">No exam results found.</p>
+                <p className="text-sm text-gray-500 italic text-center py-4 col-span-2">No exam results found.</p>
               )}
             </div>
-          </Card>
+          </div>
         </div>
 
         {/* Sidebar: Attendance & Notices */}
         <div className="space-y-8">
           {/* School Notices */}
-          <Card>
-            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-              <Bell className="w-5 h-5 text-violet-600" />
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Bell className="w-5 h-5 text-indigo-600" />
               School Notices
             </h3>
             <div className="space-y-4">
               {notices.length > 0 ? notices.map((notice) => (
-                <div key={notice.id} className="p-3 bg-slate-50 rounded-xl border border-transparent hover:border-violet-100 hover:bg-white hover:shadow-sm transition-all group">
+                <div key={notice.id} className="p-3 bg-gray-50 rounded-xl border border-transparent hover:border-indigo-100 hover:bg-white hover:shadow-sm transition-all group">
                   <div className="flex items-center justify-between mb-1">
-                    <h4 className="text-xs font-bold text-slate-900 group-hover:text-violet-600">{notice.title}</h4>
-                    <span className="text-[8px] text-slate-400">{new Date(notice.createdAt).toLocaleDateString()}</span>
+                    <h4 className="text-xs font-bold text-gray-900 group-hover:text-indigo-600">{notice.title}</h4>
+                    <span className="text-[8px] text-gray-400">{new Date(notice.createdAt).toLocaleDateString()}</span>
                   </div>
-                  <p className="text-[10px] text-slate-500 line-clamp-2">{notice.content}</p>
+                  <p className="text-[10px] text-gray-500 line-clamp-2">{notice.content}</p>
                 </div>
               )) : (
-                <p className="text-xs text-slate-500 italic text-center py-4">No recent notices.</p>
+                <p className="text-xs text-gray-500 italic text-center py-4">No recent notices.</p>
               )}
             </div>
-          </Card>
-
-          <Card>
-            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-              <ClipboardCheck className="w-5 h-5 text-violet-600" />
+          </div>
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5 text-indigo-600" />
               Attendance Summary
             </h3>
             <div className="flex items-center justify-center mb-6">
               <div className="relative w-32 h-32">
                 <svg className="w-full h-full" viewBox="0 0 36 36">
                   <path
-                    className="text-slate-100"
+                    className="text-gray-100"
                     strokeDasharray="100, 100"
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     fill="none"
@@ -249,7 +281,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
                     strokeWidth="3"
                   />
                   <path
-                    className="text-violet-600"
+                    className="text-indigo-600"
                     strokeDasharray={`${attendancePercentage}, 100`}
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     fill="none"
@@ -259,51 +291,51 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-xl font-bold text-slate-900">{attendancePercentage}%</span>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase">Present</span>
+                  <span className="text-xl font-bold text-gray-900">{attendancePercentage}%</span>
+                  <span className="text-[8px] font-bold text-gray-400 uppercase">Present</span>
                 </div>
               </div>
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Total Days</span>
-                <span className="font-bold text-slate-900">{totalDays}</span>
+                <span className="text-gray-500">Total Days</span>
+                <span className="font-bold text-gray-900">{totalDays}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Present</span>
+                <span className="text-gray-500">Present</span>
                 <span className="font-bold text-emerald-600">{presentDays}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Absent</span>
+                <span className="text-gray-500">Absent</span>
                 <span className="font-bold text-red-600">{totalDays - presentDays}</span>
               </div>
             </div>
-          </Card>
+          </div>
 
           {/* Recent Homework */}
-          <Card>
-            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-              <CheckSquare className="w-5 h-5 text-violet-600" />
+          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+            <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-indigo-600" />
               Homework Updates
             </h3>
             <div className="space-y-4">
               {homework.length > 0 ? homework.map((hw) => (
-                <div key={hw.id} className="p-3 bg-slate-50 rounded-xl">
+                <div key={hw.id} className="p-3 bg-gray-50 rounded-xl">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold text-violet-600 uppercase">{hw.subjectId}</span>
-                    <span className="text-[10px] text-slate-400">{hw.dueDate}</span>
+                    <span className="text-[10px] font-bold text-indigo-600 uppercase">{hw.subjectId}</span>
+                    <span className="text-[10px] text-gray-400">{hw.dueDate}</span>
                   </div>
-                  <h4 className="text-sm font-bold text-slate-900">{hw.content.substring(0, 50)}...</h4>
+                  <h4 className="text-sm font-bold text-gray-900">{hw.content.substring(0, 50)}...</h4>
                   <div className="flex items-center gap-2 mt-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-                    <span className="text-[10px] font-medium text-slate-500">Due soon</span>
+                    <span className="text-[10px] font-medium text-gray-500">Due soon</span>
                   </div>
                 </div>
               )) : (
-                <p className="text-sm text-slate-500 italic text-center py-4">No pending homework.</p>
+                <p className="text-sm text-gray-500 italic text-center py-4">No pending homework.</p>
               )}
             </div>
-          </Card>
+          </div>
         </div>
       </div>
     </div>
