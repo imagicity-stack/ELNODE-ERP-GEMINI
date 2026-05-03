@@ -1,1 +1,100 @@
 @import "tailwindcss";
+
+@layer base {
+  *, *::before, *::after {
+    scrollbar-width: thin;
+    scrollbar-color: #e2e8f0 transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 20px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: #f8fafc;
+    color: #0f172a;
+  }
+
+  input, select, textarea {
+    font-size: 14px;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .glass {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .gradient-indigo {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+  }
+
+  .gradient-blue {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+  }
+
+  .gradient-emerald {
+    background: linear-gradient(135deg, #10b981, #059669);
+  }
+
+  .gradient-violet {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  }
+
+  .gradient-amber {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+  }
+
+  .gradient-rose {
+    background: linear-gradient(135deg, #f43f5e, #e11d48);
+  }
+
+  .gradient-sky {
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  }
+
+  .gradient-slate {
+    background: linear-gradient(135deg, #64748b, #475569);
+  }
+
+  .sidebar-item-active {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .text-gradient-indigo {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
