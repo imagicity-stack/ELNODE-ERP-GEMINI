@@ -1,10 +1,31 @@
 import { UserProfile, Expense } from '../../types';
-import { Plus, Search, Filter, Download, Receipt, Wallet, TrendingDown, Calendar, MoreVertical, Trash2, Edit2, X } from 'lucide-react';
+import { Plus, Download, Receipt, Wallet, TrendingDown, Edit2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
+import {
+  PageHeader,
+  Card,
+  Badge,
+  Button,
+  IconButton,
+  Modal,
+  ConfirmModal,
+  SearchInput,
+  FormField,
+  Input,
+  Select,
+  Table,
+  Thead,
+  Th,
+  Tbody,
+  Tr,
+  Td,
+  EmptyState,
+  StatCard,
+} from '../../components/ui';
+import { Trash2 } from 'lucide-react';
 
 interface ExpenseManagementProps {
   user: UserProfile;
@@ -111,8 +132,8 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
     }
   };
 
-  const filteredExpenses = expenses.filter(e => 
-    e.category.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredExpenses = expenses.filter(e =>
+    e.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
     e.biller.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -121,293 +142,178 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Expense Management</h1>
-          <p className="text-gray-500 text-sm">Track and manage school expenditures and bills.</p>
-        </div>
-        <button 
-          onClick={() => {
-            resetForm();
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 shadow-sm transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          Add Expense
-        </button>
-      </div>
+      <PageHeader
+        title="Expense Management"
+        subtitle="Track and manage school expenditures and bills"
+        icon={TrendingDown}
+        iconColor="gradient-amber"
+        actions={
+          <Button
+            variant="danger"
+            icon={Plus}
+            onClick={() => {
+              resetForm();
+              setIsModalOpen(true);
+            }}
+          >
+            Add Expense
+          </Button>
+        }
+      />
 
       {/* Expense Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { label: 'Total Expenses', value: `$${(totalExpenses || 0).toLocaleString()}`, trend: '+5.2%', isUp: true, color: 'red', icon: TrendingDown },
-          { label: 'Pending Bills', value: `$${(pendingBills || 0).toLocaleString()}`, trend: '-2.4%', isUp: false, color: 'amber', icon: Receipt },
-          { label: 'Utilities', value: `$${(expenses.filter(e => e.category === 'utilities').reduce((sum, e) => sum + e.amount, 0) || 0).toLocaleString()}`, trend: '+1.5%', isUp: true, color: 'blue', icon: Wallet },
-          { label: 'Maintenance', value: `$${(expenses.filter(e => e.category === 'maintenance').reduce((sum, e) => sum + e.amount, 0) || 0).toLocaleString()}`, trend: '+12.3%', isUp: true, color: 'indigo', icon: Receipt },
-        ].map((stat) => (
-          <div key={stat.label} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-            <div className={cn(
-              "w-12 h-12 rounded-xl flex items-center justify-center",
-              stat.color === 'red' && "bg-red-50 text-red-600",
-              stat.color === 'amber' && "bg-amber-50 text-amber-600",
-              stat.color === 'blue' && "bg-blue-50 text-blue-600",
-              stat.color === 'indigo' && "bg-indigo-50 text-indigo-600",
-            )}>
-              <stat.icon className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{stat.label}</p>
-              <p className="text-xl font-bold text-gray-900">{stat.value}</p>
-              <p className={cn(
-                "text-[10px] font-bold",
-                stat.isUp ? "text-red-600" : "text-emerald-600"
-              )}>{stat.trend} vs last month</p>
-            </div>
-          </div>
-        ))}
+        <StatCard label="Total Expenses" value={`₹${(totalExpenses || 0).toLocaleString()}`} icon={TrendingDown} gradient="gradient-amber" change="+5.2%" changePositive={false} index={0} />
+        <StatCard label="Pending Bills" value={`₹${(pendingBills || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" change="-2.4%" changePositive={true} index={1} />
+        <StatCard label="Utilities" value={`₹${(expenses.filter(e => e.category === 'utilities').reduce((sum, e) => sum + e.amount, 0) || 0).toLocaleString()}`} icon={Wallet} gradient="gradient-amber" change="+1.5%" changePositive={false} index={2} />
+        <StatCard label="Maintenance" value={`₹${(expenses.filter(e => e.category === 'maintenance').reduce((sum, e) => sum + e.amount, 0) || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" change="+12.3%" changePositive={false} index={3} />
       </div>
 
       {/* Expenses Table */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="p-4 border-b bg-gray-50/50 flex items-center justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Search by category or biller..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-600/20 transition-all"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">
-              <Filter className="w-5 h-5" />
-            </button>
-          </div>
+      <Card padding="none">
+        <div className="p-4 border-b bg-slate-50/50 flex items-center justify-between gap-4">
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search by category or biller..."
+            className="max-w-md flex-1"
+          />
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b">
-                <th className="px-6 py-4">Expense Category</th>
-                <th className="px-6 py-4">Biller/Vendor</th>
-                <th className="px-6 py-4">Amount</th>
-                <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
+        {filteredExpenses.length > 0 ? (
+          <Table>
+            <Thead>
+              <tr>
+                <Th>Expense Category</Th>
+                <Th>Biller/Vendor</Th>
+                <Th>Amount</Th>
+                <Th>Date</Th>
+                <Th>Status</Th>
+                <Th className="text-right">Actions</Th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
+            </Thead>
+            <Tbody>
               {filteredExpenses.map((exp) => (
-                <tr key={exp.id} className="group hover:bg-gray-50 transition-all">
-                  <td className="px-6 py-4">
+                <Tr key={exp.id}>
+                  <Td>
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-600 font-bold text-xs uppercase">
                         {exp.category.charAt(0)}
                       </div>
-                      <span className="text-sm font-bold text-gray-900 capitalize">{exp.category}</span>
+                      <span className="font-bold text-slate-900 capitalize">{exp.category}</span>
                     </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{exp.biller}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-gray-900">${(exp.amount || 0).toLocaleString()}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{new Date(exp.date).toLocaleDateString()}</td>
-                  <td className="px-6 py-4">
-                    <span className={cn(
-                      "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
-                      exp.status === 'paid' && "bg-emerald-50 text-emerald-600",
-                      exp.status === 'pending' && "bg-amber-50 text-amber-600",
-                    )}>
+                  </Td>
+                  <Td>{exp.biller}</Td>
+                  <Td className="font-bold text-slate-900">₹{(exp.amount || 0).toLocaleString()}</Td>
+                  <Td>{new Date(exp.date).toLocaleDateString()}</Td>
+                  <Td>
+                    <Badge variant={exp.status === 'paid' ? 'success' : 'warning'}>
                       {exp.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                      <button 
-                        onClick={() => handleEdit(exp)}
-                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-blue-600"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(exp.id)}
-                        className="p-2 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-600"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    </Badge>
+                  </Td>
+                  <Td className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <IconButton icon={Edit2} variant="ghost" onClick={() => handleEdit(exp)} />
+                      <IconButton icon={Trash2} variant="danger" onClick={() => handleDelete(exp.id)} />
                     </div>
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
-              {filteredExpenses.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
-                    No expenses found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modals */}
-      <AnimatePresence>
-        {isDeleteModalOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsDeleteModalOpen(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden relative z-10 p-8 text-center"
-            >
-              <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center text-red-600 mx-auto mb-6">
-                <Trash2 className="w-10 h-10" />
-              </div>
-              <h3 className="text-2xl font-black text-gray-900 mb-2">Delete Expense?</h3>
-              <p className="text-gray-500 mb-8">This action cannot be undone. This expense record will be permanently removed.</p>
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => setIsDeleteModalOpen(false)}
-                  className="flex-1 px-6 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={performDelete}
-                  className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all"
-                >
-                  Delete
-                </button>
-              </div>
-            </motion.div>
-          </div>
+            </Tbody>
+          </Table>
+        ) : (
+          <EmptyState icon={Receipt} title="No expenses found" description="Add your first expense to get started." />
         )}
-      </AnimatePresence>
+      </Card>
 
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative z-10"
-            >
-              <div className="p-6 border-b flex items-center justify-between bg-gray-50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white">
-                    {isEditMode ? <Edit2 className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
-                  </div>
-                  <h2 className="text-xl font-bold text-gray-900">{isEditMode ? 'Edit Expense' : 'Add Expense'}</h2>
-                </div>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={performDelete}
+        title="Delete Expense?"
+        message="This action cannot be undone. This expense record will be permanently removed."
+        confirmLabel="Delete"
+      />
 
-              <form onSubmit={handleSubmit} className="p-8 space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Expense Category</label>
-                  <select 
-                    value={formData.category}
-                    onChange={(e) => setFormData({...formData, category: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-600/20 outline-none"
-                  >
-                    <option value="utilities">Utilities</option>
-                    <option value="maintenance">Maintenance</option>
-                    <option value="stationery">Stationery</option>
-                    <option value="events">Events</option>
-                    <option value="salary">Salary</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Biller/Vendor</label>
-                  <input 
-                    type="text" required
-                    value={formData.biller}
-                    onChange={(e) => setFormData({...formData, biller: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-600/20 outline-none"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Amount ($)</label>
-                    <input 
-                      type="number" required
-                      value={formData.amount}
-                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-600/20 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                    <input 
-                      type="date" required
-                      value={formData.date}
-                      onChange={(e) => setFormData({...formData, date: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-600/20 outline-none"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <div className="flex gap-4">
-                    {['paid', 'pending'].map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setFormData({...formData, status: s as any})}
-                        className={cn(
-                          "flex-1 py-2 rounded-lg text-xs font-bold uppercase transition-all border-2",
-                          formData.status === s 
-                            ? "bg-red-600 border-red-600 text-white" 
-                            : "bg-white border-gray-100 text-gray-400 hover:border-red-200"
-                        )}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-4 pt-6 border-t">
-                  <button 
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-6 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={loading}
-                    className="px-8 py-2.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all disabled:opacity-50"
-                  >
-                    {loading ? 'Saving...' : (isEditMode ? 'Update Expense' : 'Add Expense')}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
+      {/* Add/Edit Expense Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => { setIsModalOpen(false); resetForm(); }}
+        title={isEditMode ? 'Edit Expense' : 'Add Expense'}
+        size="sm"
+        footer={
+          <div className="flex items-center justify-end gap-3">
+            <Button variant="secondary" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancel</Button>
+            <Button variant="danger" loading={loading} onClick={(e: any) => {
+              const form = document.querySelector('form[data-expense-form]') as HTMLFormElement;
+              if (form) form.requestSubmit();
+            }}>
+              {isEditMode ? 'Update Expense' : 'Add Expense'}
+            </Button>
           </div>
-        )}
-      </AnimatePresence>
+        }
+      >
+        <form onSubmit={handleSubmit} data-expense-form className="space-y-5">
+          <FormField label="Expense Category" required>
+            <Select
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            >
+              <option value="utilities">Utilities</option>
+              <option value="maintenance">Maintenance</option>
+              <option value="stationery">Stationery</option>
+              <option value="events">Events</option>
+              <option value="salary">Salary</option>
+              <option value="other">Other</option>
+            </Select>
+          </FormField>
+          <FormField label="Biller/Vendor" required>
+            <Input
+              type="text"
+              required
+              value={formData.biller}
+              onChange={(e) => setFormData({ ...formData, biller: e.target.value })}
+            />
+          </FormField>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Amount (₹)" required>
+              <Input
+                type="number"
+                required
+                value={formData.amount}
+                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+              />
+            </FormField>
+            <FormField label="Date" required>
+              <Input
+                type="date"
+                required
+                value={formData.date}
+                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+              />
+            </FormField>
+          </div>
+          <FormField label="Status">
+            <div className="flex gap-4">
+              {['paid', 'pending'].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, status: s as any })}
+                  className={cn(
+                    "flex-1 py-2 rounded-xl text-xs font-bold uppercase transition-all border-2",
+                    formData.status === s
+                      ? "bg-red-600 border-red-600 text-white"
+                      : "bg-white border-slate-100 text-slate-400 hover:border-red-200"
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </FormField>
+        </form>
+      </Modal>
     </div>
   );
 }
