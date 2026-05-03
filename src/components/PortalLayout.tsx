@@ -2,39 +2,93 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
-import { 
-  LayoutDashboard, 
-  Users, 
-  GraduationCap, 
-  BookOpen, 
-  Calendar, 
-  CreditCard, 
-  ClipboardCheck, 
-  FileText, 
-  Settings, 
-  LogOut, 
-  Menu, 
-  X, 
-  Bell, 
+import {
+  LayoutDashboard,
+  Users,
+  GraduationCap,
+  BookOpen,
+  Calendar,
+  CreditCard,
+  ClipboardCheck,
+  FileText,
+  Settings,
+  LogOut,
+  Menu,
+  X,
+  Bell,
   Search,
-  UserCircle,
-  MessageSquare,
   Home,
   CheckSquare,
-  FileUp,
   Wallet,
   Clock,
   Briefcase,
   UserPlus,
   Megaphone,
-  ShieldCheck,
   LayoutGrid,
-  DollarSign
+  DollarSign,
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
+  Shield,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserRole } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+
+// ─── Role Configuration ───────────────────────────────────────────────────────
+
+const roleConfig: Record<UserRole, {
+  label: string;
+  accent: string;
+  accentLight: string;
+  accentText: string;
+  accentBorder: string;
+  gradient: string;
+}> = {
+  super_admin: {
+    label: 'Admin Portal',
+    accent: 'bg-indigo-500',
+    accentLight: 'bg-indigo-500/15',
+    accentText: 'text-indigo-400',
+    accentBorder: 'border-indigo-500/30',
+    gradient: 'from-indigo-600 to-violet-600',
+  },
+  teacher: {
+    label: 'Teacher Portal',
+    accent: 'bg-blue-500',
+    accentLight: 'bg-blue-500/15',
+    accentText: 'text-blue-400',
+    accentBorder: 'border-blue-500/30',
+    gradient: 'from-blue-600 to-sky-500',
+  },
+  student: {
+    label: 'Student Portal',
+    accent: 'bg-emerald-500',
+    accentLight: 'bg-emerald-500/15',
+    accentText: 'text-emerald-400',
+    accentBorder: 'border-emerald-500/30',
+    gradient: 'from-emerald-600 to-teal-500',
+  },
+  parent: {
+    label: 'Parent Portal',
+    accent: 'bg-violet-500',
+    accentLight: 'bg-violet-500/15',
+    accentText: 'text-violet-400',
+    accentBorder: 'border-violet-500/30',
+    gradient: 'from-violet-600 to-purple-600',
+  },
+  accounts: {
+    label: 'Accounts Portal',
+    accent: 'bg-amber-500',
+    accentLight: 'bg-amber-500/15',
+    accentText: 'text-amber-400',
+    accentBorder: 'border-amber-500/30',
+    gradient: 'from-amber-500 to-orange-500',
+  },
+};
+
+// ─── Nav Items ────────────────────────────────────────────────────────────────
 
 interface NavItem {
   label: string;
@@ -45,33 +99,27 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  // Admin Section
-  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['super_admin'], section: 'Admin' },
-  { label: 'Students', icon: Users, path: '/students', roles: ['super_admin'], section: 'Admin' },
-  { label: 'Faculty', icon: Briefcase, path: '/teachers', roles: ['super_admin'], section: 'Admin' },
-  { label: 'Staff', icon: Users, path: '/staff', roles: ['super_admin'], section: 'Admin' },
-  { label: 'Classes', icon: GraduationCap, path: '/classes', roles: ['super_admin'], section: 'Admin' },
-  { label: 'Subjects', icon: BookOpen, path: '/subjects', roles: ['super_admin'], section: 'Admin' },
-  { label: 'Houses', icon: Home, path: '/houses', roles: ['super_admin'], section: 'Admin' },
-  
-  // Academic Section
+  // Admin
+  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['super_admin'], section: 'Overview' },
+  { label: 'Students', icon: Users, path: '/students', roles: ['super_admin'], section: 'People' },
+  { label: 'Faculty', icon: Briefcase, path: '/teachers', roles: ['super_admin'], section: 'People' },
+  { label: 'Staff', icon: Shield, path: '/staff', roles: ['super_admin'], section: 'People' },
+  { label: 'Classes', icon: GraduationCap, path: '/classes', roles: ['super_admin'], section: 'Academic' },
+  { label: 'Subjects', icon: BookOpen, path: '/subjects', roles: ['super_admin'], section: 'Academic' },
+  { label: 'Houses', icon: Home, path: '/houses', roles: ['super_admin'], section: 'Academic' },
   { label: 'Admissions', icon: UserPlus, path: '/admissions', roles: ['super_admin'], section: 'Academic' },
   { label: 'Exams', icon: FileText, path: '/exams', roles: ['super_admin'], section: 'Academic' },
   { label: 'Grading', icon: CheckSquare, path: '/grading-scales', roles: ['super_admin'], section: 'Academic' },
   { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['super_admin'], section: 'Academic' },
-  
-  // Communication Section
   { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['super_admin'], section: 'Communication' },
-  
-  // Finance Section
   { label: 'Fee Structure', icon: Settings, path: '/fees', roles: ['super_admin'], section: 'Finance' },
   { label: 'Fee Collection', icon: Wallet, path: '/fee-collection', roles: ['super_admin', 'accounts'], section: 'Finance' },
-  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['accounts'], section: 'Finance' },
+  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['accounts'], section: 'Overview' },
   { label: 'Expenses', icon: CreditCard, path: '/expenses', roles: ['super_admin', 'accounts'], section: 'Finance' },
   { label: 'Salaries', icon: DollarSign, path: '/salaries', roles: ['super_admin', 'accounts'], section: 'Finance' },
-  { label: 'Reports', icon: FileText, path: '/reports', roles: ['super_admin', 'accounts'], section: 'Finance' },
+  { label: 'Reports', icon: TrendingUp, path: '/reports', roles: ['super_admin', 'accounts'], section: 'Finance' },
 
-  // Teacher Portal
+  // Teacher
   { label: 'Overview', icon: LayoutGrid, path: '', roles: ['teacher'] },
   { label: 'My Classes', icon: GraduationCap, path: '/classes', roles: ['teacher'] },
   { label: 'Attendance', icon: ClipboardCheck, path: '/attendance', roles: ['teacher'] },
@@ -79,7 +127,7 @@ const navItems: NavItem[] = [
   { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['teacher'] },
   { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['teacher'] },
 
-  // Student Portal
+  // Student
   { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['student'] },
   { label: 'My Subjects', icon: BookOpen, path: '/subjects', roles: ['student'] },
   { label: 'Attendance', icon: Clock, path: '/attendance', roles: ['student'] },
@@ -88,7 +136,7 @@ const navItems: NavItem[] = [
   { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['student'] },
   { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['student'] },
 
-  // Parent Portal
+  // Parent
   { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['parent'] },
   { label: 'Attendance', icon: Clock, path: '/attendance', roles: ['parent'] },
   { label: 'Fees', icon: Wallet, path: '/fees', roles: ['parent'] },
@@ -98,6 +146,8 @@ const navItems: NavItem[] = [
   { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['parent'] },
 ];
 
+// ─── Component ───────────────────────────────────────────────────────────────
+
 interface PortalLayoutProps {
   children: React.ReactNode;
   role: UserRole;
@@ -106,16 +156,16 @@ interface PortalLayoutProps {
 }
 
 export default function PortalLayout({ children, role, userName, customHeader }: PortalLayoutProps) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
-  const filteredNavItems = navItems.filter(item => item.roles.includes(role));
+  const config = roleConfig[role] || roleConfig.super_admin;
+  const filteredItems = navItems.filter(item => item.roles.includes(role));
   const basePath = `/${role.replace('_', '')}`;
-  
-  // Group items by section
-  const groupedItems = filteredNavItems.reduce((acc, item) => {
+
+  const groupedItems = filteredItems.reduce((acc, item) => {
     const section = item.section || 'General';
     if (!acc[section]) acc[section] = [];
     acc[section].push(item);
@@ -127,171 +177,217 @@ export default function PortalLayout({ children, role, userName, customHeader }:
     navigate('/login');
   };
 
-  return (
-    <div className="min-h-screen bg-[#F8FAFC] flex font-sans">
-      {/* Sidebar */}
-      <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-100 transition-all duration-500 ease-in-out lg:static lg:block",
-        isSidebarOpen ? "w-72" : "w-24",
-        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-      )}>
-        <div className="h-full flex flex-col relative">
-          {/* Mobile Close Button */}
-          <button 
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-xl text-gray-500 lg:hidden z-50"
-          >
-            <X className="w-5 h-5" />
-          </button>
-
-          {/* Logo */}
-          <div className="p-8 flex items-center gap-4">
-            <div className="w-12 h-12 flex items-center justify-center shrink-0">
-              <img 
-                src={APP_LOGO} 
-                className="w-full h-full object-contain" 
-                alt={APP_NAME}
-                referrerPolicy="no-referrer"
-              />
-            </div>
-            <div className={cn("transition-opacity duration-300", !isSidebarOpen && "lg:opacity-0 lg:hidden")}>
-              <h1 className="text-xl font-black text-gray-900 tracking-tight leading-none">{APP_NAME}</h1>
-              <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] mt-1">{SCHOOL_NAME}</p>
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <nav className="flex-1 px-4 py-4 space-y-8 overflow-y-auto scrollbar-hide">
-            {Object.entries(groupedItems).map(([section, items]) => (
-              <div key={section} className="space-y-3">
-                {isSidebarOpen && section !== 'General' && (
-                  <h3 className="px-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
-                    {section}
-                  </h3>
-                )}
-                <div className="space-y-1">
-                  {items.map((item) => {
-                    const fullPath = `${basePath}${item.path}`;
-                    const isActive = location.pathname === fullPath || (item.path === '' && location.pathname === basePath);
-                    return (
-                      <Link
-                        key={item.label}
-                        to={fullPath}
-                        className={cn(
-                          "flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-300 group relative",
-                          isActive 
-                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
-                            : "text-gray-500 hover:bg-indigo-50 hover:text-indigo-600"
-                        )}
-                      >
-                        <item.icon className={cn("w-6 h-6 shrink-0 transition-transform duration-300 group-hover:scale-110", isActive ? "text-white" : "text-gray-400 group-hover:text-indigo-600")} />
-                        <span className={cn(
-                          "text-sm font-bold tracking-tight transition-all duration-300",
-                          !isSidebarOpen && "lg:opacity-0 lg:hidden"
-                        )}>
-                          {item.label}
-                        </span>
-                        {isActive && (
-                          <motion.div 
-                            layoutId="activeNav"
-                            className="absolute inset-0 bg-indigo-600 rounded-2xl -z-10"
-                          />
-                        )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </nav>
-
-          {/* Footer */}
-          <div className="p-4 border-t border-gray-50">
-            <button
-              onClick={handleLogout}
-              className={cn(
-                "w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-red-500 hover:bg-red-50 transition-all duration-300 group",
-                !isSidebarOpen && "justify-center"
-              )}
+  const SidebarContent = () => (
+    <div className="h-full flex flex-col">
+      {/* Logo Header */}
+      <div className={cn('flex items-center gap-3 p-5 border-b border-white/[0.06]', collapsed && 'lg:justify-center')}>
+        <div className={cn(`w-9 h-9 rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center shadow-lg shrink-0`)}>
+          <img src={APP_LOGO} className="w-6 h-6 object-contain" alt={APP_NAME} referrerPolicy="no-referrer" />
+        </div>
+        <AnimatePresence>
+          {(!collapsed) && (
+            <motion.div
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }}
+              className="overflow-hidden"
             >
-              <LogOut className="w-6 h-6 shrink-0 group-hover:rotate-12 transition-transform" />
-              <span className={cn(
-                "text-sm font-bold tracking-tight transition-all duration-300",
-                !isSidebarOpen && "lg:opacity-0 lg:hidden"
-              )}>
-                Sign Out
-              </span>
-            </button>
+              <p className="text-white font-bold text-sm leading-none whitespace-nowrap">{APP_NAME}</p>
+              <p className={cn('text-[10px] font-semibold mt-0.5 whitespace-nowrap', config.accentText)}>{SCHOOL_NAME}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Mobile close */}
+        <button onClick={() => setMobileOpen(false)} className="ml-auto p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 lg:hidden">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Role Badge */}
+      {!collapsed && (
+        <div className="mx-4 mt-4">
+          <div className={cn('px-3 py-1.5 rounded-lg border text-center', config.accentLight, config.accentBorder)}>
+            <p className={cn('text-xs font-bold uppercase tracking-widest', config.accentText)}>{config.label}</p>
           </div>
         </div>
+      )}
+
+      {/* Navigation */}
+      <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-hide space-y-6">
+        {Object.entries(groupedItems).map(([section, items]) => (
+          <div key={section}>
+            {!collapsed && section !== 'General' && (
+              <p className="px-3 mb-2 text-[10px] font-bold text-slate-500 uppercase tracking-[0.15em]">{section}</p>
+            )}
+            <div className="space-y-0.5">
+              {items.map((item) => {
+                const fullPath = `${basePath}${item.path}`;
+                const isActive = location.pathname === fullPath || (item.path === '' && location.pathname === basePath);
+                return (
+                  <Link
+                    key={`${item.label}-${item.path}`}
+                    to={fullPath}
+                    onClick={() => setMobileOpen(false)}
+                    title={collapsed ? item.label : undefined}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 group relative',
+                      collapsed && 'lg:justify-center',
+                      isActive
+                        ? cn('text-white', config.accentLight, 'sidebar-item-active')
+                        : 'text-slate-400 hover:text-white hover:bg-white/[0.06]'
+                    )}
+                  >
+                    <item.icon className={cn('w-[18px] h-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110',
+                      isActive ? config.accentText : ''
+                    )} />
+                    {!collapsed && (
+                      <span className={cn('text-sm font-medium whitespace-nowrap', isActive ? 'text-white' : '')}>
+                        {item.label}
+                      </span>
+                    )}
+                    {isActive && !collapsed && (
+                      <span className={cn('ml-auto w-1.5 h-1.5 rounded-full', config.accent)} />
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      {/* User + Logout */}
+      <div className="border-t border-white/[0.06] p-3 space-y-1">
+        <div className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl', collapsed && 'lg:justify-center')}>
+          <div className={cn(`w-8 h-8 rounded-lg bg-gradient-to-br ${config.gradient} flex items-center justify-center shrink-0 text-white font-bold text-sm shadow`)}>
+            {userName.charAt(0).toUpperCase()}
+          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <p className="text-white text-sm font-semibold truncate leading-none">{userName}</p>
+              <p className={cn('text-[10px] mt-0.5 font-medium', config.accentText)}>{role.replace('_', ' ')}</p>
+            </div>
+          )}
+        </div>
+        <button
+          onClick={handleLogout}
+          title={collapsed ? 'Sign Out' : undefined}
+          className={cn(
+            'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150 group',
+            collapsed && 'lg:justify-center'
+          )}
+        >
+          <LogOut className="w-[18px] h-[18px] shrink-0 group-hover:-translate-x-0.5 transition-transform" />
+          {!collapsed && <span className="text-sm font-medium">Sign Out</span>}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex font-sans">
+      {/* Desktop Sidebar */}
+      <aside className={cn(
+        'hidden lg:flex flex-col fixed inset-y-0 left-0 z-30 bg-slate-900 transition-all duration-300 ease-in-out shrink-0',
+        collapsed ? 'w-[72px]' : 'w-64'
+      )}>
+        <SidebarContent />
+
+        {/* Collapse toggle */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="absolute -right-3 top-20 w-6 h-6 bg-slate-700 border border-slate-600 rounded-full flex items-center justify-center text-slate-300 hover:bg-slate-600 hover:text-white transition-all shadow-lg z-10"
+        >
+          {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+        </button>
       </aside>
 
+      {/* Mobile Sidebar */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileOpen(false)}
+              className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-40 lg:hidden"
+            />
+            <motion.aside
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed inset-y-0 left-0 w-72 bg-slate-900 z-50 lg:hidden"
+            >
+              <SidebarContent />
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+      <div className={cn(
+        'flex-1 flex flex-col min-w-0 transition-all duration-300',
+        'lg:ml-64',
+        collapsed && 'lg:ml-[72px]'
+      )}>
         {/* Header */}
-        <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-8 py-4 flex items-center justify-between sticky top-0 z-40">
-          <div className="flex items-center gap-6">
-            <button 
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-3 hover:bg-gray-100 rounded-2xl text-gray-500 transition-all"
+        <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-slate-100 px-6 h-16 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-4">
+            {/* Mobile hamburger */}
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all lg:hidden"
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="w-5 h-5" />
             </button>
-            <button 
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="p-3 hover:bg-gray-100 rounded-2xl text-gray-500 transition-all lg:hidden"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
+
+            {/* Search */}
             <div className="relative hidden md:block">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input 
-                type="text" 
-                placeholder="Search anything..." 
-                className="pl-12 pr-6 py-2.5 bg-gray-50 border-none rounded-2xl text-sm w-80 focus:ring-2 focus:ring-indigo-600/20 transition-all outline-none"
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search..."
+                className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {customHeader}
-            <button className="p-3 hover:bg-gray-100 rounded-2xl text-gray-500 transition-all relative">
-              <Bell className="w-6 h-6" />
-              <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full" />
+
+            {/* Notifications */}
+            <button className="relative p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all">
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
             </button>
-            <div className="h-8 w-px bg-gray-100 mx-2" />
-            <div className="flex items-center gap-4 pl-2">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-black text-gray-900 leading-none">{userName}</p>
-                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mt-1">{role.replace('_', ' ')}</p>
+
+            <div className="h-7 w-px bg-slate-100 mx-1" />
+
+            {/* User info */}
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:block text-right">
+                <p className="text-sm font-bold text-slate-900 leading-none">{userName}</p>
+                <p className={cn('text-[10px] font-semibold mt-0.5 uppercase tracking-wider', config.accentText.replace('text-', 'text-').replace('400', '600'))}>
+                  {role.replace('_', ' ')}
+                </p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-lg border-2 border-white shadow-sm">
-                {userName.charAt(0)}
+              <div className={cn(`w-9 h-9 rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center text-white font-bold text-sm shadow-sm`)}>
+                {userName.charAt(0).toUpperCase()}
               </div>
             </div>
           </div>
         </header>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-8 scrollbar-hide">
+        {/* Page Content */}
+        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>
-        </div>
-      </main>
-
-      {/* Mobile Overlay */}
-      <AnimatePresence>
-        {isMobileMenuOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
-          />
-        )}
-      </AnimatePresence>
+        </main>
+      </div>
     </div>
   );
 }
