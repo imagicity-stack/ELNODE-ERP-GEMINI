@@ -2,23 +2,21 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { Exam, ExamResult, Student, Subject } from '../../types';
-import {
-  FileText,
-  Download,
-  Award,
+import { 
+  FileText, 
+  Download, 
+  TrendingUp, 
+  Award, 
+  CheckCircle2, 
+  AlertCircle,
+  ChevronRight,
+  BookOpen,
+  Calendar
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion } from 'motion/react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import {
-  PageHeader,
-  Card,
-  Badge,
-  Button,
-  Spinner,
-  EmptyState,
-} from '../../components/ui';
 
 interface ResultViewProps {
   student: Student;
@@ -61,20 +59,20 @@ export default function ResultView({ student }: ResultViewProps) {
 
   const generatePDF = (result: ExamResult, exam: Exam) => {
     const doc = new jsPDF();
-
+    
     // Header
     doc.setFontSize(22);
     doc.setTextColor(30, 58, 138);
     doc.text('ELDEN HEIGHTS ACADEMY', 105, 20, { align: 'center' });
-
+    
     doc.setFontSize(12);
     doc.setTextColor(100);
     doc.text('Academic Progress Report', 105, 28, { align: 'center' });
-
+    
     // Student Info
     doc.setDrawColor(200);
     doc.line(20, 35, 190, 35);
-
+    
     doc.setFontSize(10);
     doc.setTextColor(0);
     doc.text(`Student Name: ${student.name}`, 20, 45);
@@ -108,29 +106,35 @@ export default function ResultView({ student }: ResultViewProps) {
     doc.text(`Total Marks: ${result.totalMarks} / ${result.subjectResults.length * 100}`, 20, finalY);
     doc.text(`Percentage: ${result.percentage.toFixed(2)}%`, 20, finalY + 10);
     doc.text(`Overall Grade: ${result.overallGrade}`, 120, finalY);
-
+    
     doc.save(`${student.name}_${exam.name}_Report.pdf`);
   };
 
   if (loading) {
-    return <Spinner />;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="Examination Results"
-        subtitle="View and download academic performance reports"
-        icon={Award}
-        iconColor="gradient-violet"
-      />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Examination Results</h1>
+          <p className="text-gray-500 text-sm">View and download academic performance reports.</p>
+        </div>
+      </div>
 
       {results.length === 0 ? (
-        <EmptyState
-          icon={FileText}
-          title="No Results Published"
-          description="Examination results for the current term haven't been published yet."
-        />
+        <div className="bg-white p-12 rounded-3xl border border-dashed border-gray-200 text-center">
+          <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400 mx-auto mb-4">
+            <FileText className="w-8 h-8" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 mb-1">No Results Published</h3>
+          <p className="text-gray-500 max-w-xs mx-auto">Examination results for the current term haven't been published yet.</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
           {results.map((result) => {
@@ -138,69 +142,71 @@ export default function ResultView({ student }: ResultViewProps) {
             if (!exam) return null;
 
             return (
-              <motion.div
+              <motion.div 
                 key={result.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all"
               >
-                <Card>
+                <div className="p-6">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 gradient-violet rounded-2xl flex items-center justify-center text-white">
+                      <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
                         <Award className="w-8 h-8" />
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-slate-900">{exam.name}</h3>
-                        <p className="text-xs text-slate-500 font-medium">{exam.term} • Published on {new Date(result.updatedAt).toLocaleDateString()}</p>
+                        <h3 className="text-lg font-bold text-gray-900">{exam.name}</h3>
+                        <p className="text-xs text-gray-500 font-medium">{exam.term} • Published on {new Date(result.updatedAt).toLocaleDateString()}</p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-8">
                       <div className="text-center">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Percentage</p>
-                        <p className="text-xl font-bold text-violet-600">{result.percentage.toFixed(1)}%</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Percentage</p>
+                        <p className="text-xl font-bold text-indigo-600">{result.percentage.toFixed(1)}%</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Grade</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Grade</p>
                         <p className="text-xl font-bold text-emerald-600">{result.overallGrade}</p>
                       </div>
                       <div className="text-center hidden sm:block">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status</p>
-                        <Badge variant={result.percentage >= 40 ? 'success' : 'error'}>
-                          {result.percentage >= 40 ? 'Pass' : 'Fail'}
-                        </Badge>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Status</p>
+                        <p className="text-xl font-bold text-gray-900">{result.percentage >= 40 ? 'Pass' : 'Fail'}</p>
                       </div>
                     </div>
 
-                    <Button
-                      variant="primary"
-                      icon={Download}
+                    <button 
                       onClick={() => generatePDF(result, exam)}
+                      className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all"
                     >
+                      <Download className="w-4 h-4" />
                       Download Report
-                    </Button>
+                    </button>
                   </div>
 
                   <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     {result.subjectResults.map((res) => {
                       const subject = subjects.find(s => s.id === res.subjectId);
                       return (
-                        <div key={res.subjectId} className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                        <div key={res.subjectId} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-bold text-slate-700">{subject?.name}</span>
-                            <Badge variant={res.marksObtained >= 40 ? 'success' : 'error'}>
+                            <span className="text-xs font-bold text-gray-700">{subject?.name}</span>
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-full text-[10px] font-bold",
+                              res.marksObtained >= 40 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
+                            )}>
                               {res.grade}
-                            </Badge>
+                            </span>
                           </div>
                           <div className="flex items-end justify-between">
-                            <p className="text-lg font-bold text-slate-900">{res.marksObtained}</p>
-                            <p className="text-[10px] text-slate-400 font-medium">/ {res.maxMarks}</p>
+                            <p className="text-lg font-bold text-gray-900">{res.marksObtained}</p>
+                            <p className="text-[10px] text-gray-400 font-medium">/ {res.maxMarks}</p>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                </Card>
+                </div>
               </motion.div>
             );
           })}

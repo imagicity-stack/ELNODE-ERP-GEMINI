@@ -7,25 +7,28 @@ import { Student, UserProfile, Class, House } from '../../types';
 import { SCHOOL_DOMAIN } from '../../constants';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import {
-  Plus,
+import { 
+  Plus, 
+  Search, 
+  Filter, 
+  MoreVertical, 
   Edit2,
   Trash2,
-  Download,
+  Download, 
   UserPlus,
+  Mail,
   Phone,
+  Calendar,
+  MapPin,
   FileText,
   Activity,
-  Users,
-  AlertTriangle,
+  History,
+  Home,
+  X,
+  Users
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  PageHeader, Card, Badge, Button, IconButton, Modal, SearchInput,
-  FormField, Input, Select, Textarea, Table, Thead, Th, Tbody, Tr, Td,
-  EmptyState, Avatar,
-} from '../../components/ui';
 
 export default function StudentManagement() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -480,243 +483,486 @@ export default function StudentManagement() {
     return matchesSearch && matchesClass;
   });
 
-  const openAddModal = () => {
-    setIsEditMode(false);
-    setEditingStudent(null);
-    setFormData({ name: '', schoolNumber: '', admissionNumber: '', classId: '', section: '', fatherName: '', motherName: '', phone: '', email: '', transportDetails: '', medicalNotes: '', academicHistory: '', houseId: '', address: '' });
-    setIsModalOpen(true);
-  };
-
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Student Management"
-        subtitle={`${filteredStudents.length} students`}
-        icon={Users}
-        iconColor="gradient-indigo"
-        actions={
-          <>
-            <Button variant="secondary" size="sm" icon={Download}>Export</Button>
-            <Button size="sm" icon={UserPlus} onClick={openAddModal}>Add Student</Button>
-          </>
-        }
-      />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Student Management</h1>
+          <p className="text-gray-500 text-sm">Manage all student records and profiles.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all">
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+          <button 
+            onClick={() => {
+              setIsEditMode(false);
+              setEditingStudent(null);
+              setFormData({
+                name: '',
+                schoolNumber: '',
+                admissionNumber: '',
+                classId: '',
+                section: '',
+                fatherName: '',
+                motherName: '',
+                phone: '',
+                email: '',
+                transportDetails: '',
+                medicalNotes: '',
+                academicHistory: '',
+                houseId: '',
+                address: '',
+              });
+              setIsModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            Add Student
+          </button>
+        </div>
+      </div>
 
       {/* Filters */}
-      <Card padding="sm">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <SearchInput
+      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input 
+            type="text" 
+            placeholder="Search by name or admission number..." 
             value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search by name or admission number..."
-            className="flex-1"
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/20 transition-all"
           />
-          <select
+        </div>
+        <div className="flex items-center gap-3">
+          <select 
             value={filterClass}
             onChange={(e) => setFilterClass(e.target.value)}
-            className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/20"
           >
             <option value="All Classes">All Classes</option>
-            {classes.map(cls => <option key={cls.id} value={cls.id}>Class {cls.name}</option>)}
+            {classes.map(cls => (
+              <option key={cls.id} value={cls.id}>Class {cls.name}</option>
+            ))}
           </select>
+          <button className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-500 hover:text-gray-700">
+            <Filter className="w-5 h-5" />
+          </button>
         </div>
-      </Card>
+      </div>
 
-      {/* Table */}
-      <Card padding="none">
-        <Table>
-          <Thead>
-            <tr>
-              <Th>Student</Th>
-              <Th>Admission / School No.</Th>
-              <Th>Class & Section</Th>
-              <Th>Parent Details</Th>
-              <Th>Fee Status</Th>
-              <Th className="text-right">Actions</Th>
-            </tr>
-          </Thead>
-          <Tbody>
-            {filteredStudents.length > 0 ? filteredStudents.map((student) => (
-              <Tr key={student.id}>
-                <Td>
-                  <div className="flex items-center gap-3">
-                    <Avatar name={student.name} size="sm" />
-                    <span className="font-semibold text-slate-900">{student.name}</span>
-                  </div>
-                </Td>
-                <Td><span className="font-mono text-slate-600">{student.admissionNumber}</span></Td>
-                <Td className="text-slate-600">{getClassName(student.classId)} {student.section && `- ${student.section}`}</Td>
-                <Td>
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-medium text-slate-900">{student.parentDetails?.fatherName || 'N/A'}</p>
-                    <p className="text-xs text-slate-400 flex items-center gap-1">
-                      <Phone className="w-3 h-3" />{student.parentDetails?.phone || 'N/A'}
-                    </p>
-                  </div>
-                </Td>
-                <Td>
-                  <Badge variant={student.feeStatus === 'paid' ? 'success' : student.feeStatus === 'pending' ? 'warning' : 'error'} dot>
-                    {student.feeStatus}
-                  </Badge>
-                </Td>
-                <Td>
-                  <div className="flex items-center justify-end gap-1">
-                    <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(student)} title="Edit" />
-                    <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => { setDeletingStudent(student); setIsDeleteModalOpen(true); }} title="Delete" />
-                  </div>
-                </Td>
-              </Tr>
-            )) : (
-              <Tr>
-                <td colSpan={6}>
-                  <EmptyState icon={Users} title="No students found" description="Try adjusting your search or filter" />
-                </td>
-              </Tr>
-            )}
-          </Tbody>
-        </Table>
-      </Card>
+      {/* Student Table */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b bg-gray-50/50">
+                <th className="px-6 py-4">Student</th>
+                <th className="px-6 py-4">Admission / School No.</th>
+                <th className="px-6 py-4">Class & Section</th>
+                <th className="px-6 py-4">Parent Details</th>
+                <th className="px-6 py-4">Fee Status</th>
+                <th className="px-6 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filteredStudents.length > 0 ? filteredStudents.map((student) => (
+                <tr key={student.id} className="group hover:bg-gray-50 transition-all">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
+                        {student.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{student.name}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 font-mono">{student.admissionNumber}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{getClassName(student.classId)} - {student.section}</td>
+                  <td className="px-6 py-4">
+                    <div className="text-xs space-y-1">
+                      <p className="font-medium text-gray-900">{student.parentDetails?.fatherName || 'N/A'}</p>
+                      <p className="text-gray-500 flex items-center gap-1"><Phone className="w-3 h-3" /> {student.parentDetails?.phone || 'N/A'}</p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={cn(
+                      "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
+                      student.feeStatus === 'paid' ? "bg-emerald-50 text-emerald-600" : 
+                      student.feeStatus === 'pending' ? "bg-amber-50 text-amber-600" : "bg-red-50 text-red-600"
+                    )}>
+                      {student.feeStatus}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button 
+                        onClick={() => handleEdit(student)}
+                        className="p-2 hover:bg-blue-50 rounded-lg text-blue-400 hover:text-blue-600 transition-all"
+                        title="Edit Student"
+                      >
+                        <Edit2 className="w-5 h-5" />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setDeletingStudent(student);
+                          setIsDeleteModalOpen(true);
+                        }}
+                        className="p-2 hover:bg-red-50 rounded-lg text-red-400 hover:text-red-600 transition-all"
+                        title="Delete Options"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                    No student records found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-      {/* Add / Edit Modal */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); setIsEditMode(false); setEditingStudent(null); }}
-        title={isEditMode ? 'Edit Student Details' : 'New Student Admission'}
-        subtitle={isEditMode ? 'Update student information' : 'Fill in all details to register a new student'}
-        size="xl"
-        footer={
-          <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={() => { setIsModalOpen(false); setIsEditMode(false); setEditingStudent(null); }}>Cancel</Button>
-            <Button form="student-form" loading={loading} icon={isEditMode ? Edit2 : UserPlus}>
-              {isEditMode ? 'Update Student' : 'Register Student'}
-            </Button>
-          </div>
-        }
-      >
-        <form id="student-form" onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Basic Info */}
-            <div className="space-y-4">
-              <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2">
-                <UserPlus className="w-3.5 h-3.5" /> Basic Information
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <FormField label="Full Name" required className="col-span-2">
-                  <Input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Student's full name" />
-                </FormField>
-                <FormField label="Admission / School No." required className="col-span-2">
-                  <Input required value={formData.admissionNumber} onChange={e => setFormData({...formData, admissionNumber: e.target.value, schoolNumber: e.target.value})} placeholder="e.g. 1234567" className="font-mono" />
-                </FormField>
-                <FormField label="Class" required>
-                  <Select required value={formData.classId} onChange={e => setFormData({...formData, classId: e.target.value, section: ''})}>
-                    <option value="">Select Class</option>
-                    {classes.map(cls => <option key={cls.id} value={cls.id}>Class {cls.name}</option>)}
-                  </Select>
-                </FormField>
-                <FormField label="Section" required>
-                  <Select required value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})} disabled={!formData.classId}>
-                    <option value="">Section</option>
-                    {classes.find(c => c.id === formData.classId)?.sections.map((sec, i) => (
-                      <option key={i} value={sec.name || 'A'}>Section {sec.name || 'A'}</option>
-                    ))}
-                  </Select>
-                </FormField>
-                <FormField label="House" className="col-span-2">
-                  <Select value={formData.houseId} onChange={e => setFormData({...formData, houseId: e.target.value})}>
-                    <option value="">Select House (optional)</option>
-                    {houses.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-                  </Select>
-                </FormField>
-              </div>
-            </div>
-
-            {/* Parent Info */}
-            <div className="space-y-4">
-              <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2">
-                <Users className="w-3.5 h-3.5" /> Parent Information
-              </p>
-              <div className="space-y-3">
-                <FormField label="Father's Name" required>
-                  <Input required value={formData.fatherName} onChange={e => setFormData({...formData, fatherName: e.target.value})} />
-                </FormField>
-                <FormField label="Mother's Name" required>
-                  <Input required value={formData.motherName} onChange={e => setFormData({...formData, motherName: e.target.value})} />
-                </FormField>
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField label="Phone" required>
-                    <Input type="tel" required value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
-                  </FormField>
-                  <FormField label="Email" required>
-                    <Input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                  </FormField>
+      {/* Add Student Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden relative z-10 flex flex-col"
+            >
+              <div className="p-6 border-b flex items-center justify-between bg-gray-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white">
+                    {isEditMode ? <Edit2 className="w-6 h-6" /> : <UserPlus className="w-6 h-6" />}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">{isEditMode ? 'Edit Student Details' : 'New Student Admission'}</h2>
+                    <p className="text-sm text-gray-500">{isEditMode ? 'Update the information for this student.' : 'Fill in all the details to register a new student.'}</p>
+                  </div>
                 </div>
+                <button 
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setIsEditMode(false);
+                    setEditingStudent(null);
+                  }} 
+                  className="p-2 hover:bg-gray-200 rounded-full transition-all"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
               </div>
-            </div>
 
-            {/* Additional Details */}
-            <div className="md:col-span-2 space-y-4">
-              <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2">
-                <FileText className="w-3.5 h-3.5" /> Additional Details
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <FormField label="Transport Details">
-                  <Textarea rows={2} value={formData.transportDetails} onChange={e => setFormData({...formData, transportDetails: e.target.value})} />
-                </FormField>
-                <FormField label="Medical Notes">
-                  <Textarea rows={2} value={formData.medicalNotes} onChange={e => setFormData({...formData, medicalNotes: e.target.value})} />
-                </FormField>
-                <FormField label="Academic History" className="md:col-span-2">
-                  <Textarea rows={2} value={formData.academicHistory} onChange={e => setFormData({...formData, academicHistory: e.target.value})} />
-                </FormField>
-                <FormField label="Parent Address" className="md:col-span-2">
-                  <Textarea rows={2} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
-                </FormField>
-              </div>
-            </div>
-          </div>
-        </form>
-      </Modal>
+              <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Basic Information */}
+                  <div className="space-y-6">
+                    <h3 className="text-sm font-bold text-blue-600 uppercase tracking-wider flex items-center gap-2">
+                      <UserPlus className="w-4 h-4" /> Basic Information
+                    </h3>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                          <input 
+                            type="text" required
+                            value={formData.name}
+                            onChange={(e) => setFormData({...formData, name: e.target.value})}
+                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Admission / School No.</label>
+                          <input 
+                            type="text" required
+                            placeholder="Enter Admission Number"
+                            value={formData.admissionNumber}
+                            onChange={(e) => setFormData({...formData, admissionNumber: e.target.value, schoolNumber: e.target.value})}
+                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
+                          <select 
+                            required
+                            value={formData.classId}
+                            onChange={(e) => setFormData({...formData, classId: e.target.value, section: ''})}
+                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                          >
+                            <option value="">Select Class</option>
+                            {classes.map(cls => (
+                              <option key={cls.id} value={cls.id}>Class {cls.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
+                          <select 
+                            required
+                            value={formData.section}
+                            onChange={(e) => setFormData({...formData, section: e.target.value})}
+                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                            disabled={!formData.classId}
+                          >
+                            <option value="">Select Section</option>
+                            {classes.find(c => c.id === formData.classId)?.sections.map((sec, idx) => (
+                              <option key={idx} value={sec.name || 'A'}>Section {sec.name || 'A'}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">House</label>
+                        <select 
+                          value={formData.houseId}
+                          onChange={(e) => setFormData({...formData, houseId: e.target.value})}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                        >
+                          <option value="">Select House</option>
+                          {houses.map(house => (
+                            <option key={house.id} value={house.id}>{house.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
 
-      {/* Delete Modal */}
-      <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        title="Delete Student Data"
-        subtitle={`Select deletion scope for ${deletingStudent?.name}`}
-        size="sm"
-        footer={<div className="flex justify-end"><Button variant="ghost" onClick={() => setIsDeleteModalOpen(false)}>Cancel</Button></div>}
-      >
-        {deletingStudent && (
-          <div className="space-y-3">
-            <button onClick={() => performDelete({ deleteStudent: true, deleteParent: true, deleteEverything: true, downloadFirst: false })} disabled={loading}
-              className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-red-50 border border-slate-200 hover:border-red-200 rounded-xl transition-all group text-left">
-              <div><p className="font-semibold text-slate-900 group-hover:text-red-700 text-sm">Delete Entire Database</p><p className="text-xs text-slate-400 mt-0.5">Student, parent, and all related records</p></div>
-              <Trash2 className="w-4 h-4 text-slate-400 group-hover:text-red-500 shrink-0" />
-            </button>
-            <button onClick={() => performDelete({ deleteStudent: true, deleteParent: true, deleteEverything: true, downloadFirst: true })} disabled={loading}
-              className="w-full flex items-center justify-between p-4 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all group text-left">
-              <div><p className="font-semibold text-indigo-900 text-sm">Download & Delete Everything</p><p className="text-xs text-indigo-500 mt-0.5">Generates PDF record before deletion</p></div>
-              <Download className="w-4 h-4 text-indigo-500 shrink-0" />
-            </button>
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => performDelete({ deleteStudent: true, deleteParent: false, deleteEverything: false, downloadFirst: false })} disabled={loading}
-                className="p-3 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-left transition-all">
-                <p className="font-semibold text-slate-900 text-sm">Student Only</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Keep parent active</p>
-              </button>
-              <button onClick={() => performDelete({ deleteStudent: false, deleteParent: true, deleteEverything: false, downloadFirst: false })} disabled={loading}
-                className="p-3 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-left transition-all">
-                <p className="font-semibold text-slate-900 text-sm">Parent Only</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Keep student active</p>
-              </button>
-            </div>
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700">These actions are permanent and cannot be undone.</p>
-            </div>
+                  {/* Parent Information */}
+                  <div className="space-y-6">
+                    <h3 className="text-sm font-bold text-blue-600 uppercase tracking-wider flex items-center gap-2">
+                      <Users className="w-4 h-4" /> Parent Information
+                    </h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Father's Name</label>
+                        <input 
+                          type="text" required
+                          value={formData.fatherName}
+                          onChange={(e) => setFormData({...formData, fatherName: e.target.value})}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Mother's Name</label>
+                        <input 
+                          type="text" required
+                          value={formData.motherName}
+                          onChange={(e) => setFormData({...formData, motherName: e.target.value})}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                          <input 
+                            type="tel" required
+                            value={formData.phone}
+                            onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                          <input 
+                            type="email" required
+                            value={formData.email}
+                            onChange={(e) => setFormData({...formData, email: e.target.value})}
+                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional Details */}
+                  <div className="md:col-span-2 space-y-6">
+                    <h3 className="text-sm font-bold text-blue-600 uppercase tracking-wider flex items-center gap-2">
+                      <FileText className="w-4 h-4" /> Additional Details
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Transport Details</label>
+                        <textarea 
+                          rows={2}
+                          value={formData.transportDetails}
+                          onChange={(e) => setFormData({...formData, transportDetails: e.target.value})}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Medical Notes</label>
+                        <textarea 
+                          rows={2}
+                          value={formData.medicalNotes}
+                          onChange={(e) => setFormData({...formData, medicalNotes: e.target.value})}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none resize-none"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Academic History</label>
+                        <textarea 
+                          rows={3}
+                          value={formData.academicHistory}
+                          onChange={(e) => setFormData({...formData, academicHistory: e.target.value})}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none resize-none"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Parent Address</label>
+                        <textarea 
+                          rows={2}
+                          value={formData.address}
+                          onChange={(e) => setFormData({...formData, address: e.target.value})}
+                          className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-600/20 outline-none resize-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-10 flex items-center justify-end gap-4 border-t pt-6">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setIsEditMode(false);
+                      setEditingStudent(null);
+                    }}
+                    className="px-6 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={loading}
+                    className="px-8 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all disabled:opacity-50"
+                  >
+                    {loading ? (isEditMode ? 'Updating...' : 'Registering...') : (isEditMode ? 'Update Student' : 'Register Student')}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
           </div>
         )}
-      </Modal>
+      </AnimatePresence>
+
+      {/* Delete Options Modal */}
+      <AnimatePresence>
+        {isDeleteModalOpen && deletingStudent && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsDeleteModalOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative z-10"
+            >
+              <div className="p-6 border-b bg-red-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white">
+                    <Trash2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">Delete Student Data</h2>
+                    <p className="text-sm text-red-600 font-medium">Select deletion scope for {deletingStudent.name}</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsDeleteModalOpen(false)} className="p-2 hover:bg-red-100 rounded-full transition-all">
+                  <X className="w-5 h-5 text-red-500" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <button 
+                  onClick={() => performDelete({ deleteStudent: true, deleteParent: true, deleteEverything: true, downloadFirst: false })}
+                  disabled={loading}
+                  className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-xl transition-all group"
+                >
+                  <div className="text-left">
+                    <p className="font-bold text-gray-900 group-hover:text-red-700">Delete Entire Database</p>
+                    <p className="text-xs text-gray-500">Removes student, parent, and all related records across portals.</p>
+                  </div>
+                  <Trash2 className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
+                </button>
+
+                <button 
+                  onClick={() => performDelete({ deleteStudent: true, deleteParent: true, deleteEverything: true, downloadFirst: true })}
+                  disabled={loading}
+                  className="w-full flex items-center justify-between p-4 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition-all group"
+                >
+                  <div className="text-left">
+                    <p className="font-bold text-blue-900">Download & Delete Everything</p>
+                    <p className="text-xs text-blue-600">Generates a full PDF record before permanent deletion.</p>
+                  </div>
+                  <Download className="w-5 h-5 text-blue-500" />
+                </button>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                  <button 
+                    onClick={() => performDelete({ deleteStudent: true, deleteParent: false, deleteEverything: false, downloadFirst: false })}
+                    disabled={loading}
+                    className="p-4 bg-white border border-gray-200 hover:border-gray-300 rounded-xl transition-all text-left group"
+                  >
+                    <p className="font-bold text-gray-900 text-sm">Student Only</p>
+                    <p className="text-[10px] text-gray-500">Keep parent profile active.</p>
+                  </button>
+                  <button 
+                    onClick={() => performDelete({ deleteStudent: false, deleteParent: true, deleteEverything: false, downloadFirst: false })}
+                    disabled={loading}
+                    className="p-4 bg-white border border-gray-200 hover:border-gray-300 rounded-xl transition-all text-left group"
+                  >
+                    <p className="font-bold text-gray-900 text-sm">Parent Only</p>
+                    <p className="text-[10px] text-gray-500">Keep student record active.</p>
+                  </button>
+                </div>
+
+                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 flex gap-3">
+                  <Activity className="w-5 h-5 text-amber-600 shrink-0" />
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    <span className="font-bold">Warning:</span> These actions are permanent and cannot be undone. 
+                    Deleting the entire database will remove all history including payments and attendance.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-6 bg-gray-50 border-t flex justify-end">
+                <button 
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  className="px-6 py-2 text-sm font-bold text-gray-600 hover:text-gray-900"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
