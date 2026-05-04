@@ -471,9 +471,9 @@ export function Tr({ children, className, onClick }: { children: React.ReactNode
   );
 }
 
-export function Td({ children, className }: { children: React.ReactNode; className?: string }) {
+export function Td({ children, className, colSpan }: { children: React.ReactNode; className?: string; colSpan?: number }) {
   return (
-    <td className={cn('px-4 py-3.5 text-slate-700 whitespace-nowrap', className)}>
+    <td colSpan={colSpan} className={cn('px-4 py-3.5 text-slate-700 whitespace-nowrap', className)}>
       {children}
     </td>
   );
@@ -543,10 +543,21 @@ export function Avatar({ name, size = 'md', className }: AvatarProps) {
 
 // ─── Spinner ─────────────────────────────────────────────────────────────────
 
-export function Spinner({ className }: { className?: string }) {
+interface SpinnerProps {
+  className?: string;
+  size?: 'sm' | 'md' | 'lg';
+}
+
+export function Spinner({ className, size = 'md' }: SpinnerProps) {
+  const sizes = {
+    sm: 'w-5 h-5 border-2',
+    md: 'w-10 h-10 border-4',
+    lg: 'w-16 h-16 border-4',
+  };
+
   return (
     <div className={cn('flex items-center justify-center py-20', className)}>
-      <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+      <div className={cn('border-slate-200 border-t-indigo-600 rounded-full animate-spin', sizes[size])} />
     </div>
   );
 }

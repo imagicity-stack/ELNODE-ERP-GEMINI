@@ -69,9 +69,20 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
   };
 
   const handlePayNow = (request: FeeRequest) => {
+    if (!window.Razorpay) {
+      alert('Payment gateway is loading. Please try again in a few seconds.');
+      return;
+    }
+
+    const remainingAmount = request.totalAmount - (request.paidAmount || 0);
+    if (remainingAmount <= 0) {
+      alert('This fee request is already fully paid.');
+      return;
+    }
+
     const options = {
       key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || '',
-      amount: (request.totalAmount || 0) * 100, // in paise
+      amount: remainingAmount * 100, // in paise
       currency: 'INR',
       name: 'School Management System',
       description: `Fees for ${request.month} - ${selectedStudent?.name}`,
@@ -80,7 +91,7 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
           const payment: Omit<FeePayment, 'id'> = {
             studentId: request.studentId,
             feeRequestId: request.id,
-            amount: request.totalAmount,
+            amount: remainingAmount,
             date: new Date().toISOString().split('T')[0],
             method: 'online',
             transactionId: response.razorpay_payment_id,
@@ -89,8 +100,18 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
           };
 
           await addDoc(collection(db, 'feePayments'), payment);
-          await updateDoc(doc(db, 'feeRequests', request.id), { status: 'paid' });
-          await updateDoc(doc(db, 'students', request.studentId), { feeStatus: 'paid' });
+          
+          const newPaidAmount = (request.paidAmount || 0) + remainingAmount;
+          const newStatus = newPaidAmount >= request.totalAmount ? 'paid' : 'partially_paid';
+
+          await updateDoc(doc(db, 'feeRequests', request.id), { 
+            paidAmount: newPaidAmount,
+            status: newStatus 
+          });
+
+          if (newStatus === 'paid') {
+            await updateDoc(doc(db, 'students', request.studentId), { feeStatus: 'paid' });
+          }
 
           alert('Payment Successful! Transaction ID: ' + response.razorpay_payment_id);
           fetchData();
@@ -115,9 +136,9 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
 
   const outstandingAmount = feeRequests
     .filter(r => r.status !== 'paid')
-    .reduce((sum, r) => sum + r.totalAmount, 0);
+    .reduce((sum, r) => sum + (r.totalAmount - (r.paidAmount || 0)), 0);
 
-  const currentRequest = feeRequests.find(r => r.status !== 'paid');
+  const currentRequest = feeRequests.find(r => r.status !== 'paid' && r.status !== 'overdue') || feeRequests.find(r => r.status === 'overdue');
 
   return (
     <div className="space-y-8">
@@ -170,8 +191,16 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                   </div>
                 ))}
                 <div className="p-6 bg-slate-50 flex items-center justify-between">
-                  <span className="font-bold text-slate-900">Total Amount Due</span>
-                  <span className="text-2xl font-black text-violet-600">₹{(currentRequest.totalAmount || 0).toLocaleString()}</span>
+                  <div className="space-y-1">
+                    <span className="font-bold text-slate-900 block">Total Amount Due</span>
+                    {currentRequest.paidAmount > 0 && (
+                      <span className="text-xs text-emerald-600 font-bold">Already Paid: ₹{currentRequest.paidAmount.toLocaleString()}</span>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <span className="text-2xl font-black text-violet-600">₹{(currentRequest.totalAmount - (currentRequest.paidAmount || 0)).toLocaleString()}</span>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Remaining Balance</p>
+                  </div>
                 </div>
               </div>
             </Card>

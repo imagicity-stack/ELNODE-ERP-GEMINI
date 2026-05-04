@@ -54,7 +54,8 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
       setLoading(true);
       try {
         // Fetch Teacher Profile
-        const teacherDoc = await getDoc(doc(db, 'teachers', user.uid));
+        const teacherIdForFetch = user.teacherId || user.uid;
+        const teacherDoc = await getDoc(doc(db, 'teachers', teacherIdForFetch));
         if (teacherDoc.exists()) {
           const tData = { id: teacherDoc.id, ...teacherDoc.data() } as Teacher;
           setTeacherData(tData);
@@ -68,7 +69,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
         // Fetch Homework
         const homeworkSnap = await getDocs(query(
           collection(db, 'homework'),
-          where('teacherId', '==', user.uid),
+          where('teacherId', '==', teacherIdForFetch),
           orderBy('dueDate', 'desc')
         ));
         setHomework(homeworkSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Homework)));
@@ -79,7 +80,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
       }
     };
     fetchData();
-  }, [user.uid]);
+  }, [user.uid, user.teacherId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,7 +88,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
     try {
       const docRef = await addDoc(collection(db, 'homework'), {
         ...formData,
-        teacherId: user.uid,
+        teacherId: user.teacherId || user.uid,
         submissions: [],
         createdAt: serverTimestamp()
       });
@@ -95,7 +96,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
       const newHw = {
         id: docRef.id,
         ...formData,
-        teacherId: user.uid,
+        teacherId: user.teacherId || user.uid,
         submissions: []
       } as Homework;
 

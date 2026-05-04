@@ -1,0 +1,95 @@
+import { auth, db } from '../firebase';
+import { collection, query, where, onSnapshot, limit, orderBy } from 'firebase/firestore';
+
+export async function requestNotificationPermission() {
+  if (!('Notification' in window)) {
+    console.log('This browser does not support notifications.');
+    return false;
+  }
+
+  const permission = await Notification.requestPermission();
+  return permission === 'granted';
+}
+
+export function showLocalNotification(title: string, options?: NotificationOptions) {
+  if (Notification.permission === 'granted') {
+    // Check if we are in a mobile environment or desktop
+    // PWAs can show notifications via service worker or direct Notification API
+    // Direct API works if the tab is active or in background (depending on browser)
+    const notification = new Notification(title, {
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
+      ...options
+    });
+
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+  }
+}
+
+// Function to start listening for global notifications (like notices)
+export function startNotificationListeners(userId: string, role: string) {
+  if (Notification.permission !== 'granted') return () => {};
+
+  // Listen for new notices - Filter by role to satisfy security rules
+  const noticesQuery = query(
+    collection(db, 'notices'),
+    where('targetRoles', 'array-contains', role),
+    orderBy('createdAt', 'desc'),
+    limit(1)
+  );
+
+  let initialLoad = true;
+  const unsubscribeNotices = onSnapshot(noticesQuery, (snapshot) => {
+    if (initialLoad) {
+      initialLoad = false;
+      return;
+    }
+
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === 'added') {
+        const notice = change.doc.data();
+        showLocalNotification('New Notice: ' + notice.title, {
+          body: notice.content?.substring(0, 50) + '...',
+          tag: 'new-notice'
+        });
+      }
+    });
+  });
+
+  // Listen for fee requests (if student)
+  let unsubscribeFees = () => {};
+  if (role === 'student') {
+    const feesQuery = query(
+      collection(db, 'feeRequests'),
+      where('studentId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+
+    let initialFeesLoad = true;
+    unsubscribeFees = onSnapshot(feesQuery, (snapshot) => {
+      if (initialFeesLoad) {
+        initialFeesLoad = false;
+        return;
+      }
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const fee = change.doc.data();
+          showLocalNotification('New Fee Request', {
+            body: `A new fee request of ₹${fee.totalAmount} has been generated.`,
+            tag: 'new-fee'
+          });
+        }
+      });
+    });
+  }
+
+  return () => {
+    unsubscribeNotices();
+    unsubscribeFees();
+  };
+}

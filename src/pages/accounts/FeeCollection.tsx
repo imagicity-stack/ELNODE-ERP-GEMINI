@@ -1,10 +1,11 @@
-import { UserProfile, Student, Fee, FeePayment, FeeRequest, FeeStructure, PaymentMethod } from '../../types';
+import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure, PaymentMethod, FeeHead } from '../../types';
 import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { useToast } from '../../components/Toast';
+import { logActivity } from '../../services/activityService';
 import {
   PageHeader,
   Card,
@@ -34,13 +35,18 @@ interface FeeCollectionProps {
 
 export default function FeeCollection({ user }: FeeCollectionProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedClass, setSelectedClass] = useState('all');
   const [students, setStudents] = useState<Student[]>([]);
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
+  const [globalHeads, setGlobalHeads] = useState<FeeHead[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [isEditingRequest, setIsEditingRequest] = useState(false);
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const { showToast } = useToast();
 
@@ -65,17 +71,21 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [studentsSnap, requestsSnap, paymentsSnap, structuresSnap] = await Promise.all([
+      const [studentsSnap, requestsSnap, paymentsSnap, structuresSnap, classesSnap, headsSnap] = await Promise.all([
         getDocs(collection(db, 'students')),
         getDocs(collection(db, 'feeRequests')),
         getDocs(query(collection(db, 'feePayments'), orderBy('date', 'desc'))),
-        getDocs(collection(db, 'feeStructures'))
+        getDocs(collection(db, 'feeStructures')),
+        getDocs(collection(db, 'classes')),
+        getDocs(collection(db, 'feeHeads'))
       ]);
 
       setStudents(studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student)));
       setFeeRequests(requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
       setPayments(paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeePayment)));
       setFeeStructures(structuresSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeStructure)));
+      setClasses(classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class)));
+      setGlobalHeads(headsSnap.docs.map(doc => ({ ...doc.data() } as FeeHead)));
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'feeRequests');
     } finally {
@@ -112,10 +122,19 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       const pendingRequest = feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid');
       if (!pendingRequest) throw new Error('No pending fee request found for student');
 
-      const payment: Omit<FeePayment, 'id'> = {
+      const payAmount = Number(paymentData.amount);
+      const remaining = pendingRequest.totalAmount - (pendingRequest.paidAmount || 0);
+
+      if (payAmount > remaining) {
+        showToast(`Payment amount exceeds remaining balance (₹${remaining})`, 'error');
+        setLoading(false);
+        return;
+      }
+
+      const paymentDoc: Omit<FeePayment, 'id'> = {
         studentId: selectedStudent.id,
         feeRequestId: pendingRequest.id,
-        amount: Number(paymentData.amount),
+        amount: payAmount,
         date: paymentData.date,
         method: paymentData.method,
         referenceNumber: paymentData.referenceNumber,
@@ -123,11 +142,31 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         remarks: paymentData.remarks,
       };
 
-      await addDoc(collection(db, 'feePayments'), payment);
+      await addDoc(collection(db, 'feePayments'), paymentDoc);
+
+      const newPaidAmount = (pendingRequest.paidAmount || 0) + payAmount;
+      const newStatus = newPaidAmount >= pendingRequest.totalAmount ? 'paid' : 'partially_paid';
 
       // Update request status
-      await updateDoc(doc(db, 'feeRequests', pendingRequest.id), { status: 'paid' });
-      await updateDoc(doc(db, 'students', selectedStudent.id), { feeStatus: 'paid' });
+      await updateDoc(doc(db, 'feeRequests', pendingRequest.id), { 
+        paidAmount: newPaidAmount,
+        status: newStatus 
+      });
+
+      // Update student status based on all requests
+      const studentRequests = feeRequests.filter(r => r.studentId === selectedStudent.id);
+      const isStillPending = studentRequests.some(r => r.id !== pendingRequest.id && r.status !== 'paid') || newStatus !== 'paid';
+      
+      await updateDoc(doc(db, 'students', selectedStudent.id), { 
+        feeStatus: isStillPending ? 'pending' : 'paid' 
+      });
+
+      await logActivity(
+        user,
+        'RECORD_PAYMENT',
+        'Accounts',
+        `Recorded payment of ₹${payAmount} for ${selectedStudent.name} (${selectedStudent.schoolNumber})`
+      );
 
       setIsModalOpen(false);
       fetchData();
@@ -138,29 +177,53 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     }
   };
 
-  const handleCreateRequest = async (e: React.FormEvent) => {
+  const handleCreateOrUpdateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedStudent) return;
 
     setLoading(true);
     try {
       const totalAmount = requestData.heads.reduce((sum, h) => sum + h.finalAmount, 0);
-      const request: Omit<FeeRequest, 'id'> = {
+      const requestPayload: Partial<FeeRequest> = {
         studentId: selectedStudent.id,
         classId: selectedStudent.classId,
         academicYear: '2024-25',
         month: requestData.month,
         heads: requestData.heads,
         totalAmount,
-        status: 'pending',
+        status: totalAmount > 0 ? 'pending' : 'paid',
         dueDate: requestData.dueDate,
-        createdAt: new Date().toISOString(),
       };
 
-      await addDoc(collection(db, 'feeRequests'), request);
-      await updateDoc(doc(db, 'students', selectedStudent.id), { feeStatus: 'pending' });
+      if (isEditingRequest && currentRequestId) {
+        await updateDoc(doc(db, 'feeRequests', currentRequestId), requestPayload);
+        showToast('Fee request updated successfully!', 'success');
+        await logActivity(
+          user,
+          'UPDATE_FEE_REQUEST',
+          'Accounts',
+          `Updated fee request for ${selectedStudent.name} (${requestData.month})`
+        );
+      } else {
+        const newRequest: Omit<FeeRequest, 'id'> = {
+          ...requestPayload,
+          paidAmount: 0,
+          createdAt: new Date().toISOString(),
+        } as Omit<FeeRequest, 'id'>;
+        await addDoc(collection(db, 'feeRequests'), newRequest);
+        await updateDoc(doc(db, 'students', selectedStudent.id), { feeStatus: 'pending' });
+        showToast('Fee request generated successfully!', 'success');
+        await logActivity(
+          user,
+          'GENERATE_FEE_REQUEST',
+          'Accounts',
+          `Generated fee request for ${selectedStudent.name} (${requestData.month})`
+        );
+      }
 
       setIsRequestModalOpen(false);
+      setIsEditingRequest(false);
+      setCurrentRequestId(null);
       fetchData();
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'feeRequests');
@@ -169,29 +232,126 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     }
   };
 
-  const openRequestModal = (student: Student) => {
+  const handleCancelRequest = async (requestId: string, studentId: string) => {
+    if (!window.confirm('Are you sure you want to cancel this fee request? Current payments will be orphaned.')) return;
+    try {
+      const student = students.find(s => s.id === studentId);
+      await deleteDoc(doc(db, 'feeRequests', requestId));
+      
+      // Update student status based on remaining requests
+      const remainingRequests = feeRequests.filter(r => r.studentId === studentId && r.id !== requestId);
+      const isStillPending = remainingRequests.some(r => r.status !== 'paid');
+      await updateDoc(doc(db, 'students', studentId), { feeStatus: isStillPending ? 'pending' : 'paid' });
+      
+      showToast('Fee request cancelled', 'success');
+      
+      await logActivity(
+        user,
+        'CANCEL_FEE_REQUEST',
+        'Accounts',
+        `Cancelled fee request for ${student?.name || studentId}`
+      );
+      
+      fetchData();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'feeRequests');
+    }
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!window.confirm('Are you sure you want to delete this payment record? This will revert the paid status of the corresponding fee request.')) return;
+    
+    setLoading(true);
+    try {
+      const payment = payments.find(p => p.id === paymentId);
+      if (!payment) return;
+
+      const request = feeRequests.find(r => r.id === payment.feeRequestId);
+      const student = students.find(s => s.id === payment.studentId);
+
+      // 1. Delete payment doc
+      await deleteDoc(doc(db, 'feePayments', paymentId));
+
+      // 2. Rollback request paid amount
+      if (request) {
+        const newPaidAmount = Math.max(0, (request.paidAmount || 0) - payment.amount);
+        const newStatus = newPaidAmount === 0 ? 'pending' : 'partially_paid';
+        
+        await updateDoc(doc(db, 'feeRequests', request.id), {
+          paidAmount: newPaidAmount,
+          status: newStatus
+        });
+
+        // Update student status based on all requests
+        const studentRequests = feeRequests.filter(r => r.studentId === student.id);
+        const isStillPending = studentRequests.some(r => {
+          if (r.id === request.id) return true; // Just rollbacked to unpaid, so this request is definitely pending
+          return r.status !== 'paid';
+        });
+
+        await updateDoc(doc(db, 'students', student.id), { 
+          feeStatus: isStillPending ? 'pending' : 'paid' 
+        });
+      }
+
+      await logActivity(
+        user,
+        'DELETE_PAYMENT',
+        'Super Admin',
+        `Deleted payment record ${payment.receiptNumber} for ₹${payment.amount}`
+      );
+
+      showToast('Payment record deleted successfully', 'success');
+      fetchData();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'feePayments');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openRequestModal = (student: Student, request?: FeeRequest) => {
     setSelectedStudent(student);
-    const structure = feeStructures.find(s => s.classId === student.classId);
-    if (structure) {
+    if (request) {
+      setIsEditingRequest(true);
+      setCurrentRequestId(request.id);
       setRequestData({
-        ...requestData,
-        heads: structure.heads.map(h => ({
-          name: h.name,
-          amount: h.amount,
-          discount: 0,
-          finalAmount: h.amount
-        }))
+        month: request.month,
+        dueDate: request.dueDate,
+        heads: request.heads
       });
     } else {
-      setRequestData({ ...requestData, heads: [] });
+      setIsEditingRequest(false);
+      setCurrentRequestId(null);
+      const structure = feeStructures.find(s => s.classId === student.classId);
+      if (structure) {
+        setRequestData({
+          month: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
+          dueDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0],
+          heads: structure.heads.map(h => ({
+            name: h.name,
+            amount: h.amount,
+            discount: 0,
+            finalAmount: h.amount
+          }))
+        });
+      } else {
+        setRequestData({
+          month: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
+          dueDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0],
+          heads: []
+        });
+      }
     }
     setIsRequestModalOpen(true);
   };
 
-  const filteredStudents = students.filter(s =>
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.schoolNumber.includes(searchTerm)
-  );
+  const filteredStudents = students.filter(s => {
+    const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          s.schoolNumber.includes(searchTerm);
+    const matchesClass = selectedClass === 'all' || s.classId === selectedClass;
+    return matchesSearch && matchesClass;
+  });
 
   const todayCollection = payments
     .filter(p => p.date === new Date().toISOString().split('T')[0])
@@ -233,14 +393,14 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         />
         <StatCard
           label="Pending Dues"
-          value={`₹${(feeRequests.filter(f => f.status !== 'paid').reduce((sum, f) => sum + f.totalAmount, 0) || 0).toLocaleString()}`}
+          value={`₹${(feeRequests.filter(f => f.status !== 'paid').reduce((sum, f) => sum + (f.totalAmount - (f.paidAmount || 0)), 0) || 0).toLocaleString()}`}
           icon={AlertCircle}
           gradient="gradient-amber"
           index={2}
         />
         <StatCard
           label="Overdue"
-          value={`₹${(feeRequests.filter(f => f.status === 'overdue').reduce((sum, f) => sum + f.totalAmount, 0) || 0).toLocaleString()}`}
+          value={`₹${(feeRequests.filter(f => f.status === 'overdue').reduce((sum, f) => sum + (f.totalAmount - (f.paidAmount || 0)), 0) || 0).toLocaleString()}`}
           icon={Clock}
           gradient="gradient-amber"
           index={3}
@@ -249,13 +409,38 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       {/* Transactions Table */}
       <Card padding="none">
-        <div className="p-4 border-b bg-slate-50/50 flex items-center justify-between gap-4">
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search by student name or school number..."
-            className="max-w-md flex-1"
-          />
+        <div className="p-4 border-b bg-slate-50/50 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-1 items-center gap-4 min-w-[300px]">
+            <SearchInput
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search by student name or school number..."
+              className="flex-1"
+            />
+            <Select 
+              value={selectedClass} 
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="w-40"
+            >
+              <option value="all">All Classes</option>
+              {classes.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              icon={Plus}
+              onClick={() => {
+                // Future enhancement: Bulk generate requests
+                showToast("Select a class to generate bulk requests", "info");
+              }}
+            >
+              Bulk Generate
+            </Button>
+          </div>
         </div>
         {filteredStudents.length > 0 ? (
           <Table>
@@ -263,31 +448,36 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               <tr>
                 <Th>Student</Th>
                 <Th>School No.</Th>
-                <Th>Total Fee</Th>
+                <Th>Total Due</Th>
                 <Th>Paid</Th>
+                <Th>Balance</Th>
                 <Th>Status</Th>
                 <Th className="text-right">Actions</Th>
               </tr>
             </Thead>
             <Tbody>
               {filteredStudents.map((student) => {
-                const studentRequest = feeRequests.find(r => r.studentId === student.id && r.status !== 'paid');
-                const totalFee = studentRequest?.totalAmount || 0;
-                const paidAmount = payments
-                  .filter(p => p.studentId === student.id)
-                  .reduce((sum, p) => sum + p.amount, 0);
+                const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
+                const totalFee = studentRequests.reduce((sum, r) => sum + r.totalAmount, 0);
+                const paidAmount = studentRequests.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
+                const balance = totalFee - paidAmount;
+                const studentRequest = studentRequests[0]; // For edit/individual actions
 
                 return (
                   <Tr key={student.id}>
                     <Td>
                       <div className="flex items-center gap-3">
                         <Avatar name={student.name} size="sm" />
-                        <span className="font-bold text-slate-900">{student.name}</span>
+                        <div>
+                          <p className="font-bold text-slate-900 leading-tight">{student.name}</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{classes.find(c => c.id === student.classId)?.name || student.classId} - {student.section}</p>
+                        </div>
                       </div>
                     </Td>
                     <Td>{student.schoolNumber}</Td>
                     <Td className="font-bold text-slate-900">₹{(totalFee || 0).toLocaleString()}</Td>
                     <Td className="font-bold text-emerald-600">₹{(paidAmount || 0).toLocaleString()}</Td>
+                    <Td className="font-bold text-red-600">₹{(balance || 0).toLocaleString()}</Td>
                     <Td>
                       <Badge
                         variant={
@@ -295,7 +485,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                             student.feeStatus === 'overdue' ? 'error' : 'warning'
                         }
                       >
-                        {student.feeStatus}
+                        {studentRequest?.status || student.feeStatus}
                       </Badge>
                     </Td>
                     <Td className="text-right">
@@ -306,21 +496,37 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                           icon={Plus}
                           onClick={() => openRequestModal(student)}
                         >
-                          Generate Request
+                          Request
                         </Button>
                       ) : (
-                        <Button
-                          variant="primary"
-                          size="xs"
-                          icon={Plus}
-                          onClick={() => {
-                            setSelectedStudent(student);
-                            setPaymentData({ ...paymentData, amount: studentRequest.totalAmount.toString() });
-                            setIsModalOpen(true);
-                          }}
-                        >
-                          Mark as Paid
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            icon={Receipt}
+                            onClick={() => openRequestModal(student, studentRequest)}
+                          >
+                            Edit
+                          </Button>
+                          <IconButton
+                            icon={Trash2}
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleCancelRequest(studentRequest.id, student.id)}
+                          />
+                          <Button
+                            variant="primary"
+                            size="xs"
+                            icon={Plus}
+                            onClick={() => {
+                              setSelectedStudent(student);
+                              setPaymentData({ ...paymentData, amount: balance.toString() });
+                              setIsModalOpen(true);
+                            }}
+                          >
+                            Collect
+                          </Button>
+                        </div>
                       )}
                     </Td>
                   </Tr>
@@ -350,7 +556,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                 <Th>Date</Th>
                 <Th>Amount</Th>
                 <Th>Method</Th>
-                <Th className="text-right">Receipt</Th>
+                <Th className="text-right">Actions</Th>
               </tr>
             </Thead>
             <Tbody>
@@ -364,11 +570,21 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                     <Td className="font-bold text-emerald-600">₹{(tx.amount || 0).toLocaleString()}</Td>
                     <Td className="capitalize">{tx.method.replace('_', ' ')}</Td>
                     <Td className="text-right">
-                      <IconButton
-                        icon={Download}
-                        onClick={() => handleDownloadReceipt(tx)}
-                        variant="ghost"
-                      />
+                      <div className="flex items-center justify-end gap-2">
+                        <IconButton
+                          icon={Download}
+                          onClick={() => handleDownloadReceipt(tx)}
+                          variant="ghost"
+                        />
+                        {user.role === 'super_admin' && (
+                          <IconButton
+                            icon={Trash2}
+                            onClick={() => handleDeletePayment(tx.id)}
+                            variant="danger"
+                            size="sm"
+                          />
+                        )}
+                      </div>
                     </Td>
                   </Tr>
                 );
@@ -383,8 +599,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       {/* Generate Fee Request Modal */}
       <Modal
         isOpen={isRequestModalOpen && !!selectedStudent}
-        onClose={() => setIsRequestModalOpen(false)}
-        title="Generate Fee Request"
+        onClose={() => {
+          setIsRequestModalOpen(false);
+          setIsEditingRequest(false);
+          setCurrentRequestId(null);
+        }}
+        title={isEditingRequest ? "Modify Fee Request" : "Generate Fee Request"}
         subtitle={selectedStudent ? `${selectedStudent.name} (${selectedStudent.schoolNumber})` : ''}
         size="lg"
         footer={
@@ -394,16 +614,25 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               <p className="text-2xl font-black text-slate-900">₹{(requestData.heads.reduce((sum, h) => sum + h.finalAmount, 0) || 0).toLocaleString()}</p>
             </div>
             <div className="flex gap-3">
-              <Button variant="secondary" onClick={() => setIsRequestModalOpen(false)}>Cancel</Button>
-              <Button variant="success" loading={loading} onClick={(e: any) => {
-                const form = e.target.closest('.modal-form') || document.querySelector('form[data-request-form]');
-                if (form) form.requestSubmit();
-              }}>Generate Request</Button>
+              <Button variant="secondary" onClick={() => {
+                setIsRequestModalOpen(false);
+                setIsEditingRequest(false);
+              }}>Cancel</Button>
+              <Button 
+                variant="success" 
+                loading={loading} 
+                onClick={(e: any) => {
+                  const form = document.querySelector('form[data-request-form]') as HTMLFormElement;
+                  if (form) form.requestSubmit();
+                }}
+              >
+                {isEditingRequest ? 'Update Request' : 'Generate Request'}
+              </Button>
             </div>
           </div>
         }
       >
-        <form onSubmit={handleCreateRequest} data-request-form className="space-y-6">
+        <form onSubmit={handleCreateOrUpdateRequest} data-request-form className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Billing Month" required>
               <Input
@@ -426,17 +655,39 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Fee Heads</h3>
-              <button
-                type="button"
-                onClick={() => setRequestData({
-                  ...requestData,
-                  heads: [...requestData.heads, { name: '', amount: 0, discount: 0, finalAmount: 0 }]
-                })}
-                className="text-xs font-bold text-amber-600 hover:underline flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" />
-                Add Custom Head
-              </button>
+              <div className="flex items-center gap-3">
+                {globalHeads.length > 0 && (
+                  <Select
+                    value=""
+                    onChange={(e) => {
+                      const head = globalHeads.find(h => h.name === e.target.value);
+                      if (head) {
+                        setRequestData({
+                          ...requestData,
+                          heads: [...requestData.heads, { name: head.name, amount: head.amount, discount: 0, finalAmount: head.amount }]
+                        });
+                      }
+                    }}
+                    className="w-48 text-xs"
+                  >
+                    <option value="">Select Global Head</option>
+                    {globalHeads.map(h => (
+                      <option key={h.name} value={h.name}>{h.name} (₹{h.amount})</option>
+                    ))}
+                  </Select>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setRequestData({
+                    ...requestData,
+                    heads: [...requestData.heads, { name: '', amount: 0, discount: 0, finalAmount: 0 }]
+                  })}
+                  className="text-xs font-bold text-amber-600 hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  Custom Head
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">

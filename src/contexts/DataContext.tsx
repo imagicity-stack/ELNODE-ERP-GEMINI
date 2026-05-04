@@ -1,0 +1,171 @@
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { 
+  doc, 
+  onSnapshot, 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  limit 
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { UserProfile, Teacher, Student, Notice, TimetableConfig, Timetable } from '../types';
+
+interface DataContextType {
+  teacherData: Teacher | null;
+  studentData: Student | null;
+  notices: Notice[];
+  timetableConfig: TimetableConfig | null;
+  timetables: Timetable[];
+  classesMap: Record<string, string>;
+  subjectsMap: Record<string, string>;
+  loading: boolean;
+  refreshGlobalData: () => void;
+}
+
+const DataContext = createContext<DataContextType | undefined>(undefined);
+
+export function DataProvider({ children, user }: { children: React.ReactNode, user: UserProfile | null }) {
+  const [teacherData, setTeacherData] = useState<Teacher | null>(null);
+  const [studentData, setStudentData] = useState<Student | null>(null);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [timetableConfig, setTimetableConfig] = useState<TimetableConfig | null>(null);
+  const [classesMap, setClassesMap] = useState<Record<string, string>>({});
+  const [subjectsMap, setSubjectsMap] = useState<Record<string, string>>({});
+  const [timetables, setTimetables] = useState<Timetable[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      setTeacherData(null);
+      setStudentData(null);
+      setTimetables([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const unsubscribes: (() => void)[] = [];
+
+    // Utility for safe listeners
+    const safeOnSnapshot = (ref: any, onNext: (snap: any) => void, name: string, operationType: OperationType = OperationType.LIST) => {
+      return onSnapshot(ref, onNext, (err) => {
+        console.error(`Listener error for ${name}:`, err);
+        try {
+          handleFirestoreError(err, operationType, name);
+        } catch (e) {
+          // Logged inside helper
+        }
+        // We don't block the whole app for one listener failure
+        if (name === 'teacher' || name === 'student') {
+          setLoading(false);
+        }
+      });
+    };
+
+    // 1. Listen for Timetable Settings (Global)
+    const unsubTimetableConfig = safeOnSnapshot(doc(db, 'timetableSettings', 'global'), (doc) => {
+      if (doc.exists()) {
+        setTimetableConfig(doc.data() as TimetableConfig);
+      }
+    }, 'timetableSettings/global', OperationType.GET);
+    unsubscribes.push(unsubTimetableConfig);
+
+    // 2. Generic Mappings (Live Listeners) - Added slight delay to spread out requests
+    setTimeout(() => {
+      const unsubClasses = safeOnSnapshot(collection(db, 'classes'), (snapshot) => {
+        const map: Record<string, string> = {};
+        snapshot.docs.forEach(d => map[d.id] = d.data().name);
+        setClassesMap(map);
+      }, 'classes');
+      unsubscribes.push(unsubClasses);
+
+      const unsubSubjects = safeOnSnapshot(collection(db, 'subjects'), (snapshot) => {
+        const map: Record<string, string> = {};
+        snapshot.docs.forEach(d => map[d.id] = d.data().name);
+        setSubjectsMap(map);
+      }, 'subjects');
+      unsubscribes.push(unsubSubjects);
+
+      const unsubTimetables = safeOnSnapshot(collection(db, 'timetable'), (snapshot) => {
+        setTimetables(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timetable)));
+      }, 'timetables');
+      unsubscribes.push(unsubTimetables);
+    }, 500);
+
+    // 3. Role-specific Data Listeners
+    if (user.role === 'teacher') {
+      const teacherId = user.teacherId || user.uid;
+      const unsubTeacher = safeOnSnapshot(doc(db, 'teachers', teacherId), (doc) => {
+        if (doc.exists()) {
+          setTeacherData({ id: doc.id, ...doc.data() } as Teacher);
+        }
+        setLoading(false);
+      }, 'teachers/' + teacherId, OperationType.GET);
+      unsubscribes.push(unsubTeacher);
+    } 
+    else if (user.role === 'student' || user.role === 'parent') {
+      const studentId = user.studentId || (user.studentIds && user.studentIds[0]);
+      if (studentId) {
+        const unsubStudent = safeOnSnapshot(doc(db, 'students', studentId), (doc) => {
+          if (doc.exists()) {
+            setStudentData({ id: doc.id, ...doc.data() } as Student);
+          }
+          setLoading(false);
+        }, 'students/' + studentId, OperationType.GET);
+        unsubscribes.push(unsubStudent);
+      } else {
+        setLoading(false);
+      }
+    } else {
+      setTimeout(() => setLoading(false), 1000); // Admin or other roles
+    }
+
+    // 4. Notices Listener (Common)
+    setTimeout(() => {
+      const noticesQuery = query(
+        collection(db, 'notices'),
+        where('targetRoles', 'array-contains', user.role === 'super_admin' ? 'admin' : user.role),
+        orderBy('createdAt', 'desc'),
+        limit(10)
+      );
+      const unsubNotices = safeOnSnapshot(noticesQuery, (snapshot) => {
+        setNotices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notice)));
+      }, 'notices');
+      unsubscribes.push(unsubNotices);
+    }, 1500);
+
+    return () => {
+      unsubscribes.forEach(unsub => unsub());
+    };
+  }, [user]);
+
+  const refreshGlobalData = () => {
+    // This could trigger manual re-fetches if needed, 
+    // but onSnapshot handles most cases automatically
+  };
+
+  return (
+    <DataContext.Provider value={{ 
+      teacherData, 
+      studentData, 
+      notices, 
+      timetableConfig, 
+      timetables,
+      classesMap,
+      subjectsMap,
+      loading,
+      refreshGlobalData 
+    }}>
+      {children}
+    </DataContext.Provider>
+  );
+}
+
+export function useData() {
+  const context = useContext(DataContext);
+  if (context === undefined) {
+    throw new Error('useData must be used within a DataProvider');
+  }
+  return context;
+}

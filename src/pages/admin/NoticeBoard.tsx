@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { Notice, UserRole, UserProfile } from '../../types';
+import { logActivity } from '../../services/activityService';
 import {
   Plus,
   Bell,
@@ -77,6 +78,14 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
         authorName: user.name,
         createdAt: new Date().toISOString(),
       });
+      
+      await logActivity(
+        user,
+        'POST_NOTICE',
+        'Academic',
+        `Posted notice: ${formData.title} for ${formData.targetRoles.join(', ')}`
+      );
+
       setIsModalOpen(false);
       fetchNotices();
       setFormData({ title: '', content: '', priority: 'medium', targetRoles: [], expiresAt: '' });
@@ -96,7 +105,16 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
   const performDelete = async () => {
     if (!deletingId) return;
     try {
+      const notice = notices.find(n => n.id === deletingId);
       await deleteDoc(doc(db, 'notices', deletingId));
+      
+      await logActivity(
+        user,
+        'DELETE_NOTICE',
+        'Super Admin',
+        `Deleted notice: ${notice?.title || deletingId}`
+      );
+
       fetchNotices();
       setIsDeleteModalOpen(false);
       setDeletingId(null);

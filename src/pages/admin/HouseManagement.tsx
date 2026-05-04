@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { Plus, Home, Trash2, Edit2, User } from 'lucide-react';
-import { House, Teacher } from '../../types';
+import { House, Teacher, UserProfile } from '../../types';
+import { logActivity } from '../../services/activityService';
 import {
   PageHeader, Card, Button, IconButton, Modal, ConfirmModal,
   SearchInput, FormField, Input, Select, Table, Thead, Th, Tbody, Tr, Td, EmptyState, Avatar
 } from '../../components/ui';
 
-export default function HouseManagement() {
+export default function HouseManagement({ user }: { user: UserProfile }) {
   const [houses, setHouses] = useState<House[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);

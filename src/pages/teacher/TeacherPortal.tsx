@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { UserProfile } from '../../types';
 import TeacherDashboard from './TeacherDashboard';
+import MyClasses from './MyClasses';
 import AttendanceTracking from './AttendanceTracking';
 import HomeworkManagement from './HomeworkManagement';
 import ExamManagement from './ExamManagement';
@@ -16,6 +17,7 @@ export default function TeacherPortal({ user }: { user: UserProfile }) {
     <PortalLayout role="teacher" userName={user.name}>
       <Routes>
         <Route path="/" element={<TeacherDashboard user={user} />} />
+        <Route path="/classes" element={<MyClasses user={user} />} />
         <Route path="/attendance" element={<AttendanceTracking user={user} />} />
         <Route path="/homework" element={<HomeworkManagement user={user} />} />
         <Route path="/exams" element={<ExamManagement user={user} />} />

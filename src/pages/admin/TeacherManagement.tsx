@@ -3,7 +3,8 @@ import { collection, addDoc, getDocs, doc, setDoc, query, where, deleteDoc } fro
 import { createUserWithEmailAndPassword, getAuth, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { initializeApp, getApp } from 'firebase/app';
 import { db, firebaseConfig, handleFirestoreError, OperationType } from '../../firebase';
-import { Teacher, Subject, Class, House } from '../../types';
+import { Teacher, Subject, Class, House, UserProfile } from '../../types';
+import { logActivity } from '../../services/activityService';
 import {
   Plus,
   Edit2,
@@ -19,7 +20,7 @@ import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { PageHeader, Button, IconButton, Modal, ConfirmModal, SearchInput, FormField, Input, Select, EmptyState, Badge, Avatar } from '../../components/ui';
 
-export default function TeacherManagement() {
+export default function TeacherManagement({ user }: { user: UserProfile }) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -83,6 +84,12 @@ export default function TeacherManagement() {
       if (isEditMode && editingTeacher) {
         try {
           await setDoc(doc(db, 'teachers', editingTeacher.id), teacherData, { merge: true });
+          await logActivity(
+            user,
+            'UPDATE_TEACHER',
+            'Teachers',
+            `Updated teacher profile for ${formData.name}`
+          );
         } catch (err) {
           handleFirestoreError(err, OperationType.WRITE, `teachers/${editingTeacher.id}`);
         }
@@ -94,6 +101,7 @@ export default function TeacherManagement() {
           if (!teacherDocs.empty) {
             await setDoc(doc(db, 'users', teacherDocs.docs[0].id), {
               name: formData.name,
+              teacherId: editingTeacher.id,
             }, { merge: true });
           }
         } catch (err) {
@@ -137,6 +145,12 @@ export default function TeacherManagement() {
             teacherId: teacherRef.id,
             createdAt: new Date().toISOString(),
           });
+          await logActivity(
+            user,
+            'HIRE_TEACHER',
+            'Teachers',
+            `Hired new teacher ${formData.name} (${formData.email})`
+          );
         } catch (err) {
           handleFirestoreError(err, OperationType.WRITE, 'teachers/users');
         }
@@ -196,7 +210,16 @@ export default function TeacherManagement() {
   const performDelete = async () => {
     if (!deletingId) return;
     try {
+      const teacher = teachers.find(t => t.id === deletingId);
       await deleteDoc(doc(db, 'teachers', deletingId));
+      
+      await logActivity(
+        user,
+        'DELETE_TEACHER',
+        'Super Admin',
+        `Deleted teacher record for ${teacher?.name || deletingId}`
+      );
+
       fetchData();
       setIsDeleteModalOpen(false);
       setDeletingId(null);
@@ -312,6 +335,22 @@ export default function TeacherManagement() {
                   ))}
                 </div>
               </FormField>
+              <FormField label="Assigned Classes">
+                <div className="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 min-h-[60px]">
+                  {classes.map(cls => (
+                    <button key={cls.id} type="button"
+                      onClick={() => {
+                        const newClasses = formData.classes.includes(cls.id) ? formData.classes.filter(id => id !== cls.id) : [...formData.classes, cls.id];
+                        setFormData({...formData, classes: newClasses});
+                      }}
+                      className={cn('px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border',
+                        formData.classes.includes(cls.id) ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'
+                      )}
+                    >Class {cls.name}</button>
+                  ))}
+                </div>
+              </FormField>
+
               <div className="space-y-3">
                 <label className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300">
                   <div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-violet-500" /><span className="text-sm font-semibold text-slate-700">House Incharge</span></div>

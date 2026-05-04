@@ -10,7 +10,7 @@ import {
   Wallet,
   Receipt,
 } from 'lucide-react';
-import { UserProfile, Expense, FeePayment, Fee, Student, FeeRequest } from '../../types';
+import { UserProfile, Expense, FeePayment, Fee, Student, FeeRequest, Class } from '../../types';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -54,6 +54,7 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
   const [fees, setFees] = useState<Fee[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
@@ -61,19 +62,19 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [expSnap, paySnap, feeSnap, studentSnap, requestSnap] = await Promise.all([
+        const [expSnap, paySnap, requestSnap, studentSnap, classesSnap] = await Promise.all([
           getDocs(collection(db, 'expenses')),
-          getDocs(query(collection(db, 'feePayments'), orderBy('date', 'desc'), limit(10))),
-          getDocs(collection(db, 'fees')),
+          getDocs(query(collection(db, 'feePayments'), orderBy('date', 'desc'), limit(15))),
+          getDocs(collection(db, 'feeRequests')),
           getDocs(collection(db, 'students')),
-          getDocs(collection(db, 'feeRequests'))
+          getDocs(collection(db, 'classes'))
         ]);
 
         setExpenses(expSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
         setPayments(paySnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeePayment)));
-        setFees(feeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Fee)));
-        setStudents(studentSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student)));
         setFeeRequests(requestSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
+        setStudents(studentSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student)));
+        setClasses(classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class)));
       } catch (err) {
         handleFirestoreError(err, OperationType.LIST, 'accounts_dashboard');
       } finally {
@@ -89,22 +90,17 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
     s.schoolNumber.includes(searchTerm)
   );
 
-  const totalCollection = fees.reduce((sum, f) => {
-    const studentPayments = payments.filter(p => p.studentId === f.studentId);
-    return sum + studentPayments.reduce((s, p) => s + p.amount, 0);
-  }, 0);
+  const totalCollection = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
-  const totalPending = fees.filter(f => f.status !== 'paid').reduce((sum, f) => {
-    const totalDue = f.structure.reduce((s, h) => s + h.amount, 0);
-    const paid = payments.filter(p => p.studentId === f.studentId).reduce((s, p) => s + p.amount, 0);
-    return sum + (totalDue - paid);
-  }, 0);
+  const totalPending = feeRequests
+    .filter(r => r.status !== 'paid')
+    .reduce((sum, r) => sum + (r.totalAmount - (r.paidAmount || 0)), 0);
 
   const monthlyExpenses = expenses
     .filter(e => e.date.startsWith(new Date().toISOString().slice(0, 7)))
-    .reduce((sum, e) => sum + e.amount, 0);
+    .reduce((sum, e) => sum + (e.amount || 0), 0);
 
-  const netProfit = totalCollection - expenses.reduce((sum, e) => sum + e.amount, 0);
+  const netProfit = totalCollection - expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
   // Prepare chart data (last 7 days)
   const last7Days = [...Array(7)].map((_, i) => {
@@ -280,7 +276,7 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
                     </div>
                   </Td>
                   <Td>{student.schoolNumber}</Td>
-                  <Td>{student.classId} - {student.section}</Td>
+                  <Td>{classes.find(c => c.id === student.classId)?.name || student.classId} - {student.section}</Td>
                   <Td>
                     <Badge
                       variant={

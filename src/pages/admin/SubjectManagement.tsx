@@ -3,13 +3,14 @@ import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { Plus, Book, Trash2, Edit2, Hash, Layers } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { Subject } from '../../types';
+import { Subject, UserProfile } from '../../types';
+import { logActivity } from '../../services/activityService';
 import {
   PageHeader, Card, Badge, Button, IconButton, Modal, ConfirmModal,
   SearchInput, FormField, Input, Select, Table, Thead, Th, Tbody, Tr, Td, EmptyState
 } from '../../components/ui';
 
-export default function SubjectManagement() {
+export default function SubjectManagement({ user }: { user: UserProfile }) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);

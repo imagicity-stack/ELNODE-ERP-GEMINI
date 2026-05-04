@@ -335,6 +335,28 @@
         "amount": { "type": "number" },
         "status": { "type": "string", "enum": ["paid", "pending"] }
       }
+    },
+    "TimetableConfig": {
+      "title": "Timetable Configuration",
+      "description": "Global timetable settings like slots and working days.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "days": { "type": "array", "items": { "type": "string" } },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "startTime": { "type": "string" },
+              "endTime": { "type": "string" },
+              "type": { "type": "string", "enum": ["period", "break", "lunch"] }
+            }
+          }
+        }
+      }
     }
   },
   "firestore": {
@@ -406,9 +428,13 @@
       "schema": "House",
       "description": "House information."
     },
-    "/timetables/{timetableId}": {
+    "/timetable/{timetableId}": {
       "schema": "Timetable",
       "description": "Timetable information."
+    },
+    "/timetableSettings/{id}": {
+      "schema": "TimetableConfig",
+      "description": "Global timetable settings."
     }
   }
 }

@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer, enableIndexedDbPersistence } from 'firebase/firestore';
 
 // Import the Firebase configuration
 import firebaseConfigImport from '../firebase-applet-config.json';
@@ -9,6 +9,18 @@ export const firebaseConfig = firebaseConfigImport;
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfigImport);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Enable Persistence
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Persistence failed: Multiple tabs open');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Persistence failed: Browser not supported');
+    }
+  });
+}
+
 export const auth = getAuth();
 
 // Error Handling Spec for Firestore Operations

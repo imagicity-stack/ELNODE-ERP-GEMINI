@@ -1,308 +1,181 @@
-// ===============================================================
-// Assumed Data Model
-// ===============================================================
-//
-// This security rules file assumes the following data structures:
-//
-// Collection: users
-// Document ID: uid
-// Fields:
-//   - uid: string (required)
-//   - email: string (required)
-//   - name: string (required)
-//   - role: string (required, one of ['super_admin', 'student', 'parent', 'accounts', 'teacher', 'principal'])
-//   - schoolNumber: string (optional)
-//   - classId: string (optional)
-//   - section: string (optional)
-//   - parentId: string (optional)
-//   - studentId: string (optional)
-//   - photoURL: string (optional)
-//   - createdAt: string (required)
-//
-// Collection: students
-// Document ID: studentId
-// Fields:
-//   - id: string (required)
-//   - admissionNumber: string (required)
-//   - name: string (required)
-//   - classId: string (required)
-//   - section: string (required)
-//   - parentDetails: map (required)
-//   - transportDetails: string (optional)
-//   - documents: list (optional)
-//   - medicalNotes: string (optional)
-//   - academicHistory: string (optional)
-//   - houseId: string (optional)
-//   - feeStatus: string (required)
-//
-// [Repeat for other collections as needed]
-//
-// ===============================================================
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Global bypass for Super Admins by email
-    match /{path=**} {
-      allow read, write: if request.auth != null && 
-                          request.auth.token.email_verified == true && 
-                          (request.auth.token.email.lower() == "imagicityart@gmail.com" || request.auth.token.email.lower() == "deweshkk@gmail.com");
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
     }
 
     // ===============================================================
     // Helper Functions
     // ===============================================================
 
-    function isAuthenticated() {
-      return request.auth != null;
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    // Robust check for Super Admin emails
+    function isSuperAdminByEmail() {
+      return isSignedIn() && 
+             request.auth.token.email.lower() in ["imagicityart@gmail.com", "deweshkk@gmail.com"];
     }
 
+    // Helper to get user data from the users collection
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function hasRole(role) {
-      return isAuthenticated() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    // Check if user document exists
+    function userDocExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    function isSuperAdminByEmail() {
-      return isAuthenticated() && 
-             request.auth.token.email_verified == true && 
-             (request.auth.token.email.lower() == "imagicityart@gmail.com" || request.auth.token.email.lower() == "deweshkk@gmail.com");
+    // Principal: Academic/Administrative head but NO financial access per requirement
+    function isAcademicAdmin() {
+      return isSignedIn() && userDocExists() && getUserData().role == 'principal';
     }
 
     function isAdmin() {
-      return isSuperAdminByEmail() || (
-        isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['super_admin', 'principal', 'admin']
-      );
+      return isSuperAdminByEmail() || 
+             (isSignedIn() && userDocExists() && 
+              getUserData().role in ['super_admin', 'admin']);
     }
 
-    function isTeacher() { return hasRole('teacher'); }
-    function isAccountant() { return hasRole('accounts'); }
-    function isStudent() { return hasRole('student'); }
-    function isParent() { return hasRole('parent'); }
-    function isPrincipal() { return hasRole('principal'); }
-
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
+    // Combined Administrative access (Admin + Principal)
+    function isAnyAdmin() {
+      return isAdmin() || isAcademicAdmin();
     }
 
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt']) &&
-             data.uid is string && data.email is string && isValidEmail(data.email) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.role in ['super_admin', 'student', 'parent', 'accounts', 'teacher', 'principal'] &&
-             data.createdAt is string;
-    }
+    function isTeacher() { return isSignedIn() && userDocExists() && getUserData().role == 'teacher'; }
+    function isStudent() { return isSignedIn() && userDocExists() && getUserData().role == 'student'; }
+    function isParent() { return isSignedIn() && userDocExists() && getUserData().role == 'parent'; }
+    function isAccountant() { return isSignedIn() && userDocExists() && getUserData().role == 'accounts'; }
 
     // ===============================================================
-    // Rules
+    // Collection Rules
     // ===============================================================
 
     // Users collection
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin() || (resource != null && resource.data.email == request.auth.token.email));
-      allow list: if isAuthenticated() && (isAdmin() || (request.query.limit <= 100)); 
-      allow create: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow delete: if isAdmin();
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
+      allow list: if isAnyAdmin();
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
-    // Students collection
-    match /students/{studentId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() || 
-        isPrincipal() ||
-        isTeacher() || 
-        isAccountant() || 
-        (isStudent() && getUserData().studentId == studentId) || 
-        (isParent() && studentId in getUserData().studentIds)
-      );
-      allow create, update, delete: if isAdmin() || isPrincipal();
-    }
-
-    // Teachers collection
-    match /teachers/{teacherId} {
-      allow read: if isAuthenticated() && (isAdmin() || isPrincipal() || isTeacher() || isAccountant() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().teacherId == teacherId));
-      allow create, update, delete: if isAdmin() || isPrincipal();
-    }
-
-    // Parents collection
-    match /parents/{parentId} {
-      allow read: if isAuthenticated() && (isAdmin() || isPrincipal() || isTeacher() || (resource != null && request.auth.uid == resource.data.uid));
-      allow create, update, delete: if isAdmin() || isPrincipal();
-    }
-
-    // Staff collection
-    match /staff/{staffId} {
-      allow read: if isAuthenticated() && (isAdmin() || isPrincipal() || isAccountant() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().staffId == staffId));
-      allow create, update, delete: if isAdmin() || isPrincipal();
-    }
-
-    // Admission Leads collection
-    match /admission_leads/{leadId} {
-      allow read, write: if isAdmin() || isPrincipal();
-    }
-
-    // Expenses collection
-    match /expenses/{expenseId} {
-      allow read: if isAuthenticated() && (isAdmin() || isPrincipal() || isAccountant());
-      allow create, update, delete: if isAdmin() || isPrincipal() || isAccountant();
-    }
-
-    // Salaries collection
-    match /salaries/{salaryId} {
-      allow read: if isAuthenticated() && (isAdmin() || isPrincipal() || isAccountant() || (isTeacher() && resource.data.teacherId == getUserData().teacherId));
-      allow create, update, delete: if isAdmin() || isPrincipal() || isAccountant();
-    }
-
-    // Financial Reports collection
-    match /financial_reports/{reportId} {
-      allow read: if isAuthenticated() && (isAdmin() || isPrincipal() || isAccountant());
-      allow create, update, delete: if isAdmin() || isPrincipal() || isAccountant();
-    }
-
-    // Attendance collection
-    match /attendance/{attendanceId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() || 
-        isPrincipal() ||
-        isTeacher() || 
-        isAccountant() || 
-        (isStudent() && getUserData().studentId == resource.data.studentId) ||
-        (isParent() && resource.data.studentId in getUserData().studentIds)
-      );
-      allow create, update: if isAdmin() || isPrincipal() || isTeacher();
-      allow delete: if isAdmin() || isPrincipal();
-    }
-
-    // Homework collection
-    match /homework/{homeworkId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAdmin() || isPrincipal() || isTeacher();
-      allow delete: if isAdmin() || isPrincipal();
-    }
-
-    // Exams collection
-    match /exams/{examId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAdmin() || isPrincipal() || isTeacher();
-      allow delete: if isAdmin() || isPrincipal();
-    }
-
-    // Exam Results collection
-    match /examResults/{resultId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() || 
-        isPrincipal() ||
-        isTeacher() || 
-        (isStudent() && getUserData().studentId == resource.data.studentId) ||
-        (isParent() && resource.data.studentId in getUserData().studentIds)
-      );
-      allow create, update: if isAdmin() || isPrincipal() || isTeacher();
-      allow delete: if isAdmin() || isPrincipal();
-    }
-
-    // Grading Scales collection
-    match /gradingScales/{scaleId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isPrincipal();
-    }
-
-    // Notices collection
-    match /notices/{noticeId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() || 
-        isPrincipal() ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         resource.data.targetRoles.hasAny([getUserData().role]))
-      );
-      allow create, update, delete: if isAdmin() || isPrincipal();
-    }
-
-    // Events collection
-    match /events/{eventId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isPrincipal();
-    }
-
-    // Fees collection
-    match /fees/{feeId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() || 
-        isPrincipal() ||
-        isAccountant() || 
-        (isStudent() && resource.data.studentId == getUserData().studentId) ||
-        (isParent() && resource.data.studentId in getUserData().studentIds)
-      );
-      allow create, update: if isAdmin() || isPrincipal() || isAccountant();
-      allow delete: if isAdmin() || isPrincipal();
-    }
-
-    // Fee Payments collection
-    match /feePayments/{paymentId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() || 
-        isPrincipal() ||
-        isAccountant() || 
-        (isStudent() && resource.data.studentId == getUserData().studentId) ||
-        (isParent() && resource.data.studentId in getUserData().studentIds)
-      );
-      allow create: if isAdmin() || isPrincipal() || isAccountant();
-      allow update, delete: if isAdmin() || isPrincipal();
-    }
-
-    // Fee Requests collection
-    match /feeRequests/{requestId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() || 
-        isPrincipal() ||
-        isAccountant() || 
-        (isStudent() && resource.data.studentId == getUserData().studentId) ||
-        (isParent() && resource.data.studentId in getUserData().studentIds)
-      );
-      allow create, update: if isAdmin() || isPrincipal() || isAccountant();
-      allow delete: if isAdmin() || isPrincipal();
-    }
-
-    // Fee Structures collection
-    match /feeStructures/{structureId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isPrincipal();
-    }
-
-    // Classes, Subjects, Houses, Timetables
+    // Academic Data - Generally readable by authenticated staff/students
     match /classes/{id} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isPrincipal();
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
     }
     match /subjects/{id} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isPrincipal();
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
     }
     match /houses/{id} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isPrincipal();
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
     }
-    match /timetables/{id} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isPrincipal();
+    match /timetable/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
     }
-    match /communications/{id} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isPrincipal();
+    match /timetableSettings/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
     }
+
+    // Notices
+    match /notices/{noticeId} {
+      allow read: if isSignedIn() && (
+        isAnyAdmin() || 
+        (userDocExists() && 
+         resource.data.get('targetRoles', []).hasAny([getUserData().role]))
+      );
+      allow write: if isAnyAdmin();
+    }
+
+    // Students
+    match /students/{studentId} {
+      allow get: if isSignedIn() && (
+        isAnyAdmin() || isTeacher() || isAccountant() ||
+        (userDocExists() && getUserData().get('studentId', '') == studentId) ||
+        (userDocExists() && studentId in getUserData().get('studentIds', []))
+      );
+      allow list: if isAnyAdmin() || isTeacher() || isAccountant();
+      allow write: if isAnyAdmin();
+    }
+
+    // Teachers
+    match /teachers/{teacherId} {
+      allow get: if isSignedIn() && (
+        isAnyAdmin() || isTeacher() || isAccountant() ||
+        (userDocExists() && getUserData().get('teacherId', '') == teacherId)
+      );
+      allow list: if isAnyAdmin() || isTeacher() || isAccountant();
+      allow write: if isAnyAdmin();
+    }
+
+    // Attendance
+    match /attendance/{attendanceId} {
+      allow read: if isSignedIn() && (
+        isAnyAdmin() || isTeacher() || isAccountant() ||
+        (userDocExists() && getUserData().get('studentId', '') == resource.data.get('studentId', ''))
+      );
+      allow create, update: if isAnyAdmin() || isTeacher();
+      allow delete: if isAnyAdmin();
+    }
+
+    // Exam Results
+    match /examResults/{resultId} {
+      allow read: if isSignedIn() && (
+        isAnyAdmin() || isTeacher() ||
+        (userDocExists() && getUserData().get('studentId', '') == resource.data.get('studentId', ''))
+      );
+      allow create, update, delete: if isAnyAdmin() || isTeacher();
+    }
+
+    // Homework
+    match /homework/{homeworkId} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin() || isTeacher();
+    }
+
+    // Events, Fees
+    match /events/{eventId} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+    match /fees/{feeId} {
+      // Principal EXCLUDED from financial data
+      allow read: if isSignedIn() && (isAdmin() || isAccountant() || isParent() || isStudent());
+      allow write: if isAdmin() || isAccountant();
+    }
+    match /feePayments/{paymentId} {
+      allow read: if isSignedIn() && (isAdmin() || isAccountant());
+      allow create: if isAdmin() || isAccountant();
+      allow delete: if isAdmin();
+    }
+    match /feeRequests/{requestId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || isAccountant() || 
+        (isStudent() && userDocExists() && resource.data.studentId == getUserData().get('studentId', '')) ||
+        (isParent() && userDocExists() && resource.data.studentId in getUserData().get('studentIds', []))
+      );
+      allow write: if isAdmin() || isAccountant();
+    }
+
+    match /activityLogs/{id} {
+      allow read: if isAnyAdmin();
+      allow create: if isSignedIn();
+    }
+
+    // Helper collections
+    match /gradingScales/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
+    match /exams/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin() || isTeacher(); }
+    match /salaries/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin(); }
+    match /expenses/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
+    match /feeStructures/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
+    match /feeHeads/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
   }
 }

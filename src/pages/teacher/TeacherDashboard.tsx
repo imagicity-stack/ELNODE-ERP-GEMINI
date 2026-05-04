@@ -10,19 +10,20 @@ import {
   ClipboardCheck,
   FileText
 } from 'lucide-react';
-import { UserProfile, Teacher, Attendance, Homework, Notice, Timetable } from '../../types';
+import { UserProfile, Teacher, Attendance, Homework, Notice, Timetable, TimetableConfig } from '../../types';
 import { cn } from '../../lib/utils';
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { db } from '../../firebase';
+import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   StatCard,
   Card,
   Badge,
-  Button,
   EmptyState,
+  Spinner,
 } from '../../components/ui';
 
 interface TeacherDashboardProps {
@@ -30,72 +31,74 @@ interface TeacherDashboardProps {
 }
 
 export default function TeacherDashboard({ user }: TeacherDashboardProps) {
-  const [teacherData, setTeacherData] = useState<Teacher | null>(null);
+  const { teacherData, timetableConfig: config, notices, subjectsMap: subjects, classesMap: classes, loading: globalLoading } = useData();
   const [attendanceCount, setAttendanceCount] = useState({ marked: 0, total: 0 });
   const [pendingHomework, setPendingHomework] = useState<Homework[]>([]);
-  const [notices, setNotices] = useState<Notice[]>([]);
   const [schedule, setSchedule] = useState<any[]>([]);
   const [classPerformance, setClassPerformance] = useState<Record<string, { avg: number, trend: number }>>({});
-  const [loading, setLoading] = useState(true);
+  const [localLoading, setLocalLoading] = useState(true);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      setLoading(true);
+      if (!teacherData) return;
+      
+      setLocalLoading(true);
       try {
-        // Fetch Teacher Profile
-        const teacherDoc = await getDoc(doc(db, 'teachers', user.uid));
-        if (teacherDoc.exists()) {
-          const tData = { id: teacherDoc.id, ...teacherDoc.data() } as Teacher;
-          setTeacherData(tData);
+        const teacherIdForFetch = teacherData.id;
 
-          // Fetch Total Students in Teacher's Classes
-          let totalStudentsCount = 0;
-          if (tData.classes && tData.classes.length > 0) {
-            const studentsSnap = await getDocs(query(
-              collection(db, 'students'),
-              where('classId', 'in', tData.classes)
-            ));
-            totalStudentsCount = studentsSnap.size;
+        // Fetch Total Students in Teacher's Classes
+        let totalStudentsCount = 0;
+        if (teacherData.classes && teacherData.classes.length > 0) {
+          const studentsSnap = await getDocs(query(
+            collection(db, 'students'),
+            where('classId', 'in', teacherData.classes)
+          ));
+          totalStudentsCount = studentsSnap.size;
+        }
+
+        // Fetch Today's Attendance Summary
+        const today = new Date().toISOString().split('T')[0];
+        const attendanceSnap = await getDocs(query(
+          collection(db, 'attendance'),
+          where('date', '==', today),
+          where('status', '==', 'present')
+        ));
+
+        // Filter attendance by teacher's students (simplified)
+        setAttendanceCount({ marked: attendanceSnap.size, total: totalStudentsCount });
+
+        // Fetch Pending Homework
+        const homeworkSnap = await getDocs(query(
+          collection(db, 'homework'),
+          where('teacherId', '==', teacherIdForFetch),
+          orderBy('dueDate', 'desc'),
+          limit(5)
+        ));
+        setPendingHomework(homeworkSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Homework)));
+
+        // Fetch Schedule from all timetables
+        const ttSnap = await getDocs(collection(db, 'timetable'));
+        const allTimetables = ttSnap.docs.map(d => d.data() as Timetable);
+        const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        const teachersSchedule: any[] = [];
+        
+        allTimetables.forEach(tt => {
+          const daySchedule = tt.schedule.find(s => s.day === dayName);
+          if (daySchedule) {
+            const myPeriods = daySchedule.periods
+              .filter(p => p.teacherId === teacherIdForFetch)
+              .map(p => ({ ...p, classId: tt.classId }));
+            teachersSchedule.push(...myPeriods);
           }
+        });
+        
+        setSchedule(teachersSchedule);
 
-          // Fetch Today's Attendance Summary
-          const today = new Date().toISOString().split('T')[0];
-          const attendanceSnap = await getDocs(query(
-            collection(db, 'attendance'),
-            where('date', '==', today),
-            where('status', '==', 'present')
-          ));
-
-          // Filter attendance by teacher's students (simplified)
-          setAttendanceCount({ marked: attendanceSnap.size, total: totalStudentsCount });
-
-          // Fetch Pending Homework
-          const homeworkSnap = await getDocs(query(
-            collection(db, 'homework'),
-            where('teacherId', '==', user.uid),
-            orderBy('dueDate', 'desc'),
-            limit(5)
-          ));
-          setPendingHomework(homeworkSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Homework)));
-
-          // Fetch Schedule (Simplified: looking at timetable for first class)
-          if (tData.classes && tData.classes.length > 0) {
-            const timetableSnap = await getDocs(query(
-              collection(db, 'timetable'),
-              where('classId', '==', tData.classes[0])
-            ));
-            if (!timetableSnap.empty) {
-              const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-              const timetable = timetableSnap.docs[0].data() as Timetable;
-              const todaySchedule = timetable.schedule.find(s => s.day === dayName);
-              if (todaySchedule) {
-                setSchedule(todaySchedule.periods.filter(p => p.teacherId === user.uid));
-              }
-            }
-
-            // Fetch Class Performance (Exam Results)
-            const performanceData: Record<string, { avg: number, trend: number }> = {};
-            for (const cls of tData.classes) {
+        // Fetch Class Performance (Exam Results)
+        const performanceData: Record<string, { avg: number, trend: number }> = {};
+        if (teacherData.classes && teacherData.classes.length > 0) {
+          for (const cls of teacherData.classes) {
+            try {
               const resultsSnap = await getDocs(query(
                 collection(db, 'examResults'),
                 where('classId', '==', cls)
@@ -107,29 +110,31 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
                   trend: 5 // Placeholder trend
                 };
               }
+            } catch (e) {
+              console.error(`Performance fetch error for class ${cls}:`, e);
             }
-            setClassPerformance(performanceData);
           }
         }
-
-        // Fetch Notices
-        const noticesSnap = await getDocs(query(
-          collection(db, 'notices'),
-          where('targetRoles', 'array-contains', 'teacher'),
-          orderBy('createdAt', 'desc'),
-          limit(3)
-        ));
-        setNotices(noticesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notice)));
+        setClassPerformance(performanceData);
 
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
       } finally {
-        setLoading(false);
+        setLocalLoading(false);
       }
     };
 
     fetchDashboardData();
-  }, [user.uid]);
+  }, [teacherData]);
+
+  if (globalLoading && !teacherData) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <Spinner size="lg" />
+        <p className="text-slate-500 font-medium animate-pulse">Initializing dashboard...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -184,27 +189,37 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
               <Link to="/teacher/timetable" className="text-sm text-blue-600 font-medium hover:underline">View Full</Link>
             </div>
             <div className="space-y-4">
-              {schedule.length > 0 ? schedule.map((period, i) => (
-                <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl group hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-lg bg-blue-100 text-blue-600 flex flex-col items-center justify-center text-[10px] font-bold leading-tight">
-                      <span>{period.time.split(' - ')[0]}</span>
+              {schedule.length > 0 ? schedule.map((period, i) => {
+                const slot = config?.slots.find(s => s.id === period.slotId);
+                const subjectName = subjects[period.subjectId] || period.subjectId;
+                const className = classes[period.classId] || period.classId;
+
+                return (
+                  <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl group hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-slate-100">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-12 rounded-lg bg-blue-100 text-blue-600 flex flex-col items-center justify-center text-[10px] font-bold leading-tight px-1 text-center">
+                        <span>{slot?.startTime || 'TBA'}</span>
+                        <span className="text-[8px] opacity-60">to {slot?.endTime || ''}</span>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">{subjectName}</h4>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                          <Users className="w-3 h-3" />
+                          <span>Class {className}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900">{period.subjectId}</h4>
-                      <p className="text-xs text-slate-500">{period.time}</p>
+                    <div className="flex items-center gap-3">
+                      <Link
+                        to="/teacher/attendance"
+                        className="px-3 py-1 bg-emerald-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-emerald-700"
+                      >
+                        Mark Attendance
+                      </Link>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Link
-                      to="/teacher/attendance"
-                      className="px-3 py-1 bg-emerald-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-emerald-700"
-                    >
-                      Mark Attendance
-                    </Link>
-                  </div>
-                </div>
-              )) : (
+                );
+              }) : (
                 <EmptyState
                   icon={Clock}
                   title="No classes today"
@@ -285,18 +300,18 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
               Class Performance
             </h3>
             <div className="space-y-4">
-              {teacherData?.classes?.map((cls, i) => (
+              {teacherData?.classes?.map((clsId, i) => (
                 <div key={i} className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-bold text-slate-900">{cls}</p>
-                    <p className="text-[10px] text-slate-400">Average Score: {classPerformance[cls]?.avg || '--'}%</p>
+                    <p className="text-sm font-bold text-slate-900">Class {classes[clsId] || clsId}</p>
+                    <p className="text-[10px] text-slate-400">Average Score: {classPerformance[clsId]?.avg || '--'}%</p>
                   </div>
                   <div className={cn(
                     "text-xs font-bold flex items-center gap-1",
-                    (classPerformance[cls]?.trend || 0) >= 0 ? "text-emerald-600" : "text-red-600"
+                    (classPerformance[clsId]?.trend || 0) >= 0 ? "text-emerald-600" : "text-red-600"
                   )}>
-                    {classPerformance[cls]?.trend ? `${classPerformance[cls].trend > 0 ? '+' : ''}${classPerformance[cls].trend}%` : '0%'}
-                    <TrendingUp className={cn("w-3 h-3", (classPerformance[cls]?.trend || 0) < 0 && "rotate-180")} />
+                    {classPerformance[clsId]?.trend ? `${classPerformance[clsId].trend > 0 ? '+' : ''}${classPerformance[clsId].trend}%` : '0%'}
+                    <TrendingUp className={cn("w-3 h-3", (classPerformance[clsId]?.trend || 0) < 0 && "rotate-180")} />
                   </div>
                 </div>
               ))}

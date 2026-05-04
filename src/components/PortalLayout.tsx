@@ -30,11 +30,13 @@ import {
   ChevronRight,
   TrendingUp,
   Shield,
+  History as HistoryIcon,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserRole } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { requestNotificationPermission, startNotificationListeners } from '../services/notificationService';
 
 // ─── Role Configuration ───────────────────────────────────────────────────────
 
@@ -86,6 +88,14 @@ const roleConfig: Record<UserRole, {
     accentBorder: 'border-amber-500/30',
     gradient: 'from-amber-500 to-orange-500',
   },
+  principal: {
+    label: 'Principal Portal',
+    accent: 'bg-rose-500',
+    accentLight: 'bg-rose-500/15',
+    accentText: 'text-rose-400',
+    accentBorder: 'border-rose-500/30',
+    gradient: 'from-rose-600 to-pink-600',
+  },
 };
 
 // ─── Nav Items ────────────────────────────────────────────────────────────────
@@ -99,51 +109,59 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  // Admin
-  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['super_admin'], section: 'Overview' },
-  { label: 'Students', icon: Users, path: '/students', roles: ['super_admin'], section: 'People' },
-  { label: 'Faculty', icon: Briefcase, path: '/teachers', roles: ['super_admin'], section: 'People' },
-  { label: 'Staff', icon: Shield, path: '/staff', roles: ['super_admin'], section: 'People' },
-  { label: 'Classes', icon: GraduationCap, path: '/classes', roles: ['super_admin'], section: 'Academic' },
-  { label: 'Subjects', icon: BookOpen, path: '/subjects', roles: ['super_admin'], section: 'Academic' },
-  { label: 'Houses', icon: Home, path: '/houses', roles: ['super_admin'], section: 'Academic' },
-  { label: 'Admissions', icon: UserPlus, path: '/admissions', roles: ['super_admin'], section: 'Academic' },
-  { label: 'Exams', icon: FileText, path: '/exams', roles: ['super_admin'], section: 'Academic' },
-  { label: 'Grading', icon: CheckSquare, path: '/grading-scales', roles: ['super_admin'], section: 'Academic' },
-  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['super_admin'], section: 'Academic' },
-  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['super_admin'], section: 'Communication' },
+  // Overview first for all roles
+  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['super_admin', 'accounts', 'teacher', 'student', 'parent', 'principal'], section: 'Overview' },
+
+  // Admin People
+  { label: 'Students', icon: Users, path: '/students', roles: ['super_admin', 'principal'], section: 'People' },
+  { label: 'Faculty', icon: Briefcase, path: '/teachers', roles: ['super_admin', 'principal'], section: 'People' },
+  { label: 'Staff', icon: Shield, path: '/staff', roles: ['super_admin', 'principal'], section: 'People' },
+  
+  // Admin Academic
+  { label: 'Classes', icon: GraduationCap, path: '/classes', roles: ['super_admin', 'principal'], section: 'Academic' },
+  { label: 'Subjects', icon: BookOpen, path: '/subjects', roles: ['super_admin', 'principal'], section: 'Academic' },
+  { label: 'Houses', icon: Home, path: '/houses', roles: ['super_admin', 'principal'], section: 'Academic' },
+  { label: 'Admissions', icon: UserPlus, path: '/admissions', roles: ['super_admin', 'principal'], section: 'Academic' },
+  { label: 'Exams', icon: FileText, path: '/exams', roles: ['super_admin', 'principal'], section: 'Academic' },
+  { label: 'Timetable', icon: Clock, path: '/timetable', roles: ['super_admin', 'principal'], section: 'Academic' },
+  { label: 'Grading', icon: CheckSquare, path: '/grading-scales', roles: ['super_admin', 'principal'], section: 'Academic' },
+  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['super_admin', 'principal'], section: 'Academic' },
+  
+  // Admin Communication
+  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['super_admin', 'principal'], section: 'Communication' },
+  { label: 'Activity Logs', icon: HistoryIcon, path: '/activity-logs', roles: ['super_admin', 'principal'], section: 'Security' },
+  
+  // Finance (Shared Admin/Accounts)
   { label: 'Fee Structure', icon: Settings, path: '/fees', roles: ['super_admin'], section: 'Finance' },
   { label: 'Fee Collection', icon: Wallet, path: '/fee-collection', roles: ['super_admin', 'accounts'], section: 'Finance' },
-  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['accounts'], section: 'Overview' },
   { label: 'Expenses', icon: CreditCard, path: '/expenses', roles: ['super_admin', 'accounts'], section: 'Finance' },
   { label: 'Salaries', icon: DollarSign, path: '/salaries', roles: ['super_admin', 'accounts'], section: 'Finance' },
   { label: 'Reports', icon: TrendingUp, path: '/reports', roles: ['super_admin', 'accounts'], section: 'Finance' },
 
-  // Teacher
-  { label: 'Overview', icon: LayoutGrid, path: '', roles: ['teacher'] },
-  { label: 'My Classes', icon: GraduationCap, path: '/classes', roles: ['teacher'] },
-  { label: 'Attendance', icon: ClipboardCheck, path: '/attendance', roles: ['teacher'] },
-  { label: 'Exams', icon: FileText, path: '/exams', roles: ['teacher'] },
-  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['teacher'] },
-  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['teacher'] },
+  // Teacher specific (already mostly covered by Overview)
+  { label: 'My Classes', icon: GraduationCap, path: '/classes', roles: ['teacher'], section: 'Academic' },
+  { label: 'Attendance', icon: ClipboardCheck, path: '/attendance', roles: ['teacher'], section: 'Academic' },
+  { label: 'Timetable', icon: Clock, path: '/timetable', roles: ['teacher'], section: 'Academic' },
+  { label: 'Exams', icon: FileText, path: '/exams', roles: ['teacher'], section: 'Academic' },
+  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['teacher'], section: 'Communication' },
+  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['teacher'], section: 'Academic' },
 
-  // Student
-  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['student'] },
-  { label: 'My Subjects', icon: BookOpen, path: '/subjects', roles: ['student'] },
-  { label: 'Attendance', icon: Clock, path: '/attendance', roles: ['student'] },
-  { label: 'Fees', icon: Wallet, path: '/fees', roles: ['student'] },
-  { label: 'Exams', icon: FileText, path: '/exams', roles: ['student'] },
-  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['student'] },
-  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['student'] },
+  // Student specific
+  { label: 'My Subjects', icon: BookOpen, path: '/subjects', roles: ['student'], section: 'Academic' },
+  { label: 'Attendance', icon: Clock, path: '/attendance', roles: ['student'], section: 'Academic' },
+  { label: 'Timetable', icon: Calendar, path: '/timetable', roles: ['student'], section: 'Academic' },
+  { label: 'Fees', icon: Wallet, path: '/fees', roles: ['student'], section: 'Finance' },
+  { label: 'Exams', icon: FileText, path: '/exams', roles: ['student'], section: 'Academic' },
+  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['student'], section: 'Communication' },
+  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['student'], section: 'Academic' },
 
-  // Parent
-  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['parent'] },
-  { label: 'Attendance', icon: Clock, path: '/attendance', roles: ['parent'] },
-  { label: 'Fees', icon: Wallet, path: '/fees', roles: ['parent'] },
-  { label: 'Homework', icon: CheckSquare, path: '/homework', roles: ['parent'] },
-  { label: 'Exams', icon: FileText, path: '/exams', roles: ['parent'] },
-  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['parent'] },
-  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['parent'] },
+  // Parent specific
+  { label: 'Attendance', icon: Clock, path: '/attendance', roles: ['parent'], section: 'Status' },
+  { label: 'Fees', icon: Wallet, path: '/fees', roles: ['parent'], section: 'Status' },
+  { label: 'Homework', icon: CheckSquare, path: '/homework', roles: ['parent'], section: 'Academic' },
+  { label: 'Exams', icon: FileText, path: '/exams', roles: ['parent'], section: 'Academic' },
+  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['parent'], section: 'Communication' },
+  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['parent'], section: 'Academic' },
 ];
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -164,6 +182,27 @@ export default function PortalLayout({ children, role, userName, customHeader }:
   const config = roleConfig[role] || roleConfig.super_admin;
   const filteredItems = navItems.filter(item => item.roles.includes(role));
   const basePath = `/${role.replace('_', '')}`;
+
+  useEffect(() => {
+    // Request permission and start listening
+    const setupNotifications = async () => {
+      const granted = await requestNotificationPermission();
+      if (granted && auth.currentUser) {
+        const studentId = (auth.currentUser as any).studentId || auth.currentUser.uid;
+        const unsubscribe = startNotificationListeners(studentId, role);
+        return unsubscribe;
+      }
+    };
+    
+    let unsubscribeFn: (() => void) | undefined;
+    setupNotifications().then(unsub => {
+      unsubscribeFn = unsub;
+    });
+
+    return () => {
+      if (unsubscribeFn) unsubscribeFn();
+    };
+  }, [role]);
 
   const groupedItems = filteredItems.reduce((acc, item) => {
     const section = item.section || 'General';

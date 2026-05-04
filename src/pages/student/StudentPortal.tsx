@@ -1,8 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import PortalLayout from '../../components/PortalLayout';
-import { auth, db } from '../../firebase';
-import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
 import { UserProfile } from '../../types';
 import StudentDashboard from './StudentDashboard';
 import StudentHomework from './StudentHomework';
@@ -13,23 +10,10 @@ import StudentProfile from './StudentProfile';
 import ResultView from '../shared/ResultView';
 import AcademicCalendar from '../admin/AcademicCalendar';
 import NoticeBoard from '../admin/NoticeBoard';
-import { Student } from '../../types';
+import { useData } from '../../contexts/DataContext';
 
 export default function StudentPortal({ user }: { user: UserProfile }) {
-  const [student, setStudent] = useState<Student | null>(null);
-
-  useEffect(() => {
-    if (user.studentId) {
-      const fetchStudent = async () => {
-        const docRef = doc(db, 'students', user.studentId!);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setStudent({ id: docSnap.id, ...docSnap.data() } as Student);
-        }
-      };
-      fetchStudent();
-    }
-  }, [user.studentId]);
+  const { studentData: student } = useData();
 
   return (
     <PortalLayout role="student" userName={user.name}>

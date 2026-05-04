@@ -3,10 +3,11 @@ import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { Plus, GraduationCap, Trash2, Edit2, Users, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Class } from '../../types';
+import { Class, UserProfile } from '../../types';
+import { logActivity } from '../../services/activityService';
 import { PageHeader, Button, IconButton, Modal, ConfirmModal, SearchInput, FormField, Input, EmptyState } from '../../components/ui';
 
-export default function ClassManagement() {
+export default function ClassManagement({ user }: { user: UserProfile }) {
   const [classes, setClasses] = useState<Class[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);

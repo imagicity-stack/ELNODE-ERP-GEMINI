@@ -73,8 +73,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
         const feesQ = query(
           collection(db, 'feeRequests'),
           where('studentId', '==', user.studentId || user.uid),
-          where('status', '==', 'pending'),
-          limit(1)
+          where('status', 'in', ['pending', 'partially_paid', 'overdue'])
         );
         const feesSnap = await getDocs(feesQ);
         setFeeRequests(feesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
@@ -91,7 +90,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
   const totalDays = attendance.length;
   const presentDays = attendance.filter(a => a.status === 'present').length;
   const attendancePercentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
-  const pendingFeeAmount = feeRequests.reduce((sum, f) => sum + (f.totalAmount || 0), 0);
+  const pendingFeeAmount = feeRequests.reduce((sum, f) => sum + ((f.totalAmount || 0) - (f.paidAmount || 0)), 0);
 
   return (
     <div className="space-y-8">

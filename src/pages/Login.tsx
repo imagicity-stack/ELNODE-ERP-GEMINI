@@ -48,11 +48,25 @@ export default function Login() {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
+    setError('');
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-    } catch (err) {
-      setError('Google sign-in failed. Please try again.');
+    } catch (err: any) {
+      console.error('Google sign-in error:', err);
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('Sign-in popup was closed. Please try again.');
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError('Google sign-in is not enabled in the Firebase Console. Please enable it under Auth > Sign-in method.');
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError(
+          `Domain not authorized. Please add "${window.location.hostname}" to the "Authorized domains" list in your Firebase Console (under Authentication > Settings).`
+        );
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('The sign-in popup was blocked by your browser. Please allow popups for this site.');
+      } else {
+        setError(err.message || 'Google sign-in failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

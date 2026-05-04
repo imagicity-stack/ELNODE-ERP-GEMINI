@@ -13,7 +13,7 @@ import {
   FileText
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
   PageHeader, Card, Badge, Button, IconButton, Modal,

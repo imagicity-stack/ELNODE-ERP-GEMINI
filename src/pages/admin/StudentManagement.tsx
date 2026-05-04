@@ -4,8 +4,9 @@ import { createUserWithEmailAndPassword, getAuth, signOut, signInWithEmailAndPas
 import { initializeApp, getApp } from 'firebase/app';
 import { db, auth, firebaseConfig, handleFirestoreError, OperationType } from '../../firebase';
 import { Student, UserProfile, Class, House } from '../../types';
+import { logActivity } from '../../services/activityService';
 import { SCHOOL_DOMAIN } from '../../constants';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
   Plus,
@@ -27,7 +28,7 @@ import {
   EmptyState, Avatar,
 } from '../../components/ui';
 
-export default function StudentManagement() {
+export default function StudentManagement({ user }: { user: UserProfile }) {
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [houses, setHouses] = useState<House[]>([]);
@@ -130,6 +131,13 @@ export default function StudentManagement() {
           }, { merge: true });
         }
         
+        await logActivity(
+          user,
+          'UPDATE_STUDENT',
+          'Students',
+          `Updated student profile for ${formData.name} (${formData.schoolNumber})`
+        );
+
         setIsModalOpen(false);
         setIsEditMode(false);
         setEditingStudent(null);
@@ -250,6 +258,14 @@ export default function StudentManagement() {
 
       setIsModalOpen(false);
       fetchStudents();
+      
+      await logActivity(
+        user,
+        'ADMIT_STUDENT',
+        'Students',
+        `Admitted new student ${formData.name} (${schoolNumber})`
+      );
+
       setFormData({
         name: '',
         schoolNumber: '',
@@ -423,6 +439,13 @@ export default function StudentManagement() {
       if (options.deleteStudent || options.deleteEverything) {
         await deleteDoc(doc(db, 'students', deletingStudent.id));
         
+        await logActivity(
+          user,
+          'DELETE_STUDENT',
+          'Super Admin',
+          `Deleted student record for ${deletingStudent.name} (${deletingStudent.schoolNumber}). Options: ${JSON.stringify(options)}`
+        );
+
         // Delete related data if everything
         if (options.deleteEverything) {
           const collectionsToDelete = ['fees', 'attendance', 'examResults'];

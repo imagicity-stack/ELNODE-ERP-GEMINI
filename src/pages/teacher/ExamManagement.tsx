@@ -75,7 +75,8 @@ export default function ExamManagement({ user }: ExamManagementProps) {
     setLoading(true);
     try {
       // Fetch Teacher Profile
-      const teacherDoc = await getDoc(doc(db, 'teachers', user.uid));
+      const teacherIdForFetch = user.teacherId || user.uid;
+      const teacherDoc = await getDoc(doc(db, 'teachers', teacherIdForFetch));
       if (teacherDoc.exists()) {
         const tData = { id: teacherDoc.id, ...teacherDoc.data() } as Teacher;
         setTeacherData(tData);

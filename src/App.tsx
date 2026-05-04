@@ -15,8 +15,10 @@ import StudentPortal from './pages/student/StudentPortal';
 import ParentPortal from './pages/parent/ParentPortal';
 import AccountsPortal from './pages/accounts/AccountsPortal';
 import TeacherPortal from './pages/teacher/TeacherPortal';
+import PrincipalPortal from './pages/admin/PrincipalPortal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
+import { DataProvider } from './contexts/DataContext';
 
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -24,14 +26,57 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setLoading(true); // Ensure loading is true when state starts changing
       if (firebaseUser) {
         try {
           console.log('Auth state changed: User logged in', firebaseUser.email, firebaseUser.uid);
           
-          // 1. Try fetching by UID first
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          // Use a retry mechanism with timeout for the initial profile fetch
+          const fetchProfileWithRetry = async (retries = 3): Promise<any> => {
+            for (let i = 0; i < retries; i++) {
+              try {
+                const userDocPromise = getDoc(doc(db, 'users', firebaseUser.uid));
+                const timeoutPromise = new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
+                );
+                return await Promise.race([userDocPromise, timeoutPromise]);
+              } catch (err) {
+                console.warn(`Profile fetch attempt ${i + 1} failed:`, err);
+                if (i === retries - 1) throw err;
+                // Wait a bit before retrying
+                await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+              }
+            }
+          };
+
+          let userDoc;
+          try {
+            userDoc = await fetchProfileWithRetry();
+          } catch (fetchErr) {
+            console.error('Final profile fetch failed:', fetchErr);
+            // Fallback for imagicityart@gmail.com and deweshkk@gmail.com to ensure login works 
+            // even if Firestore is being flaky during profile fetch
+            const userEmail = firebaseUser.email?.toLowerCase();
+            const superAdminEmails = ['imagicityart@gmail.com', 'deweshkk@gmail.com'];
+            
+            if (userEmail && superAdminEmails.includes(userEmail)) {
+              console.log('Using recovery profile for super admin due to fetch failure');
+              const recoveryAdmin: UserProfile = {
+                uid: firebaseUser.uid,
+                email: userEmail,
+                name: firebaseUser.displayName || 'Super Admin',
+                role: 'super_admin',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              };
+              setUser(recoveryAdmin);
+              setLoading(false);
+              return;
+            }
+            throw fetchErr;
+          }
           
-          if (userDoc.exists()) {
+          if (userDoc && userDoc.exists()) {
             console.log('User profile found by UID');
             const existingUser = userDoc.data() as UserProfile;
             let updatedUser = { ...existingUser };
@@ -167,19 +212,22 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <Router>
-          <Routes>
-            <Route path="/login" element={user ? <Navigate to={`/${user.role.replace('_', '')}`} /> : <Login />} />
-            
-            <Route path="/superadmin/*" element={user?.role === 'super_admin' ? <AdminPortal user={user} /> : <Navigate to="/login" />} />
-            <Route path="/student/*" element={user?.role === 'student' ? <StudentPortal user={user} /> : <Navigate to="/login" />} />
-            <Route path="/parent/*" element={user?.role === 'parent' ? <ParentPortal user={user} /> : <Navigate to="/login" />} />
-            <Route path="/accounts/*" element={user?.role === 'accounts' ? <AccountsPortal user={user} /> : <Navigate to="/login" />} />
-            <Route path="/teacher/*" element={user?.role === 'teacher' ? <TeacherPortal user={user} /> : <Navigate to="/login" />} />
-            
-            <Route path="/" element={<Navigate to={user ? `/${user.role.replace('_', '')}` : "/login"} />} />
-          </Routes>
-        </Router>
+        <DataProvider user={user}>
+          <Router>
+            <Routes>
+              <Route path="/login" element={user ? <Navigate to={`/${user.role.replace('_', '')}`} /> : <Login />} />
+              
+              <Route path="/superadmin/*" element={user?.role === 'super_admin' ? <AdminPortal user={user} /> : <Navigate to="/login" />} />
+              <Route path="/student/*" element={user?.role === 'student' ? <StudentPortal user={user} /> : <Navigate to="/login" />} />
+              <Route path="/parent/*" element={user?.role === 'parent' ? <ParentPortal user={user} /> : <Navigate to="/login" />} />
+              <Route path="/accounts/*" element={user?.role === 'accounts' ? <AccountsPortal user={user} /> : <Navigate to="/login" />} />
+              <Route path="/teacher/*" element={user?.role === 'teacher' ? <TeacherPortal user={user} /> : <Navigate to="/login" />} />
+              <Route path="/principal/*" element={user?.role === 'principal' ? <PrincipalPortal user={user} /> : <Navigate to="/login" />} />
+              
+              <Route path="/" element={<Navigate to={user ? `/${user.role.replace('_', '')}` : "/login"} />} />
+            </Routes>
+          </Router>
+        </DataProvider>
       </ToastProvider>
     </ErrorBoundary>
   );

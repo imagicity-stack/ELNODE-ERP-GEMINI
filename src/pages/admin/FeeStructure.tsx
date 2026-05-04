@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, where, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import {
   Plus,
@@ -9,21 +9,25 @@ import {
   Wallet,
   Receipt,
   AlertCircle,
-  ChevronRight
+  ChevronRight,
+  Settings
 } from 'lucide-react';
-import { Class, FeeStructure as IFeeStructure, FeeHead } from '../../types';
+import { Class, FeeStructure as IFeeStructure, FeeHead, UserProfile } from '../../types';
+import { logActivity } from '../../services/activityService';
 import { useToast } from '../../components/Toast';
 import {
   PageHeader, Card, Button, IconButton, FormField, Input, Select,
-  Table, Thead, Th, Tbody, Tr, Td, EmptyState, Alert
+  Table, Thead, Th, Tbody, Tr, Td, EmptyState, Alert, Modal
 } from '../../components/ui';
 
-export default function FeeStructure() {
+export default function FeeStructure({ user }: { user: UserProfile }) {
   const [classes, setClasses] = useState<Class[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [feeStructure, setFeeStructure] = useState<IFeeStructure | null>(null);
+  const [globalHeads, setGlobalHeads] = useState<FeeHead[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isHeadModalOpen, setIsHeadModalOpen] = useState(false);
   const { showToast } = useToast();
 
   const [newHead, setNewHead] = useState<Omit<FeeHead, 'id'>>({
@@ -35,9 +39,14 @@ export default function FeeStructure() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const classesSnap = await getDocs(collection(db, 'classes'));
+      const [classesSnap, headsSnap] = await Promise.all([
+        getDocs(collection(db, 'classes')),
+        getDocs(collection(db, 'feeHeads'))
+      ]);
+      
       const classesList = classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class));
       setClasses(classesList);
+      setGlobalHeads(headsSnap.docs.map(doc => ({ ...doc.data() } as FeeHead)));
 
       if (classesList.length > 0 && !selectedClassId) {
         setSelectedClassId(classesList[0].id);
@@ -46,6 +55,32 @@ export default function FeeStructure() {
       handleFirestoreError(err, OperationType.LIST, 'classes');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveGlobalHead = async () => {
+    if (!newHead.name) return;
+    setSaving(true);
+    try {
+      // Use name as ID for heads to keep them unique
+      await setDoc(doc(db, 'feeHeads', newHead.name.replace(/\s+/g, '_').toLowerCase()), newHead);
+      showToast('Global fee head saved!', 'success');
+      fetchData();
+      setNewHead({ name: '', amount: 0, description: '' });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'feeHeads');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteGlobalHead = async (name: string) => {
+    try {
+      await deleteDoc(doc(db, 'feeHeads', name.replace(/\s+/g, '_').toLowerCase()));
+      showToast('Fee head deleted', 'success');
+      fetchData();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'feeHeads');
     }
   };
 
@@ -132,6 +167,14 @@ export default function FeeStructure() {
         iconColor="gradient-emerald"
         actions={
           <div className="flex items-center gap-3">
+            <Button
+              variant="secondary"
+              icon={Settings}
+              onClick={() => setIsHeadModalOpen(true)}
+            >
+              Fee Heads
+            </Button>
+            <div className="w-px h-8 bg-slate-200 mx-2" />
             <Select
               value={selectedClassId}
               onChange={(e) => setSelectedClassId(e.target.value)}
@@ -152,6 +195,76 @@ export default function FeeStructure() {
           </div>
         }
       />
+
+      {/* Global Fee Heads Modal */}
+      <Modal
+        isOpen={isHeadModalOpen}
+        onClose={() => setIsHeadModalOpen(false)}
+        title="Manage Global Fee Heads"
+        subtitle="Define generic fee heads that can be used across classes."
+        size="lg"
+      >
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+            <div className="sm:col-span-5">
+              <FormField label="Head Name">
+                <Input
+                  type="text"
+                  placeholder="e.g. Activity Fee"
+                  value={newHead.name}
+                  onChange={(e) => setNewHead({ ...newHead, name: e.target.value })}
+                />
+              </FormField>
+            </div>
+            <div className="sm:col-span-4">
+              <FormField label="Default Amount (₹)">
+                <Input
+                  type="number"
+                  placeholder="0"
+                  value={newHead.amount || ''}
+                  onChange={(e) => setNewHead({ ...newHead, amount: Number(e.target.value) })}
+                />
+              </FormField>
+            </div>
+            <div className="sm:col-span-3 flex items-end">
+              <Button icon={Plus} onClick={handleSaveGlobalHead} className="w-full" loading={saving}>
+                Add Head
+              </Button>
+            </div>
+          </div>
+
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>Name</Th>
+                <Th>Default Amount</Th>
+                <Th className="text-right">Action</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {globalHeads.map((head, index) => (
+                <Tr key={index}>
+                  <Td className="font-bold text-slate-900">{head.name}</Td>
+                  <Td className="font-bold text-slate-500">₹{(head.amount || 0).toLocaleString()}</Td>
+                  <Td className="text-right">
+                    <IconButton
+                      icon={Trash2}
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleDeleteGlobalHead(head.name)}
+                    />
+                  </Td>
+                </Tr>
+              ))}
+              {globalHeads.length === 0 && (
+                <Tr>
+                  <Td colSpan={3} className="text-center py-8 text-slate-400">No global fee heads defined.</Td>
+                </Tr>
+              )}
+            </Tbody>
+          </Table>
+        </div>
+      </Modal>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left: Fee Heads List */}

@@ -10,6 +10,7 @@ export interface UserProfile {
   section?: string;
   parentId?: string;
   studentId?: string;
+  teacherId?: string;
   studentIds?: string[]; // Array of student IDs for parents
   photoURL?: string;
   phone?: string;
@@ -82,17 +83,34 @@ export interface House {
   teacherInchargeId?: string;
 }
 
+export interface TimeSlot {
+  id: string;
+  label: string; // e.g. "1st Period", "Break", "Lunch"
+  startTime: string; // e.g. "08:30 AM"
+  endTime: string; // e.g. "09:30 AM"
+  type: 'period' | 'break' | 'lunch';
+}
+
+export interface TimetableConfig {
+  id: string;
+  slots: TimeSlot[];
+  days: string[]; // e.g. ["Monday", "Tuesday", ...]
+  updatedAt: string;
+}
+
 export interface Timetable {
   id: string;
   classId: string;
   schedule: {
     day: string;
     periods: {
-      time: string;
+      slotId: string;
       subjectId: string;
       teacherId: string;
+      room?: string;
     }[];
   }[];
+  updatedAt: string;
 }
 
 export interface FeeHead {
@@ -121,7 +139,8 @@ export interface FeeRequest {
     finalAmount: number;
   }[];
   totalAmount: number;
-  status: 'paid' | 'pending' | 'overdue';
+  paidAmount: number;
+  status: 'paid' | 'pending' | 'partially_paid' | 'overdue';
   dueDate: string;
   createdAt: string;
 }
@@ -294,4 +313,19 @@ export interface FeePayment {
   transactionId?: string;
   receiptNumber: string;
   remarks?: string;
+}
+
+export type ActivitySection = 'Super Admin' | 'Accounts' | 'Parents' | 'Students' | 'Academic' | 'Teachers' | 'Exam' | 'Staff' | 'Principal';
+
+export interface ActivityLog {
+  id: string;
+  timestamp: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  action: string;
+  section: ActivitySection;
+  details: string;
+  ip?: string;
+  userAgent?: string;
 }

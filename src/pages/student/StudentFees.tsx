@@ -120,7 +120,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
 
   const outstandingAmount = feeRequests
     .filter(r => r.status !== 'paid')
-    .reduce((sum, r) => sum + r.totalAmount, 0);
+    .reduce((sum, r) => sum + (r.totalAmount - (r.paidAmount || 0)), 0);
 
   const currentRequest = feeRequests.find(r => r.status !== 'paid');
 
@@ -173,9 +173,21 @@ export default function StudentFees({ user }: StudentFeesProps) {
                     </div>
                   </div>
                 ))}
-                <div className="p-6 bg-slate-50 flex items-center justify-between">
-                  <span className="font-bold text-slate-900">Total Amount Due</span>
-                  <span className="text-2xl font-black text-emerald-600">₹{(currentRequest.totalAmount || 0).toLocaleString()}</span>
+                <div className="p-6 bg-slate-50 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 text-sm">Total Request Amount</span>
+                    <span className="font-bold text-slate-900">₹{(currentRequest.totalAmount || 0).toLocaleString()}</span>
+                  </div>
+                  {(currentRequest.paidAmount || 0) > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 text-sm">Amount Paid</span>
+                      <span className="font-bold text-emerald-600">- ₹{(currentRequest.paidAmount || 0).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                    <span className="font-bold text-slate-900 text-lg">Balance Due</span>
+                    <span className="text-2xl font-black text-emerald-600">₹{((currentRequest.totalAmount || 0) - (currentRequest.paidAmount || 0)).toLocaleString()}</span>
+                  </div>
                 </div>
               </div>
             </Card>
