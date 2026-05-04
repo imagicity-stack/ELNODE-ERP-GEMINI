@@ -102,16 +102,15 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Headline */}
           <div className="mb-12">
             <h1 className="text-4xl xl:text-5xl font-bold text-white leading-tight mb-4">
-              Manage your school<br />
+              Your child's success,<br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">
-                smarter & faster
+                now at your fingertips
               </span>
             </h1>
             <p className="text-slate-400 text-lg leading-relaxed max-w-md">
-              The all-in-one ERP solution for {SCHOOL_NAME} — from admissions to results, everything in one place.
+              The official digital companion for {SCHOOL_NAME} families. Stay connected with attendance, grades, and school updates in real-time.
             </p>
           </div>
 
@@ -169,8 +168,8 @@ export default function Login() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-slate-900">Welcome back</h2>
-            <p className="text-slate-500 mt-1 text-sm">Sign in to your account to continue</p>
+            <h2 className="text-2xl font-bold text-slate-900">Student & Parent Portal</h2>
+            <p className="text-slate-500 mt-1 text-sm">Access the academic journey of your child</p>
           </div>
 
           {/* Tabs */}
@@ -306,14 +305,32 @@ export default function Login() {
             )}
           </AnimatePresence>
 
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
-            <p className="text-xs font-bold text-indigo-800 uppercase tracking-wider mb-2">Demo Credentials</p>
-            <div className="space-y-1.5 text-xs text-indigo-700">
-              <p>• <span className="font-semibold">Super Admin:</span> Google account (imagicityart@gmail.com)</p>
-              <p>• <span className="font-semibold">Others:</span> Created in Admin Portal — default password: <code className="bg-indigo-100 px-1 py-0.5 rounded font-mono">password123</code></p>
-              <p>• <span className="font-semibold">Students:</span> School Number (e.g. <code className="bg-indigo-100 px-1 py-0.5 rounded font-mono">1234567</code>)</p>
-              <p>• <span className="font-semibold">Parents:</span> p + School Number (e.g. <code className="bg-indigo-100 px-1 py-0.5 rounded font-mono">p1234567</code>)</p>
+          {/* How to Login */}
+          <div className="mt-8 p-5 bg-white border border-slate-200 rounded-2xl shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <Lock className="w-3.5 h-3.5 text-indigo-600" />
+              </div>
+              <p className="text-xs font-bold text-slate-900 uppercase tracking-wider">How to login</p>
+            </div>
+            <div className="space-y-4">
+              <div className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100 italic font-serif text-slate-400 text-xs shadow-inner">S</div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Student Login</p>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">Enter your <span className="font-semibold text-slate-900">School Number</span> as the identifier.</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100 italic font-serif text-slate-400 text-xs shadow-inner">P</div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Parent Login</p>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">Enter <span className="font-semibold text-indigo-600">p</span> followed by the school number (e.g., p1234567).</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+                Contact school administration if you haven't received your credentials yet.
+              </p>
             </div>
           </div>
 
