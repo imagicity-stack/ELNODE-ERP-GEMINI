@@ -5,6 +5,8 @@ import StudentDashboard from './StudentDashboard';
 import StudentHomework from './StudentHomework';
 import StudentFees from './StudentFees';
 import StudentTimetable from './StudentTimetable';
+import StudentAttendance from './StudentAttendance';
+import StudentSubjects from './StudentSubjects';
 import StudentNotes from './StudentNotes';
 import StudentProfile from './StudentProfile';
 import ResultView from '../shared/ResultView';
@@ -22,6 +24,8 @@ export default function StudentPortal({ user }: { user: UserProfile }) {
         <Route path="/homework" element={<StudentHomework user={user} />} />
         <Route path="/fees" element={<StudentFees user={user} />} />
         <Route path="/timetable" element={<StudentTimetable user={user} />} />
+        <Route path="/attendance" element={<StudentAttendance user={user} />} />
+        <Route path="/subjects" element={<StudentSubjects user={user} />} />
         <Route path="/notes" element={<StudentNotes user={user} />} />
         <Route path="/profile" element={<StudentProfile user={user} student={student} />} />
         <Route path="/exams" element={student ? <ResultView student={student} /> : null} />

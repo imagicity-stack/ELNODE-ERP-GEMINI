@@ -41,13 +41,21 @@ export default function StudentFees({ user }: StudentFeesProps) {
     if (!user.uid) return;
     setLoading(true);
     try {
-      const studentId = user.role === 'student' ? user.uid : user.studentId;
-      if (!studentId) return;
+      const studentId = user.studentId || user.schoolNumber;
+      if (!studentId) {
+        console.warn('Student ID not found in profile');
+        setLoading(false);
+        return;
+      }
+
+      const requestsQuery = query(collection(db, 'feeRequests'), where('studentId', '==', studentId));
+      const paymentsQuery = query(collection(db, 'feePayments'), where('studentId', '==', studentId), orderBy('date', 'desc'));
+      const studentDocRef = doc(db, 'students', studentId);
 
       const [requestsSnap, paymentsSnap, studentSnap] = await Promise.all([
-        getDocs(query(collection(db, 'feeRequests'), where('studentId', '==', studentId))),
-        getDocs(query(collection(db, 'feePayments'), where('studentId', '==', studentId), orderBy('date', 'desc'))),
-        getDoc(doc(db, 'students', studentId))
+        getDocs(requestsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feeRequests'); throw err; }),
+        getDocs(paymentsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feePayments'); throw err; }),
+        getDoc(studentDocRef).catch(err => { handleFirestoreError(err, OperationType.GET, 'students'); throw err; })
       ]);
 
       setFeeRequests(requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
@@ -56,7 +64,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
         setStudent({ id: studentSnap.id, ...studentSnap.data() } as Student);
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.LIST, 'feeRequests');
+      console.error('Error fetching student fee data:', err);
     } finally {
       setLoading(false);
     }
@@ -96,7 +104,11 @@ export default function StudentFees({ user }: StudentFeesProps) {
           };
 
           await addDoc(collection(db, 'feePayments'), payment);
-          await updateDoc(doc(db, 'feeRequests', request.id), { status: 'paid' });
+          await updateDoc(doc(db, 'feeRequests', request.id), { 
+            status: 'paid',
+            paidAmount: request.totalAmount,
+            updatedAt: new Date().toISOString()
+          });
           await updateDoc(doc(db, 'students', request.studentId), { feeStatus: 'paid' });
 
           alert('Payment Successful! Transaction ID: ' + response.razorpay_payment_id);

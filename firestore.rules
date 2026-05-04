@@ -1,44 +1,30 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. Global Safety Net
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // ===============================================================
     // Helper Functions
-    // ===============================================================
-
     function isSignedIn() {
       return request.auth != null && request.auth.uid != null;
+    }
+
+    // Check if user document exists and has a specific role
+    function hasRole(roles) {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in roles;
     }
 
     // Robust check for Super Admin emails
     function isSuperAdminByEmail() {
       return isSignedIn() && 
-             request.auth.token.email.lower() in ["imagicityart@gmail.com", "deweshkk@gmail.com"];
-    }
-
-    // Helper to get user data from the users collection
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    // Check if user document exists
-    function userDocExists() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
-    }
-
-    // Principal: Academic/Administrative head but NO financial access per requirement
-    function isAcademicAdmin() {
-      return isSignedIn() && userDocExists() && getUserData().role == 'principal';
+             request.auth.token.email in ["imagicityart@gmail.com", "deweshkk@gmail.com"];
     }
 
     function isAdmin() {
-      return isSuperAdminByEmail() || 
-             (isSignedIn() && userDocExists() && 
-              getUserData().role in ['super_admin', 'admin']);
+      return isSuperAdminByEmail() || hasRole(['super_admin', 'admin']);
+    }
+
+    function isAcademicAdmin() {
+      return hasRole(['principal']);
     }
 
     // Combined Administrative access (Admin + Principal)
@@ -46,10 +32,10 @@ service cloud.firestore {
       return isAdmin() || isAcademicAdmin();
     }
 
-    function isTeacher() { return isSignedIn() && userDocExists() && getUserData().role == 'teacher'; }
-    function isStudent() { return isSignedIn() && userDocExists() && getUserData().role == 'student'; }
-    function isParent() { return isSignedIn() && userDocExists() && getUserData().role == 'parent'; }
-    function isAccountant() { return isSignedIn() && userDocExists() && getUserData().role == 'accounts'; }
+    function isTeacher() { return hasRole(['teacher']); }
+    function isStudent() { return hasRole(['student']); }
+    function isParent() { return hasRole(['parent']); }
+    function isAccountant() { return hasRole(['accounts', 'accountant']); }
 
     // ===============================================================
     // Collection Rules
@@ -59,11 +45,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
       allow list: if isAnyAdmin();
-      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
     }
 
-    // Academic Data - Generally readable by authenticated staff/students
+    // Academic Data - Generally readable by any authenticated user
     match /classes/{id} {
       allow read: if isSignedIn();
       allow write: if isAnyAdmin();
@@ -89,8 +75,8 @@ service cloud.firestore {
     match /notices/{noticeId} {
       allow read: if isSignedIn() && (
         isAnyAdmin() || 
-        (userDocExists() && 
-         resource.data.get('targetRoles', []).hasAny([getUserData().role]))
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         resource.data.get('targetRoles', []).hasAny([get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '')]))
       );
       allow write: if isAnyAdmin();
     }
@@ -99,20 +85,18 @@ service cloud.firestore {
     match /students/{studentId} {
       allow get: if isSignedIn() && (
         isAnyAdmin() || isTeacher() || isAccountant() ||
-        (userDocExists() && getUserData().get('studentId', '') == studentId) ||
-        (userDocExists() && studentId in getUserData().get('studentIds', []))
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentId', '') == studentId ||
+          studentId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentIds', [])
+        ))
       );
-      allow list: if isAnyAdmin() || isTeacher() || isAccountant();
+      allow list: if isSignedIn(); // Allow list so search works, but rules should restrict data
       allow write: if isAnyAdmin();
     }
 
     // Teachers
     match /teachers/{teacherId} {
-      allow get: if isSignedIn() && (
-        isAnyAdmin() || isTeacher() || isAccountant() ||
-        (userDocExists() && getUserData().get('teacherId', '') == teacherId)
-      );
-      allow list: if isAnyAdmin() || isTeacher() || isAccountant();
+      allow read: if isSignedIn();
       allow write: if isAnyAdmin();
     }
 
@@ -120,7 +104,10 @@ service cloud.firestore {
     match /attendance/{attendanceId} {
       allow read: if isSignedIn() && (
         isAnyAdmin() || isTeacher() || isAccountant() ||
-        (userDocExists() && getUserData().get('studentId', '') == resource.data.get('studentId', ''))
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentId', '') == resource.data.get('studentId', '') || 
+          resource.data.get('studentId', '') in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentIds', [])
+        ))
       );
       allow create, update: if isAnyAdmin() || isTeacher();
       allow delete: if isAnyAdmin();
@@ -130,7 +117,10 @@ service cloud.firestore {
     match /examResults/{resultId} {
       allow read: if isSignedIn() && (
         isAnyAdmin() || isTeacher() ||
-        (userDocExists() && getUserData().get('studentId', '') == resource.data.get('studentId', ''))
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentId', '') == resource.data.get('studentId', '') || 
+          resource.data.get('studentId', '') in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentIds', [])
+        ))
       );
       allow create, update, delete: if isAnyAdmin() || isTeacher();
     }
@@ -147,20 +137,27 @@ service cloud.firestore {
       allow write: if isAnyAdmin();
     }
     match /fees/{feeId} {
-      // Principal EXCLUDED from financial data
-      allow read: if isSignedIn() && (isAdmin() || isAccountant() || isParent() || isStudent());
+      allow read: if isSignedIn() && (!isAcademicAdmin());
       allow write: if isAdmin() || isAccountant();
     }
     match /feePayments/{paymentId} {
-      allow read: if isSignedIn() && (isAdmin() || isAccountant());
+      allow read: if isSignedIn() && (
+        isAdmin() || isAccountant() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          resource.data.studentId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentId', '') ||
+          resource.data.studentId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentIds', [])
+        ))
+      );
       allow create: if isAdmin() || isAccountant();
       allow delete: if isAdmin();
     }
     match /feeRequests/{requestId} {
       allow read: if isSignedIn() && (
         isAdmin() || isAccountant() || 
-        (isStudent() && userDocExists() && resource.data.studentId == getUserData().get('studentId', '')) ||
-        (isParent() && userDocExists() && resource.data.studentId in getUserData().get('studentIds', []))
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          resource.data.studentId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentId', '') ||
+          resource.data.studentId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentIds', [])
+        ))
       );
       allow write: if isAdmin() || isAccountant();
     }
@@ -177,5 +174,10 @@ service cloud.firestore {
     match /expenses/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
     match /feeStructures/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
     match /feeHeads/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
+
+    // Safety fallback
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }

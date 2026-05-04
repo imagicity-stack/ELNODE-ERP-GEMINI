@@ -9,6 +9,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, where, collection, limit, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { UserProfile } from './types';
+import { SCHOOL_DOMAIN, LEGACY_DOMAIN } from './constants';
 import Login from './pages/Login';
 import AdminPortal from './pages/admin/AdminPortal';
 import StudentPortal from './pages/student/StudentPortal';
@@ -113,19 +114,37 @@ export default function App() {
           } else {
             console.log('User profile not found by UID, searching by email...', firebaseUser.email);
             
-            // 2. Try searching by email in case of UID mismatch (e.g. Google login vs Email/Password)
+            // 2. Try searching by email in case of UID mismatch
             if (firebaseUser.email) {
               const userEmail = firebaseUser.email.toLowerCase();
-              const q = query(
-                collection(db, 'users'), 
-                where('email', '==', userEmail), 
-                limit(1)
-              );
-              const querySnapshot = await getDocs(q);
+              const emailsToTry = [userEmail];
               
-              if (!querySnapshot.empty) {
-                const existingUser = querySnapshot.docs[0].data() as UserProfile;
-                console.log('User profile found by email. Linking to new UID:', firebaseUser.uid);
+              // If email has one of the school domains, try the other one too
+              if (userEmail.endsWith(`@${SCHOOL_DOMAIN}`)) {
+                emailsToTry.push(userEmail.replace(`@${SCHOOL_DOMAIN}`, `@${LEGACY_DOMAIN}`));
+              } else if (userEmail.endsWith(`@${LEGACY_DOMAIN}`)) {
+                emailsToTry.push(userEmail.replace(`@${LEGACY_DOMAIN}`, `@${SCHOOL_DOMAIN}`));
+              }
+              
+              const findExistingUser = async () => {
+                for (const email of emailsToTry) {
+                  const q = query(
+                    collection(db, 'users'), 
+                    where('email', '==', email), 
+                    limit(1)
+                  );
+                  const querySnapshot = await getDocs(q);
+                  if (!querySnapshot.empty) {
+                    return querySnapshot.docs[0].data() as UserProfile;
+                  }
+                }
+                return null;
+              };
+
+              const existingUser = await findExistingUser();
+              
+              if (existingUser) {
+                console.log('User profile found by email search. Linking to new UID:', firebaseUser.uid);
                 
                 // Create a new user doc with current UID to ensure rules work
                 const newUser: UserProfile = {
@@ -158,19 +177,19 @@ export default function App() {
                   setUser(newUser);
                 } catch (setErr) {
                   console.error('Error linking profile to new UID:', setErr);
-                  // Fallback: set user state anyway if we found it, but rules might fail later
                   setUser(existingUser);
                 }
               } else {
-                console.log('No existing profile found for email:', userEmail);
+                console.log('No existing profile found for email alternatives:', emailsToTry);
                 
                 // 3. Auto-create super admin if email matches
+                const userEmailLower = firebaseUser.email.toLowerCase();
                 const superAdminEmails = ['imagicityart@gmail.com', 'deweshkk@gmail.com'];
-                if (superAdminEmails.includes(userEmail)) {
+                if (superAdminEmails.includes(userEmailLower)) {
                   console.log('Auto-creating super admin profile...');
                   const newAdmin: UserProfile = {
                     uid: firebaseUser.uid,
-                    email: userEmail,
+                    email: userEmailLower,
                     name: firebaseUser.displayName || 'Super Admin',
                     role: 'super_admin',
                     createdAt: new Date().toISOString(),
@@ -179,7 +198,6 @@ export default function App() {
                   await setDoc(doc(db, 'users', firebaseUser.uid), newAdmin);
                   setUser(newAdmin);
                 } else {
-                  // No profile found and not a super admin
                   setUser(null);
                 }
               }

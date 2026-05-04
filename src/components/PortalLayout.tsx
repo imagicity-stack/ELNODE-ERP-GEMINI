@@ -398,9 +398,34 @@ export default function PortalLayout({ children, role, userName, customHeader }:
             {customHeader}
 
             {/* Notifications */}
-            <button className="relative p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+            <button 
+              onClick={async () => {
+                if (Notification.permission === 'denied') {
+                  alert('Notification permission is denied. Please enable notifications in your browser settings to receive updates.');
+                  return;
+                }
+                const granted = await requestNotificationPermission();
+                if (granted) {
+                  window.location.reload(); // Reload to start listeners
+                }
+              }}
+              className="relative p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all transition-colors"
+              title={Notification.permission === 'denied' ? "Notifications Denied - Enable in Browser" : "Enable Notifications"}
+            >
+              <Bell className={cn(
+                "w-5 h-5", 
+                Notification.permission === 'granted' ? 'text-indigo-600' : 
+                Notification.permission === 'denied' ? 'text-slate-300' : 'text-slate-400'
+              )} />
+              {Notification.permission === 'granted' && (
+                <span className="absolute top-2 right-2 w-2 h-2 bg-emerald-500 rounded-full border-2 border-white" />
+              )}
+              {Notification.permission === 'default' && (
+                <span className="absolute top-2 right-2 w-2 h-2 bg-amber-500 rounded-full border-2 border-white animate-pulse" />
+              )}
+              {Notification.permission === 'denied' && (
+                <span className="absolute top-2 right-2 w-2 h-2 bg-slate-300 rounded-full border-2 border-white" />
+              )}
             </button>
 
             <div className="h-7 w-px bg-slate-100 mx-1" />

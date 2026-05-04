@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { auth } from '../firebase';
 import { useNavigate } from 'react-router-dom';
-import { SCHOOL_NAME, APP_NAME, SCHOOL_DOMAIN, APP_LOGO } from '../constants';
+import { SCHOOL_NAME, APP_NAME, SCHOOL_DOMAIN, LEGACY_DOMAIN, APP_LOGO } from '../constants';
 import { Users, UserCog, Lock, Mail, Hash, Eye, EyeOff, GraduationCap, ShieldCheck, BarChart3, Bell } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -28,11 +28,28 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      let email = identifier.toLowerCase();
+      const cleanId = identifier.trim().toLowerCase();
       if (activeTab === 'student-parent') {
-        email = `${email}@${SCHOOL_DOMAIN}`;
+        const primaryEmail = `${cleanId}@${SCHOOL_DOMAIN}`;
+        try {
+          await signInWithEmailAndPassword(auth, primaryEmail, password);
+        } catch (primaryErr: any) {
+          // If user not found on new domain, try legacy domain
+          if (primaryErr.code === 'auth/invalid-credential' || primaryErr.code === 'auth/user-not-found') {
+            const legacyEmail = `${cleanId}@${LEGACY_DOMAIN}`;
+            try {
+              await signInWithEmailAndPassword(auth, legacyEmail, password);
+            } catch (legacyErr: any) {
+              // If still failed, throw the original error or a combined one
+              throw primaryErr;
+            }
+          } else {
+            throw primaryErr;
+          }
+        }
+      } else {
+        await signInWithEmailAndPassword(auth, cleanId, password);
       }
-      await signInWithEmailAndPassword(auth, email, password);
     } catch (err: any) {
       if (err.code === 'auth/operation-not-allowed') {
         setError('Email/Password sign-in is not enabled. Please enable it in the Firebase Console.');

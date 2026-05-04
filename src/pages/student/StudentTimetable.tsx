@@ -25,7 +25,7 @@ export default function StudentTimetable({ user }: StudentTimetableProps) {
     const fetchData = async () => {
       try {
         // Fetch Config
-        const configSnap = await getDoc(doc(db, 'timetableSettings', 'global'));
+        const configSnap = await getDoc(doc(db, 'timetableSettings', 'global')).catch(err => { handleFirestoreError(err, OperationType.GET, 'timetableSettings'); throw err; });
         if (configSnap.exists()) {
           setConfig(configSnap.data() as TimetableConfig);
         }
@@ -36,14 +36,14 @@ export default function StudentTimetable({ user }: StudentTimetableProps) {
             collection(db, 'timetable'),
             where('classId', '==', user.classId)
           );
-          const snapshot = await getDocs(q);
+          const snapshot = await getDocs(q).catch(err => { handleFirestoreError(err, OperationType.LIST, 'timetable'); throw err; });
           if (!snapshot.empty) {
             setTimetable({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Timetable);
           }
         }
 
         // Fetch Subjects mapping
-        const subSnap = await getDocs(collection(db, 'subjects'));
+        const subSnap = await getDocs(collection(db, 'subjects')).catch(err => { handleFirestoreError(err, OperationType.LIST, 'subjects'); throw err; });
         const subMap: Record<string, {name: string, code: string}> = {};
         subSnap.docs.forEach(d => {
           const data = d.data();
@@ -52,7 +52,7 @@ export default function StudentTimetable({ user }: StudentTimetableProps) {
         setSubjects(subMap);
 
         // Fetch Teachers mapping
-        const teachSnap = await getDocs(collection(db, 'teachers'));
+        const teachSnap = await getDocs(collection(db, 'teachers')).catch(err => { handleFirestoreError(err, OperationType.LIST, 'teachers'); throw err; });
         const teachMap: Record<string, string> = {};
         teachSnap.docs.forEach(d => {
           teachMap[d.id] = d.data().name;
@@ -60,7 +60,7 @@ export default function StudentTimetable({ user }: StudentTimetableProps) {
         setTeachers(teachMap);
 
       } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, 'timetable');
+        console.error('Error fetching timetable data:', err);
       } finally {
         setLoading(false);
       }

@@ -1,6 +1,7 @@
 export const SCHOOL_NAME = "The Elden Heights School";
 export const APP_NAME = "EL-NODE";
 export const SCHOOL_DOMAIN = "ehs.elnode.in";
+export const LEGACY_DOMAIN = "eldenheights.org";
 export const APP_LOGO = "/pwa-512x512.png";
 
 export const USER_ROLES = {

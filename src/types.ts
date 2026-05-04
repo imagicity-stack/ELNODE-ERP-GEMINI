@@ -177,6 +177,7 @@ export interface Attendance {
   studentId: string;
   status: 'present' | 'absent' | 'late';
   type: 'student' | 'staff';
+  remarks?: string;
 }
 
 export interface Homework {

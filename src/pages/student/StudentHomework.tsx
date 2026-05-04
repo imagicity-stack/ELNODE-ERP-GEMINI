@@ -1,5 +1,8 @@
-import { UserProfile } from '../../types';
-import { CheckSquare, Download, Upload } from 'lucide-react';
+import { UserProfile, Homework } from '../../types';
+import { CheckSquare, Download, Upload, Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../../firebase';
 import {
   PageHeader,
   Card,
@@ -7,6 +10,7 @@ import {
   Button,
   Avatar,
   EmptyState,
+  Spinner,
 } from '../../components/ui';
 
 interface StudentHomeworkProps {
@@ -14,60 +18,87 @@ interface StudentHomeworkProps {
 }
 
 export default function StudentHomework({ user }: StudentHomeworkProps) {
+  const [homework, setHomework] = useState<Homework[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchHomework = async () => {
+      if (!user.classId) return;
+      setLoading(true);
+      try {
+        const q = query(
+          collection(db, 'homework'),
+          where('classId', '==', user.classId),
+          orderBy('dueDate', 'desc')
+        );
+        const snap = await getDocs(q).catch(err => { handleFirestoreError(err, OperationType.LIST, 'homework'); throw err; });
+        setHomework(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Homework)));
+      } catch (err) {
+        console.error('Error fetching homework:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHomework();
+  }, [user.classId]);
+
+  const activeCount = homework.length;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Homework Tracking"
-        subtitle="Manage and submit your assignments."
+        subtitle="Manage and view your assignments."
         icon={CheckSquare}
         iconColor="gradient-emerald"
         actions={
-          <Badge variant="success">12/15 Completed</Badge>
+          <Badge variant="success">{activeCount} Assignments</Badge>
         }
       />
 
-      <div className="grid grid-cols-1 gap-4">
-        {[
-          { subject: 'Mathematics', title: 'Calculus Exercise 4.2', due: 'Tomorrow', status: 'pending', desc: 'Solve all problems from page 142-145.' },
-          { subject: 'Physics', title: 'Lab Report: Optics', due: 'Oct 15', status: 'pending', desc: 'Submit the lab report for the optics experiment conducted on Monday.' },
-          { subject: 'English', title: 'Essay: Shakespearean Tragedy', due: 'Oct 18', status: 'submitted', desc: 'Write a 1000-word essay on the theme of tragedy in Hamlet.' },
-          { subject: 'Chemistry', title: 'Organic Compounds', due: 'Oct 08', status: 'overdue', desc: 'Complete the worksheet on organic compounds.' },
-        ].map((hw, i) => (
-          <Card key={i} hover className="transition-all">
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-              <div className="flex items-start gap-4">
-                <Avatar name={hw.subject} size="md" />
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-bold text-slate-900">{hw.title}</h3>
-                    <Badge
-                      variant={
-                        hw.status === 'pending' ? 'warning' :
-                        hw.status === 'submitted' ? 'success' :
-                        'error'
-                      }
-                    >
-                      {hw.status}
-                    </Badge>
+      {loading ? (
+        <Spinner />
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {homework.map((hw) => (
+            <Card key={hw.id} hover className="transition-all">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <Avatar name={hw.subjectId} size="md" />
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-bold text-slate-900">{hw.subjectId} Assignment</h3>
+                      <Badge variant="warning">Pending</Badge>
+                    </div>
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                        <Clock className="w-3 h-3" />
+                        Due: {hw.dueDate}
+                      </div>
+                    </div>
+                    <p className="text-sm text-slate-600 leading-relaxed">{hw.content}</p>
                   </div>
-                  <p className="text-xs text-slate-400 font-medium mb-3">{hw.subject} • Due {hw.due}</p>
-                  <p className="text-sm text-slate-600 leading-relaxed">{hw.desc}</p>
                 </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button variant="secondary" size="sm" icon={Download}>
-                  Download
-                </Button>
-                {hw.status !== 'submitted' && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button variant="secondary" size="sm" icon={Download}>
+                    Download
+                  </Button>
                   <Button variant="primary" size="sm" icon={Upload}>
                     Submit
                   </Button>
-                )}
+                </div>
               </div>
-            </div>
-          </Card>
-        ))}
-      </div>
+            </Card>
+          ))}
+          {homework.length === 0 && (
+            <EmptyState
+              icon={CheckSquare}
+              title="No assignments"
+              description="You have no pending homework assignments."
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

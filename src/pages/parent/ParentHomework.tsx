@@ -33,10 +33,10 @@ export default function ParentHomework({ user, selectedStudent }: ParentHomework
           where('classId', '==', selectedStudent.classId),
           orderBy('dueDate', 'desc')
         );
-        const snap = await getDocs(q);
+        const snap = await getDocs(q).catch(err => { handleFirestoreError(err, OperationType.LIST, 'homework'); throw err; });
         setHomework(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Homework)));
       } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, 'homework');
+        console.error('Error fetching parent homework data:', err);
       } finally {
         setLoading(false);
       }

@@ -3,12 +3,28 @@ import { collection, query, where, onSnapshot, limit, orderBy } from 'firebase/f
 
 export async function requestNotificationPermission() {
   if (!('Notification' in window)) {
-    console.log('This browser does not support notifications.');
+    console.warn('This browser does not support notifications.');
     return false;
   }
 
-  const permission = await Notification.requestPermission();
-  return permission === 'granted';
+  console.log('Current notification permission:', Notification.permission);
+  
+  if (Notification.permission === 'granted') {
+    return true;
+  }
+
+  if (Notification.permission === 'denied') {
+    return false;
+  }
+
+  try {
+    const permission = await Notification.requestPermission();
+    console.log('Notification permission result:', permission);
+    return permission === 'granted';
+  } catch (error) {
+    console.error('Error requesting notification permission:', error);
+    return false;
+  }
 }
 
 export function showLocalNotification(title: string, options?: NotificationOptions) {

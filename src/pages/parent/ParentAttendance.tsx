@@ -37,10 +37,10 @@ export default function ParentAttendance({ user, selectedStudent }: ParentAttend
           where('studentId', '==', selectedStudent.id),
           orderBy('date', 'desc')
         );
-        const snap = await getDocs(q);
+        const snap = await getDocs(q).catch(err => { handleFirestoreError(err, OperationType.LIST, 'attendance'); throw err; });
         setAttendance(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Attendance)));
       } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, 'attendance');
+        console.error('Error fetching parent attendance data:', err);
       } finally {
         setLoading(false);
       }

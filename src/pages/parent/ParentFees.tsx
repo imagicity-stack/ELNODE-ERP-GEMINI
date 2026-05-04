@@ -41,15 +41,18 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
     if (!selectedStudent?.id) return;
     setLoading(true);
     try {
+      const requestsQuery = query(collection(db, 'feeRequests'), where('studentId', '==', selectedStudent.id));
+      const paymentsQuery = query(collection(db, 'feePayments'), where('studentId', '==', selectedStudent.id), orderBy('date', 'desc'));
+
       const [requestsSnap, paymentsSnap] = await Promise.all([
-        getDocs(query(collection(db, 'feeRequests'), where('studentId', '==', selectedStudent.id))),
-        getDocs(query(collection(db, 'feePayments'), where('studentId', '==', selectedStudent.id), orderBy('date', 'desc')))
+        getDocs(requestsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feeRequests'); throw err; }),
+        getDocs(paymentsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feePayments'); throw err; })
       ]);
 
       setFeeRequests(requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
       setPayments(paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeePayment)));
     } catch (err) {
-      handleFirestoreError(err, OperationType.LIST, 'feeRequests');
+      console.error('Error fetching parent fee data:', err);
     } finally {
       setLoading(false);
     }
