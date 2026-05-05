@@ -27,11 +27,9 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('[App] Auth state changed, firebaseUser:', firebaseUser?.email || 'none', 'Loading:', loading);
       setLoading(true);
       if (firebaseUser) {
         try {
-          console.log('Auth state changed: User logged in', firebaseUser.email, firebaseUser.uid);
           
           // Use a retry mechanism with timeout for the initial profile fetch
           const fetchProfileWithRetry = async (retries = 3): Promise<any> => {
@@ -55,31 +53,11 @@ export default function App() {
           try {
             userDoc = await fetchProfileWithRetry();
           } catch (fetchErr) {
-            console.error('Final profile fetch failed:', fetchErr);
-            // Fallback for imagicityart@gmail.com and deweshkk@gmail.com to ensure login works 
-            // even if Firestore is being flaky during profile fetch
-            const userEmail = firebaseUser.email?.toLowerCase();
-            const superAdminEmails = ['imagicityart@gmail.com', 'deweshkk@gmail.com'];
-            
-            if (userEmail && superAdminEmails.includes(userEmail)) {
-              console.log('Using recovery profile for super admin due to fetch failure');
-              const recoveryAdmin: UserProfile = {
-                uid: firebaseUser.uid,
-                email: userEmail,
-                name: firebaseUser.displayName || 'Super Admin',
-                role: 'super_admin',
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-              };
-              setUser(recoveryAdmin);
-              setLoading(false);
-              return;
-            }
+            console.error('Final profile fetch failed after retries');
             throw fetchErr;
           }
           
           if (userDoc && userDoc.exists()) {
-            console.log('User profile found by UID');
             const existingUser = userDoc.data() as UserProfile;
             let updatedUser = { ...existingUser };
             let needsUpdate = false;
@@ -105,7 +83,6 @@ export default function App() {
             }
 
             if (needsUpdate) {
-              console.log('Self-healing profile found by UID...');
               updatedUser.updatedAt = new Date().toISOString();
               await setDoc(doc(db, 'users', firebaseUser.uid), updatedUser, { merge: true });
               setUser(updatedUser);
@@ -113,7 +90,6 @@ export default function App() {
               setUser(existingUser);
             }
           } else {
-            console.log('User profile not found by UID, searching by email...', firebaseUser.email);
             
             // 2. Try searching by email in case of UID mismatch
             if (firebaseUser.email) {
@@ -145,7 +121,6 @@ export default function App() {
               const existingUser = await findExistingUser();
               
               if (existingUser) {
-                console.log('User profile found by email search. Linking to new UID:', firebaseUser.uid);
                 
                 // Create a new user doc with current UID to ensure rules work
                 const newUser: UserProfile = {
@@ -174,33 +149,13 @@ export default function App() {
                 
                 try {
                   await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
-                  console.log('Successfully linked profile to new UID');
                   setUser(newUser);
                 } catch (setErr) {
                   console.error('Error linking profile to new UID:', setErr);
                   setUser(existingUser);
                 }
               } else {
-                console.log('No existing profile found for email alternatives:', emailsToTry);
-                
-                // 3. Auto-create super admin if email matches
-                const userEmailLower = firebaseUser.email.toLowerCase();
-                const superAdminEmails = ['imagicityart@gmail.com', 'deweshkk@gmail.com'];
-                if (superAdminEmails.includes(userEmailLower)) {
-                  console.log('Auto-creating super admin profile...');
-                  const newAdmin: UserProfile = {
-                    uid: firebaseUser.uid,
-                    email: userEmailLower,
-                    name: firebaseUser.displayName || 'Super Admin',
-                    role: 'super_admin',
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                  };
-                  await setDoc(doc(db, 'users', firebaseUser.uid), newAdmin);
-                  setUser(newAdmin);
-                } else {
-                  setUser(null);
-                }
+                setUser(null);
               }
             } else {
               setUser(null);
@@ -211,7 +166,6 @@ export default function App() {
           setUser(null);
         }
       } else {
-        console.log('Auth state changed: User logged out');
         setUser(null);
       }
       setLoading(false);

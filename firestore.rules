@@ -6,17 +6,14 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Check if user document exists and has a specific role
     function hasRole(roles) {
-      return isSignedIn() && 
+      return isSignedIn() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in roles;
     }
 
-    // Robust check for Super Admin emails - skip if email is missing
     function isSuperAdminByEmail() {
       return isSignedIn() && (
-        request.auth.token.get('email', '').lower() in ["imagicityart@gmail.com", "deweshkk@gmail.com"] ||
         request.auth.uid in ["Sev825sC9HSFIBUlYN3SGIWHMss1", "8uTs7freEPaiVtywgpg5G9in4JF2"]
       );
     }
@@ -29,7 +26,6 @@ service cloud.firestore {
       return hasRole(['principal', 'office_staff']);
     }
 
-    // Combined Administrative access (Admin + Principal)
     function isAnyAdmin() {
       return isAdmin() || isAcademicAdmin();
     }
@@ -41,13 +37,8 @@ service cloud.firestore {
     function isPrincipal() { return hasRole(['principal']); }
     function isOfficeStaff() { return hasRole(['office_staff']); }
 
-    function isVerified() {
-      // Relaxed for now as requested by user or to avoid verification friction
-      return isSignedIn();
-    }
-
     function isLinkedToStudent(studentId) {
-      return isSignedIn() && 
+      return isSignedIn() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentId', '') == studentId ||
                studentId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentIds', [])
@@ -63,10 +54,23 @@ service cloud.firestore {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
       allow list: if isAnyAdmin();
       allow create: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
-      allow update: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
+
+      // Users can update their own profile but CANNOT change role, studentId, or studentIds.
+      // Only admins can change privileged fields.
+      allow update: if isSignedIn() && (
+        (
+          request.auth.uid == userId &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.get('studentId', '') == resource.data.get('studentId', '') &&
+          request.resource.data.get('studentIds', []) == resource.data.get('studentIds', [])
+        ) ||
+        isAnyAdmin()
+      );
+
+      allow delete: if isAdmin();
     }
 
-    // Academic Data - Allow authenticated read for everyone
+    // Academic Data - readable by all authenticated school members
     match /classes/{id} {
       allow read: if isSignedIn();
       allow write: if isAnyAdmin();
@@ -88,28 +92,28 @@ service cloud.firestore {
       allow write: if isAnyAdmin();
     }
 
-    // Notices - Simplified to allow listing if signed in
+    // Notices
     match /notices/{noticeId} {
       allow read: if isSignedIn();
       allow write: if isAnyAdmin();
     }
 
-    // Students
+    // Students — list is restricted; students/parents should not enumerate the full roster
     match /students/{studentId} {
       allow get: if isSignedIn() && (
         isAnyAdmin() || isTeacher() || isAccountant() ||
         isLinkedToStudent(studentId)
       );
-      allow list: if isSignedIn();
+      allow list: if isAnyAdmin() || isTeacher() || isAccountant();
       allow create: if isSignedIn() && (isAnyAdmin() || isAccountant());
       allow update: if isSignedIn() && (isAnyAdmin() || isAccountant() || (
-        isLinkedToStudent(studentId) && 
+        isLinkedToStudent(studentId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feeStatus', 'updatedAt', 'fcmTokens', 'lastLogin'])
       ));
       allow delete: if isAdmin();
     }
 
-    // Teachers
+    // Teachers — readable by school staff and students (needed for timetable display)
     match /teachers/{teacherId} {
       allow read: if isSignedIn();
       allow write: if isAnyAdmin();
@@ -117,20 +121,28 @@ service cloud.firestore {
 
     // Staff
     match /staff/{staffId} {
-      allow read: if isSignedIn();
+      allow read: if isAnyAdmin() || isTeacher();
       allow write: if isAnyAdmin();
     }
 
     // Attendance
     match /attendance/{attendanceId} {
-      allow read: if isSignedIn(); // Simplified read for now to fix multi-user bottlenecks
+      allow get: if isSignedIn() && (
+        isAnyAdmin() || isTeacher() ||
+        isLinkedToStudent(resource.data.get('studentId', ''))
+      );
+      allow list: if isAnyAdmin() || isTeacher() || isParent() || isStudent();
       allow create, update: if isSignedIn() && (isAnyAdmin() || isTeacher());
       allow delete: if isAnyAdmin();
     }
 
     // Exam Results
     match /examResults/{resultId} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn() && (
+        isAnyAdmin() || isTeacher() ||
+        isLinkedToStudent(resource.data.get('studentId', ''))
+      );
+      allow list: if isAnyAdmin() || isTeacher() || isParent() || isStudent();
       allow create, update, delete: if isSignedIn() && (isAnyAdmin() || isTeacher());
     }
 
@@ -140,28 +152,45 @@ service cloud.firestore {
       allow write: if isSignedIn() && (isAnyAdmin() || isTeacher());
     }
 
-    // Events, Fees
+    // Events
     match /events/{eventId} {
       allow read: if isSignedIn();
       allow write: if isAnyAdmin();
     }
+
+    // Fee structures — readable by admin, accountant, and linked families
     match /fees/{feeId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin() || isAccountant() || isParent() || isStudent();
       allow write: if isAdmin() || isAccountant();
     }
+
     match /feePayments/{paymentId} {
-      allow read: if isSignedIn() && (
+      allow get: if isSignedIn() && (
         isAdmin() || isAccountant() ||
-        (resource.data.get('studentId', '') != '' && isLinkedToStudent(resource.data.studentId))
+        isLinkedToStudent(resource.data.get('studentId', ''))
       );
+      allow list: if isAdmin() || isAccountant() || isParent() || isStudent();
       allow create: if isSignedIn() && (isAdmin() || isAccountant() || (
         isLinkedToStudent(request.resource.data.studentId) &&
-        request.resource.data.method == 'online'
+        request.resource.data.method == 'online' &&
+        request.resource.data.amount is number &&
+        request.resource.data.amount > 0 &&
+        request.resource.data.amount <= 1000000 &&
+        request.resource.data.studentId is string &&
+        request.resource.data.feeRequestId is string &&
+        // Verify feeRequest belongs to this student
+        exists(/databases/$(database)/documents/feeRequests/$(request.resource.data.feeRequestId)) &&
+        get(/databases/$(database)/documents/feeRequests/$(request.resource.data.feeRequestId)).data.studentId == request.resource.data.studentId
       ));
       allow delete: if isAdmin();
     }
+
     match /feeRequests/{requestId} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn() && (
+        isAdmin() || isAccountant() ||
+        isLinkedToStudent(resource.data.get('studentId', ''))
+      );
+      allow list: if isAdmin() || isAccountant() || isParent() || isStudent();
       allow create: if isAdmin() || isAccountant();
       allow update: if isAdmin() || isAccountant() || (
         isLinkedToStudent(resource.data.studentId) &&
@@ -170,8 +199,9 @@ service cloud.firestore {
       allow delete: if isAdmin() || isAccountant();
     }
 
+    // Activity logs — only admins should audit logs; clients still write their own entries
     match /activityLogs/{id} {
-      allow read: if isSignedIn();
+      allow read: if isAnyAdmin();
       allow create: if isSignedIn();
     }
 
@@ -180,11 +210,11 @@ service cloud.firestore {
     match /exams/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin() || isTeacher(); }
     match /salaries/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin(); }
     match /expenses/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
-    match /payroll-config/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
-    match /fine-config/{id} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /payroll-config/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin(); }
+    match /fine-config/{id} { allow read: if isAdmin() || isAccountant() || isParent() || isStudent(); allow write: if isAdmin(); }
     match /feeStructures/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
     match /feeHeads/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
-    
+
     // Study Materials
     match /studyMaterials/{id} {
       allow read: if isSignedIn();
@@ -219,32 +249,29 @@ service cloud.firestore {
         resource.data.studentId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('studentId', '')
       );
 
-      allow create: if isSignedIn() && 
+      allow create: if isSignedIn() &&
         (isLinkedToStudent(request.resource.data.studentId) || isAnyAdmin()) &&
         isValidLeave(request.resource.data) &&
         request.resource.data.status == 'submitted' &&
         request.resource.data.parentId == request.auth.uid;
 
       allow update: if isSignedIn() && (
-        // Admin/Principal can update status and remarks
-        (isAnyAdmin() && 
+        (isAnyAdmin() &&
          isValidLeave(request.resource.data) &&
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'adminRemarks', 'updatedAt', 'processedBy', 'processedAt', 'attendanceConnectionStatus'])
         ) ||
-        // Parents can cancel if pending
-        (resource.data.parentId == request.auth.uid && 
+        (resource.data.parentId == request.auth.uid &&
          resource.data.status in ['submitted', 'pending'] &&
          request.resource.data.status == 'cancelled' &&
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
         ) ||
-        // Parents can add document if required
-        (resource.data.parentId == request.auth.uid && 
+        (resource.data.parentId == request.auth.uid &&
          resource.data.status == 'document_required' &&
          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['documentUrl', 'documentName', 'status', 'updatedAt']) ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['documentUrl', 'documentName', 'updatedAt']))
         )
       );
-      
+
       allow delete: if isSignedIn() && (
         isAnyAdmin() ||
         (resource.data.parentId == request.auth.uid && resource.data.status in ['submitted', 'pending'])
@@ -263,7 +290,7 @@ service cloud.firestore {
       allow write: if isSuperAdminByEmail();
     }
 
-    // Safety fallback
+    // Safety fallback — deny everything not explicitly matched above
     match /{document=**} {
       allow read, write: if false;
     }
