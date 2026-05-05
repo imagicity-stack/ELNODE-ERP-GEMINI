@@ -13,7 +13,7 @@ RUN npm ci
 # Copy the rest of the application
 COPY . .
 
-# Build the Vite application and compile server.ts to dist/server.js
+# Build the Vite application
 RUN npm run build
 
 # Expose the Cloud Run default port
