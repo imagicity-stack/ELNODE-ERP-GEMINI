@@ -3,6 +3,7 @@ import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, where } fr
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { Notice, UserRole, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
+import DOMPurify from 'dompurify';
 import {
   Plus,
   Bell,
