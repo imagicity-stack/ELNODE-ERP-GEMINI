@@ -7,6 +7,7 @@ import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
+import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -35,6 +36,7 @@ interface FeeCollectionProps {
 }
 
 export default function FeeCollection({ user }: FeeCollectionProps) {
+  const { classesMap: classesGlobal } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('all');
   const [students, setStudents] = useState<Student[]>([]);
@@ -122,7 +124,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     const request = feeRequests.find(r => r.id === payment.feeRequestId);
     const student = students.find(s => s.id === payment.studentId);
     if (request && student) {
-      generateFeeReceipt(payment, request, student);
+      const clsName = classesGlobal[student.classId] || student.classId;
+      generateFeeReceipt(payment, request, student, clsName);
     } else {
       showToast('Could not find fee request or student details for this payment.', 'error');
     }

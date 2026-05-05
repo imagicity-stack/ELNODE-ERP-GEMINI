@@ -8,6 +8,7 @@ import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
+import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -36,6 +37,7 @@ declare global {
 }
 
 export default function StudentFees({ user }: StudentFeesProps) {
+  const { classesMap: classes } = useData();
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [student, setStudent] = useState<Student | null>(null);
@@ -88,7 +90,8 @@ export default function StudentFees({ user }: StudentFeesProps) {
   const handleDownloadReceipt = (payment: FeePayment) => {
     const request = feeRequests.find(r => r.id === payment.feeRequestId);
     if (request && student) {
-      generateFeeReceipt(payment, request, student);
+      const clsName = classes[student.classId] || student.classId;
+      generateFeeReceipt(payment, request, student, clsName);
     } else {
       alert('Could not find fee request details for this payment.');
     }

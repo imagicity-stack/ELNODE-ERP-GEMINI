@@ -89,7 +89,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
   const getClassName = (id: string) => {
     const cls = classes.find(c => c.id === id);
-    return cls ? `Class ${cls.name}` : id;
+    return cls ? cls.name : id;
   };
 
   const generateSchoolNumber = () => {
@@ -336,7 +336,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     const basicInfo = [
       ["Name", student.name],
       ["Admission / School No.", student.admissionNumber],
-      ["Class & Section", `${student.classId} - ${student.section}`],
+      ["Class & Section", `${getClassName(student.classId)} - ${student.section}`],
       ["House", student.houseId || "N/A"],
       ["Fee Status", student.feeStatus.toUpperCase()]
     ];
@@ -578,12 +578,12 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                     <div>
                       <span className="font-semibold text-slate-900 block">{student.name}</span>
                       <span className="text-[10px] text-slate-400 sm:hidden">{student.admissionNumber}</span>
-                      <span className="text-[10px] text-slate-400 md:hidden block">Class {student.classId}</span>
+                      <span className="text-[10px] text-slate-400 md:hidden block">Class {getClassName(student.classId)}</span>
                     </div>
                   </div>
                 </Td>
                 <Td className="hidden sm:table-cell"><span className="font-mono text-slate-600">{student.admissionNumber}</span></Td>
-                <Td className="hidden md:table-cell text-slate-600">{getClassName(student.classId)} {student.section && `- ${student.section}`}</Td>
+                <Td className="hidden md:table-cell text-slate-600">Class {getClassName(student.classId)} {student.section && `- ${student.section}`}</Td>
                 <Td className="hidden lg:table-cell">
                   <div className="space-y-0.5">
                     <p className="text-sm font-medium text-slate-900">{student.parentDetails?.fatherName || 'N/A'}</p>

@@ -43,6 +43,7 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [recentAdmissions, setRecentAdmissions] = useState<any[]>([]);
+  const [classesList, setClassesList] = useState<any[]>([]);
   const [counts, setCounts] = useState({ students: 0, teachers: 0, classes: 0, feeCollection: 0 });
   const [attendanceStats, setAttendanceStats] = useState([
     { name: 'Mon', students: 0, staff: 0 },
@@ -73,6 +74,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           getDocs(query(collection(db, 'attendance'), where('date', '==', today)))
         ]);
 
+        setClassesList(classesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         const students = studentsSnap.docs.map(d => d.data());
         const boys = students.filter(s => s.gender === 'male' || s.gender === 'Boy').length;
         const girls = students.filter(s => s.gender === 'female' || s.gender === 'Girl').length;
@@ -295,7 +297,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                         <span className="font-semibold text-slate-900">{s.name}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-slate-500">{s.classId} {s.section && `- ${s.section}`}</td>
+                    <td className="px-6 py-4 text-slate-500">{classesList.find(c => c.id === s.classId)?.name || s.classId} {s.section && `- ${s.section}`}</td>
                     <td className="px-6 py-4 text-slate-500">{s.createdAt ? new Date(s.createdAt).toLocaleDateString() : 'N/A'}</td>
                     <td className="px-6 py-4">
                       <Badge variant={s.feeStatus === 'paid' ? 'success' : 'warning'} dot>

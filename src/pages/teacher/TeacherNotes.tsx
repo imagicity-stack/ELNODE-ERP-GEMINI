@@ -5,6 +5,7 @@ import { collection, addDoc, getDocs, query, where, orderBy, doc, deleteDoc, get
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
+import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -42,6 +43,7 @@ interface TeacherNotesProps {
 }
 
 export default function TeacherNotes({ user }: TeacherNotesProps) {
+  const { classesMap, subjectsMap } = useData();
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -247,7 +249,7 @@ export default function TeacherNotes({ user }: TeacherNotesProps) {
                 {item.title}
               </h4>
               <p className="text-xs text-slate-500 mb-2">
-                Class {item.classId} • {subjects.find(s => s.id === item.subjectId)?.name || item.subjectId}
+                Class {classesMap[item.classId] || item.classId} • {subjectsMap[item.subjectId] || item.subjectId}
               </p>
               
               {item.description && (
@@ -306,7 +308,7 @@ export default function TeacherNotes({ user }: TeacherNotesProps) {
               >
                 <option value="">Select Class</option>
                 {teacherData?.classes?.map(cls => (
-                  <option key={cls} value={cls}>Class {cls}</option>
+                  <option key={cls} value={cls}>Class {classesMap[cls] || cls}</option>
                 ))}
               </Select>
             </FormField>

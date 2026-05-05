@@ -31,3 +31,9 @@ export function parseFirestoreTimestamp(timestamp: any): Date {
   
   return new Date();
 }
+
+export function getClassName(classId: string | undefined, classes: any[]) {
+  if (!classId) return 'N/A';
+  const cls = classes.find(c => c.id === classId || c.name === classId);
+  return cls ? cls.name : classId;
+}

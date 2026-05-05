@@ -4,31 +4,22 @@ import { getStorage } from 'firebase/storage';
 import { 
   getFirestore, 
   doc, 
-  getDocFromServer, 
-  enableIndexedDbPersistence,
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager
+  getDocFromServer
 } from 'firebase/firestore';
 
 // Import the Firebase configuration
 import firebaseConfigImport from '../firebase-applet-config.json';
 export const firebaseConfig = firebaseConfigImport;
 
-// Initialize Firebase SDK
-const app = initializeApp(firebaseConfigImport);
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 
-// Use initializeFirestore to configure experimentalForceLongPolling for better cross-network compatibility
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-  experimentalForceLongPolling: true, // This helps in environments where WebSockets/gRPC might be blocked
-}, firebaseConfig.firestoreDatabaseId || "(default)");
-
+// Direct connection to Firestore
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const storage = getStorage(app);
-
 export const auth = getAuth();
 
-// Error Handling Spec for Firestore Operations
+// Required Error Handling for Firestore Operations
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -42,36 +33,35 @@ export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+  }
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: errorMessage,
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+    },
     operationType,
-    path,
+    path
   };
-  // Log sanitised info — never include user PII (uid, email) in logs or thrown messages
-  const isLoggedIn = auth.currentUser != null;
-  console.error('Firestore Error:', operationType, path, '| authenticated:', isLoggedIn, '| message:', errorMessage);
-  throw new Error(`Firestore ${operationType} failed${path ? ` on ${path}` : ''}`);
+  console.error('Firestore Error:', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
-// Validate Connection to Firestore with a slight delay to allow setup
+// Simple connection test
 async function testConnection() {
-  if (typeof window === 'undefined') return;
-  
-  // Wait 2 seconds before checking to allow the SDK to initialize
-  setTimeout(async () => {
-    try {
-      await getDocFromServer(doc(db, 'test', 'connection'));
-      console.log("Firestore connection test successful.");
-    } catch (error) {
-      if (error instanceof Error && (error.message.includes('the client is offline') || error.message.includes('Backend didn\'t respond'))) {
-        console.warn("Firestore is operating in offline mode. This is normal if you have a slow connection.");
-      }
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration.");
     }
-  }, 2000);
+  }
 }
 
 testConnection();

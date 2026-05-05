@@ -7,6 +7,7 @@ import { db, storage, handleFirestoreError, OperationType } from '../../firebase
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import { cn } from '../../lib/utils';
+import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   StatCard,
@@ -35,6 +36,7 @@ interface HomeworkManagementProps {
 }
 
 export default function HomeworkManagement({ user }: HomeworkManagementProps) {
+  const { classesMap, subjectsMap } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [homework, setHomework] = useState<Homework[]>([]);
@@ -159,7 +161,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
         user,
         'Homework Assigned',
         'Teachers',
-        `Assigned homework to Class ${formData.classId} for ${formData.subjectId}`,
+        `Assigned homework to Class ${classesMap[formData.classId] || formData.classId} for ${subjectsMap[formData.subjectId] || formData.subjectId}`,
         { 
           classId: formData.classId, 
           subjectId: formData.subjectId,
@@ -189,8 +191,8 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
 
   const filteredHomework = homework.filter(hw =>
     hw.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    hw.classId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    hw.subjectId.toLowerCase().includes(searchTerm.toLowerCase())
+    (classesMap[hw.classId] || hw.classId).toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (subjectsMap[hw.subjectId] || hw.subjectId).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const stats = {
@@ -266,7 +268,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
-                        {hw.subjectId.charAt(0)}
+                        {(subjectsMap[hw.subjectId] || hw.subjectId).charAt(0)}
                       </div>
                       <span className="font-bold text-slate-900 line-clamp-1">{hw.content}</span>
                     </div>
@@ -283,7 +285,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
                     )}
                   </div>
                 </Td>
-                <Td className="text-slate-600">{hw.classId} &bull; {hw.subjectId}</Td>
+                <Td className="text-slate-600">{classesMap[hw.classId] || hw.classId} &bull; {subjectsMap[hw.subjectId] || hw.subjectId}</Td>
                 <Td className="text-slate-600">{new Date(hw.dueDate).toLocaleDateString()}</Td>
                 <Td className="font-bold text-slate-900">{hw.submissions?.length || 0}</Td>
                 <Td>
@@ -337,7 +339,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
                 onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
               >
                 {teacherData?.classes?.map(cls => (
-                  <option key={cls} value={cls}>{cls}</option>
+                  <option key={cls} value={cls}>{classesMap[cls] || cls}</option>
                 ))}
               </Select>
             </FormField>
@@ -347,7 +349,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
                 onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
               >
                 {teacherData?.subjects?.map(sub => (
-                  <option key={sub} value={sub}>{sub}</option>
+                  <option key={sub} value={sub}>{subjectsMap[sub] || sub}</option>
                 ))}
               </Select>
             </FormField>

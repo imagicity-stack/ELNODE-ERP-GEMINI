@@ -11,6 +11,7 @@ import { cn } from '../../lib/utils';
 import { motion } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -25,6 +26,7 @@ interface ResultViewProps {
 }
 
 export default function ResultView({ student }: ResultViewProps) {
+  const { classesMap: classes } = useData();
   const [results, setResults] = useState<ExamResult[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -78,7 +80,7 @@ export default function ResultView({ student }: ResultViewProps) {
     doc.setFontSize(10);
     doc.setTextColor(0);
     doc.text(`Student Name: ${student.name}`, 20, 45);
-    doc.text(`Class: ${student.classId} - ${student.section}`, 20, 52);
+    doc.text(`Class: ${classes[student.classId] || student.classId} ${student.section ? `- ${student.section}` : ''}`, 20, 52);
     doc.text(`Admission No: ${student.admissionNumber}`, 20, 59);
     doc.text(`Exam: ${exam.name} (${exam.term})`, 120, 45);
     doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, 52);

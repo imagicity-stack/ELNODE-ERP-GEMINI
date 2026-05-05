@@ -32,12 +32,14 @@ import {
   TrendingUp,
   Shield,
   ShieldCheck,
+  RefreshCw,
   History as HistoryIcon,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserRole, UserProfile } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { Button } from './ui';
 import { requestNotificationPermission, startNotificationListeners } from '../services/notificationService';
 import { useToast } from './Toast';
 import { usePermissions } from '../hooks/usePermissions';
@@ -123,7 +125,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   // Overview first for all roles
-  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['super_admin', 'accounts', 'teacher', 'student', 'parent', 'principal', 'office_staff'], section: 'Overview', moduleId: 'dashboard' },
+  { label: 'Dashboard', icon: LayoutDashboard, path: '', roles: ['super_admin', 'accounts', 'teacher', 'student', 'parent', 'principal', 'office_staff'], section: 'Overview' },
 
   // Admin People
   { label: 'Students', icon: Users, path: '/students', roles: ['super_admin', 'principal', 'office_staff'], section: 'People', moduleId: 'students' },
@@ -494,6 +496,18 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
             </button>
 
             <div className="h-7 w-px bg-slate-100 mx-1" />
+
+            <Button 
+              variant="secondary" 
+              size="xs" 
+              icon={RefreshCw}
+              className="bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hidden sm:flex"
+              onClick={() => window.location.reload()}
+            >
+              Update
+            </Button>
+
+            <div className="h-7 w-px bg-slate-100 mx-1 hidden sm:block" />
 
             {/* User info */}
             <div className="flex items-center gap-3">

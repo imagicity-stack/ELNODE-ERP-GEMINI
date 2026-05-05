@@ -12,7 +12,8 @@ import {
   CreditCard,
   BookOpen,
   Calendar,
-  User
+  User,
+  RefreshCw
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -170,7 +171,22 @@ export default function UpdatesSection({ user, className, maxItems = 10 }: Updat
           </div>
           <h2 className="text-lg font-bold text-slate-900">Recent Updates</h2>
         </div>
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded-md">Live feed</span>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => {
+              setLoading(true);
+              setTimeout(() => setLoading(false), 500);
+            }}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition-all group"
+            title="Update Feed"
+          >
+            <motion.div whileTap={{ rotate: 180 }}>
+              <RefreshCw className="w-3.5 h-3.5" />
+            </motion.div>
+            <span className="text-xs font-semibold">Update</span>
+          </button>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded-md">Live feed</span>
+        </div>
       </div>
 
       <div className="space-y-1">

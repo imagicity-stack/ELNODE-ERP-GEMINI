@@ -3,6 +3,7 @@ import { BookOpen, Users, Clock, Award, GraduationCap } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -17,6 +18,7 @@ interface ParentSubjectsProps {
 }
 
 export default function ParentSubjects({ user, selectedStudent }: ParentSubjectsProps) {
+  const { classesMap: classes } = useData();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -84,7 +86,7 @@ export default function ParentSubjects({ user, selectedStudent }: ParentSubjects
     <div className="space-y-8">
       <PageHeader
         title="Academic Subjects"
-        subtitle={`Viewing subjects assigned to Class ${selectedStudent.classId} for ${selectedStudent.name}`}
+        subtitle={`Viewing subjects assigned to Class ${classes[selectedStudent.classId] || selectedStudent.classId} for ${selectedStudent.name}`}
         icon={BookOpen}
         iconColor="gradient-violet"
         actions={
@@ -114,7 +116,7 @@ export default function ParentSubjects({ user, selectedStudent }: ParentSubjects
               <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-slate-400 font-medium tracking-tight">
                   <GraduationCap className="w-3.5 h-3.5" />
-                  Grade {selectedStudent.classId}
+                  Grade {classes[selectedStudent.classId] || selectedStudent.classId}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
                   <Award className="w-3.5 h-3.5" />

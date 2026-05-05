@@ -217,7 +217,7 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
                   }}
                   className="w-full flex items-center justify-between p-2.5 bg-slate-50 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition-all text-xs font-bold text-slate-700"
                 >
-                  Class {classId}
+                  Class {classes.find(c => c.id === classId)?.name || classId}
                   <ChevronRight className="w-4 h-4" />
                 </button>
               ))}

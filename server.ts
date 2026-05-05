@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 import Razorpay from "razorpay";
@@ -35,39 +34,26 @@ if (missing.length) {
 
 // ── Firebase Admin ────────────────────────────────────────────────────────────
 const projectId = process.env.FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId || process.env.VITE_FIREBASE_PROJECT_ID;
-const databaseId = process.env.FIREBASE_DATABASE_ID || firebaseAppletConfig.firestoreDatabaseId || process.env.VITE_FIREBASE_DATABASE_ID || "(default)";
+const databaseId = process.env.FIREBASE_DATABASE_ID || firebaseAppletConfig.firestoreDatabaseId || process.env.VITE_FIREBASE_DATABASE_ID;
 
 let adminApp: App;
 try {
   if (getApps().length === 0) {
     const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (serviceAccountJson) {
-      const serviceAccount = JSON.parse(serviceAccountJson);
-      adminApp = initializeApp({
-        credential: cert(serviceAccount),
-        projectId: projectId,
-      });
-    } else {
-      // Application Default Credentials (works on Google Cloud Run automatically)
-      adminApp = initializeApp({
-        credential: applicationDefault(),
-        projectId: projectId,
-      });
-    }
+    adminApp = initializeApp({
+      credential: serviceAccountJson ? cert(JSON.parse(serviceAccountJson)) : applicationDefault(),
+      projectId: projectId,
+    });
   } else {
     adminApp = getApp();
   }
 } catch (e) {
-  console.error("[server] FATAL: Firebase Admin SDK initialization failed:", e);
-  process.exit(1);
+  console.error("[server] Firebase Admin SDK initialization failed:", e);
+  // Do not exit, allow server to run but API routes will fail with clear errors
 }
 
-const adminDb = getFirestore(adminApp);
-// Use non-default database if configured
-if (databaseId && databaseId !== "(default)") {
-  // @ts-ignore — setDatabaseId is available but not always in typings
-  adminDb.settings({ databaseId: databaseId });
-}
+// @ts-ignore - adminApp is used to get the specific firestore instance
+const adminDb = getFirestore(adminApp!, (databaseId && databaseId !== "(default)") ? databaseId : undefined);
 
 // ── Razorpay ──────────────────────────────────────────────────────────────────
 let razorpay: Razorpay | null = null;
@@ -399,6 +385,7 @@ app.post(
 // ── Vite / static serving ─────────────────────────────────────────────────────
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

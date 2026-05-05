@@ -1,5 +1,6 @@
 import { UserProfile, Subject } from '../../types';
 import { FileText, Download, Upload, Filter, BookOpen, MoreVertical, Clock } from 'lucide-react';
+import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -34,9 +35,9 @@ interface StudentNotesProps {
 }
 
 export default function StudentNotes({ user }: StudentNotesProps) {
+  const { subjectsMap } = useData();
   const [search, setSearch] = useState('');
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
 
@@ -47,7 +48,7 @@ export default function StudentNotes({ user }: StudentNotesProps) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch materials for the student's class
+      // Fetch materials for the student's class
       const q = query(
         collection(db, 'studyMaterials'),
         where('classId', '==', user.classId || ''),
@@ -56,11 +57,6 @@ export default function StudentNotes({ user }: StudentNotesProps) {
       const snap = await getDocs(q);
       const materialsList = snap.docs.map(d => ({ id: d.id, ...d.data() } as StudyMaterial));
       setMaterials(materialsList);
-
-      // 2. Fetch subjects to get names
-      const subSnap = await getDocs(collection(db, 'subjects'));
-      setSubjects(subSnap.docs.map(d => ({ id: d.id, ...d.data() } as Subject)));
-
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'studyMaterials');
     } finally {
@@ -80,7 +76,10 @@ export default function StudentNotes({ user }: StudentNotesProps) {
     return acc;
   }, {} as Record<string, number>);
 
-  const activeSubjects = subjects.filter(s => subjectCounts[s.id] > 0);
+  const activeSubjects = Object.keys(subjectCounts).map(id => ({
+    id,
+    name: subjectsMap[id] || id
+  }));
 
   return (
     <div className="space-y-8">
@@ -165,7 +164,7 @@ export default function StudentNotes({ user }: StudentNotesProps) {
                   </div>
                   <h4 className="font-bold text-slate-900 group-hover:text-emerald-600 transition-all mb-1">{note.title}</h4>
                   <p className="text-xs text-slate-500 mb-3">
-                    {subjects.find(s => s.id === note.subjectId)?.name || note.subjectId} • {new Date(note.createdAt).toLocaleDateString()}
+                    {subjectsMap[note.subjectId] || note.subjectId} • {new Date(note.createdAt).toLocaleDateString()}
                   </p>
                   
                   {note.description && (

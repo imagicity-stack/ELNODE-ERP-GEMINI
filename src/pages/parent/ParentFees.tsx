@@ -8,6 +8,7 @@ import { getIdToken } from 'firebase/auth';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
+import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -37,6 +38,7 @@ declare global {
 }
 
 export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
+  const { classesMap: classes } = useData();
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [fineConfig, setFineConfig] = useState<FineConfig | null>(null);
@@ -75,7 +77,8 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
   const handleDownloadReceipt = (payment: FeePayment) => {
     const request = feeRequests.find(r => r.id === payment.feeRequestId);
     if (request && selectedStudent) {
-      generateFeeReceipt(payment, request, selectedStudent);
+      const clsName = classes[selectedStudent.classId] || selectedStudent.classId;
+      generateFeeReceipt(payment, request, selectedStudent, clsName);
     } else {
       alert('Could not find fee request details for this payment.');
     }

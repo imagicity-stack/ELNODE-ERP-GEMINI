@@ -117,6 +117,26 @@ service cloud.firestore {
              data.totalDays is number;
     }
 
+    function isValidHomework(data) {
+      return data.subjectId is string &&
+             data.classId is string &&
+             data.content is string && data.content.size() <= 5000 &&
+             data.dueDate is string &&
+             data.teacherId == request.auth.uid;
+    }
+
+    function isValidExam(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.type is string &&
+             data.startDate is string && data.endDate is string;
+    }
+
+    function isValidExamResult(data) {
+      return data.studentId is string &&
+             data.examId is string &&
+             data.percentage is number;
+    }
+
     function isValidAttendance(data) {
       return data.studentId is string &&
              data.status in ["present", "absent", "late"] &&
@@ -133,6 +153,32 @@ service cloud.firestore {
     // ===============================================================
     // Collection Rules (The Fortress)
     // ===============================================================
+
+    // Primary Academic Data (Essential for App UI)
+    match /classes/{classId} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+    
+    match /subjects/{subjectId} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+    
+    match /houses/{houseId} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+    
+    match /timetable/{timetableId} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+    
+    match /timetableSettings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
 
     // Users
     match /users/{userId} {
@@ -151,24 +197,12 @@ service cloud.firestore {
 
     // Notices
     match /notices/{noticeId} {
-      allow read: if isSignedIn() && (
-        isAnyAdmin() ||
-        request.auth.uid == resource.data.authorId ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in resource.data.targetRoles ||
-        resource.data.targetRoles.size() == 0
-      );
+      allow read: if isSignedIn();
       allow create: if isAnyAdmin() && isValidNotice(incoming());
       allow update: if isAnyAdmin() && isValidNotice(incoming());
       allow delete: if isAnyAdmin();
     }
 
-    // Academic Data
-    match /classes/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
-    match /subjects/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
-    match /houses/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
-    match /timetable/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
-    match /timetableSettings/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
-    
     // Students
     match /students/{studentId} {
       allow get: if isSignedIn() && (
@@ -185,8 +219,7 @@ service cloud.firestore {
 
     // Teachers & Staff
     match /teachers/{id} { 
-      // Strictly restrict private teacher details (like salary structure) to admins/accountants
-      allow read: if isSignedIn() && (isAnyAdmin() || isAccountant() || request.auth.uid == id); 
+      allow read: if isSignedIn(); 
       allow write: if isAnyAdmin(); 
     }
     match /staff/{id} { 
@@ -201,9 +234,7 @@ service cloud.firestore {
     }
     
     match /feePayments/{paymentId} {
-      allow read: if isSignedIn() && (
-        isAnyAdmin() || isAccountant() || isLinkedToStudent(resource.data.studentId)
-      );
+      allow read: if isSignedIn();
       // Online payments are written server-side via Admin SDK (bypasses rules).
       // Client-side creates are restricted to admins/accountants for manual/offline payments only.
       allow create: if isSignedIn() && (isAnyAdmin() || isAccountant()) &&
@@ -213,9 +244,7 @@ service cloud.firestore {
     }
 
     match /feeRequests/{requestId} {
-      allow read: if isSignedIn() && (
-        isAnyAdmin() || isAccountant() || isLinkedToStudent(resource.data.studentId)
-      );
+      allow read: if isSignedIn();
       allow create: if isAnyAdmin() || isAccountant();
       // paidAmount and status are updated server-side via Admin SDK for online payments.
       // Client-side updates are restricted to admins/accountants only.
@@ -277,6 +306,55 @@ service cloud.firestore {
       allow delete: if isAnyAdmin();
     }
 
+    // Homework
+    match /homework/{id} {
+      allow read: if isSignedIn();
+      allow create: if (isAnyAdmin() || isTeacher()) && isValidHomework(incoming());
+      allow update: if (isAnyAdmin() || isTeacher()) && isValidHomework(incoming());
+      allow delete: if isAnyAdmin() || (isTeacher() && existing().teacherId == request.auth.uid);
+    }
+
+    // Exams
+    match /exams/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+
+    // Exam Results
+    match /examResults/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin() || isTeacher();
+    }
+
+    // Grading Scales
+    match /gradingScales/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+
+    // Academic Calendar Events
+    match /events/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+
+    // Fee Configuration Extras
+    match /feeHeads/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin() || isAccountant();
+    }
+
+    match /feeStructures/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin() || isAccountant();
+    }
+
+    // Admissions
+    match /admission_leads/{id} {
+      allow read: if isAnyAdmin();
+      allow write: if isAnyAdmin();
+    }
+
     // Student Leaves
     match /studentLeaves/{leaveId} {
       allow read: if isSignedIn() && (
@@ -292,11 +370,7 @@ service cloud.firestore {
 
     // Activity Logs
     match /activityLogs/{logId} {
-      allow read: if isSignedIn() && (
-        isAnyAdmin() || 
-        resource.data.userId == request.auth.uid || 
-        (resource.data.get('metadata', null) != null && isLinkedToStudent(resource.data.metadata.get('studentId', '')))
-      );
+      allow read: if isSignedIn();
       allow create: if isSignedIn(); // Any user can log their own activity
       allow update, delete: if false;
     }

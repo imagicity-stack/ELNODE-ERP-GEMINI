@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -30,6 +31,7 @@ interface StudentDashboardProps {
 }
 
 export default function StudentDashboard({ user }: StudentDashboardProps) {
+  const { classesMap: classes } = useData();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -103,7 +105,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
         actions={
           <div className="text-right hidden sm:block">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Current Class</p>
-            <p className="text-sm font-bold text-emerald-600">Class {user.classId || 'N/A'} - {user.section || 'N/A'}</p>
+            <p className="text-sm font-bold text-emerald-600">Class {classes[user.classId || ''] || user.classId || 'N/A'} {user.section && `- ${user.section}`}</p>
           </div>
         }
       />
