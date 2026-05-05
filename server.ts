@@ -1,5 +1,4 @@
 import express from "express";
-import type { Request, Response, NextFunction } from "express";
 import path from "path";
 import cors from "cors";
 import Razorpay from "razorpay";
@@ -11,6 +10,10 @@ import { initializeApp, cert, applicationDefault, getApp, getApps } from "fireba
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import fs from "fs";
+
+type Request = express.Request;
+type Response = express.Response;
+type NextFunction = express.NextFunction;
 
 dotenv.config();
 
