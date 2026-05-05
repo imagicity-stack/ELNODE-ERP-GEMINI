@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, LessonLog, Student, Class, Subject } from '../../types';
+import DOMPurify from 'dompurify';
 import { 
   BookOpen, 
   Calendar as CalendarIcon, 
@@ -30,7 +31,12 @@ interface LessonLogsProps {
 }
 
 export default function LessonLogs({ user, student }: LessonLogsProps) {
-  const { classesMap: classes, subjectsMap: subjects, teachersMap: teachers, students: globalStudents } = useData();
+  const { 
+    classesMap: classes, 
+    subjectsMap: subjects, 
+    teachersMap: teachers, 
+    teacherData 
+  } = useData();
   const [logs, setLogs] = useState<LessonLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<LessonLog | null>(null);
@@ -39,31 +45,55 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
     setLoading(true);
     try {
       let q;
+      const classTeacherId = teacherData?.classTeacherOf?.classId;
+
       if (student) {
         q = query(
           collection(db, 'lessonLogs'),
           where('classId', '==', student.classId),
-          orderBy('date', 'desc'),
-          limit(50)
+          limit(200)
         );
       } else if (user.role === 'teacher') {
-        q = query(
-          collection(db, 'lessonLogs'),
-          where('teacherId', '==', user.uid),
-          orderBy('date', 'desc'),
-          limit(50)
-        );
+        const tid = user.teacherId || user.uid;
+        // If they are a class teacher, show logs for their class
+        if (classTeacherId) {
+          console.log(`[LessonLogs] Class Teacher view for class: ${classTeacherId}`);
+          q = query(
+            collection(db, 'lessonLogs'),
+            where('classId', '==', classTeacherId),
+            limit(200)
+          );
+        } else {
+          console.log(`[LessonLogs] Subject Teacher view for: ${tid}`);
+          q = query(
+            collection(db, 'lessonLogs'),
+            where('teacherId', '==', tid),
+            limit(200)
+          );
+        }
       } else {
         // Admin/Super Admin/Principal see all
         q = query(
           collection(db, 'lessonLogs'),
-          orderBy('date', 'desc'),
-          limit(50)
+          limit(100)
         );
       }
       
       const snap = await getDocs(q);
-      setLogs(snap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) } as LessonLog)));
+      const fetchedLogs = snap.docs.map(doc => ({ id: doc.id, ...(doc.data() as object) } as LessonLog));
+      
+      // Client-side sorting to avoid missing composite index errors in Firestore
+      // Sorting by date (YYYY-MM-DD) and then by createdAt as fallback
+      const sortedLogs = fetchedLogs.sort((a, b) => {
+        const dateCompare = b.date.localeCompare(a.date);
+        if (dateCompare !== 0) return dateCompare;
+        
+        const timeA = a.createdAt || '';
+        const timeB = b.createdAt || '';
+        return timeB.localeCompare(timeA);
+      });
+
+      setLogs(sortedLogs);
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'lessonLogs');
     } finally {
@@ -73,7 +103,7 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
 
   useEffect(() => {
     fetchData();
-  }, [student?.id, user.uid]);
+  }, [student?.id, user.uid, teacherData?.classTeacherOf?.classId]);
 
   const handleDownload = (url: string, name: string) => {
     const link = document.createElement('a');
@@ -126,15 +156,17 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
                 <div className="space-y-3 flex-1">
                   <div className="flex items-start gap-2">
                     <div className="w-1 h-1 rounded-full bg-blue-500 mt-2 shrink-0"></div>
-                    <p className="text-sm text-slate-600 line-clamp-2">
-                      <span className="font-bold">CW:</span> {log.classwork || 'No classwork noted'}
-                    </p>
+                    <div className="text-sm text-slate-600 line-clamp-2">
+                      <span className="font-bold">CW:</span> 
+                      <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(log.classwork || 'No classwork noted') }} />
+                    </div>
                   </div>
                   <div className="flex items-start gap-2">
                     <div className="w-1 h-1 rounded-full bg-emerald-500 mt-2 shrink-0"></div>
-                    <p className="text-sm text-slate-600 line-clamp-2">
-                      <span className="font-bold">HW:</span> {log.homework || 'No homework assigned'}
-                    </p>
+                    <div className="text-sm text-slate-600 line-clamp-2">
+                      <span className="font-bold">HW:</span>
+                      <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(log.homework || 'No homework assigned') }} />
+                    </div>
                   </div>
                 </div>
 
@@ -183,9 +215,10 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
                   </div>
                   Classwork
                 </div>
-                <div className="bg-white border border-slate-100 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                  {selectedLog.classwork || 'No details provided.'}
-                </div>
+                <div 
+                  className="bg-white border border-slate-100 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed prose prose-slate prose-sm max-w-none"
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedLog.classwork || 'No details provided.') }}
+                />
                 {selectedLog.classworkFileUrl && (
                   <Button 
                     variant="secondary" 
@@ -206,9 +239,10 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
                   </div>
                   Homework
                 </div>
-                <div className="bg-white border border-slate-100 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                  {selectedLog.homework || 'No homework assigned.'}
-                </div>
+                <div 
+                  className="bg-white border border-slate-100 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed prose prose-slate prose-sm max-w-none"
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedLog.homework || 'No homework assigned.') }}
+                />
                 {selectedLog.homeworkFileUrl && (
                   <Button 
                     variant="secondary" 

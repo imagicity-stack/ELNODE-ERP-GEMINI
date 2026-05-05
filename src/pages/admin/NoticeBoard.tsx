@@ -204,7 +204,10 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
 
                 <div>
                   <h3 className="text-base font-bold text-slate-900 mb-1">{notice.title}</h3>
-                  <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">{notice.content}</p>
+                  <div 
+                    className="text-sm text-slate-600 leading-relaxed max-w-3xl prose prose-slate prose-sm"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(notice.content) }}
+                  />
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">

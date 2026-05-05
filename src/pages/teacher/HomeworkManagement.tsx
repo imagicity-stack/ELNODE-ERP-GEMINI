@@ -122,8 +122,13 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
       let attachmentName = '';
 
       if (attachment) {
-        attachmentUrl = await uploadFile(attachment);
-        attachmentName = attachment.name;
+        try {
+          attachmentUrl = await uploadFile(attachment);
+          attachmentName = attachment.name;
+        } catch (uploadErr: any) {
+          console.error("Homework upload failed:", uploadErr);
+          throw new Error(`Attachment upload failed: ${uploadErr.message}`);
+        }
       }
 
       const payload = {

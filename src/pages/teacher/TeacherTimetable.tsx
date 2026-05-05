@@ -169,7 +169,12 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
       }
 
       if (uploadPromises.length > 0) {
-        await Promise.all(uploadPromises);
+        try {
+          await Promise.all(uploadPromises);
+        } catch (uploadErr: any) {
+          console.error("Upload failed:", uploadErr);
+          throw new Error(`Upload failed: ${uploadErr.message || 'Check your internet or CORS settings'}`);
+        }
       }
 
       if (selectedPeriod.existingId) {
