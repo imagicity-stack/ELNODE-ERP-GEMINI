@@ -74,7 +74,7 @@ if (process.env.VITE_RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
 
 // ── Express app ───────────────────────────────────────────────────────────────
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 
 // Trust Proxy — REQUIRED for rate limiting to work behind Cloud Run/Nginx
 app.set("trust proxy", 1);

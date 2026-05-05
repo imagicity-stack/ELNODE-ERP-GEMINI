@@ -16,11 +16,11 @@ COPY . .
 # Build the Vite application
 RUN npm run build
 
-# Expose the Cloud Run default port
-EXPOSE 8080
+# Expose the internal container port
+EXPOSE 3000
 
 # Environment variables
-ENV PORT=8080
+ENV PORT=3000
 ENV NODE_ENV=production
 
 # Start the application
