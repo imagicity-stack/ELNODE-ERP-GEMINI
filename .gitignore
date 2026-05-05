@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+# Firebase client config — contains API keys and project IDs; keep out of source control
+firebase-applet-config.json

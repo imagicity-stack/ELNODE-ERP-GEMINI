@@ -27,11 +27,11 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('[App] Auth state changed, firebaseUser:', firebaseUser?.email || 'none', 'Loading:', loading);
+      // No PII in logs
       setLoading(true);
       if (firebaseUser) {
         try {
-          console.log('Auth state changed: User logged in', firebaseUser.email, firebaseUser.uid);
+          // Auth state: user logged in
           
           // Use a retry mechanism with timeout for the initial profile fetch
           const fetchProfileWithRetry = async (retries = 3): Promise<any> => {
@@ -62,7 +62,7 @@ export default function App() {
             const superAdminEmails = ['imagicityart@gmail.com', 'deweshkk@gmail.com'];
             
             if (userEmail && superAdminEmails.includes(userEmail)) {
-              console.log('Using recovery profile for super admin due to fetch failure');
+              // Using fallback recovery profile (Firestore unavailable)
               const recoveryAdmin: UserProfile = {
                 uid: firebaseUser.uid,
                 email: userEmail,
@@ -79,7 +79,7 @@ export default function App() {
           }
           
           if (userDoc && userDoc.exists()) {
-            console.log('User profile found by UID');
+            // User profile found by UID
             const existingUser = userDoc.data() as UserProfile;
             let updatedUser = { ...existingUser };
             let needsUpdate = false;
@@ -105,7 +105,7 @@ export default function App() {
             }
 
             if (needsUpdate) {
-              console.log('Self-healing profile found by UID...');
+              // Self-healing profile update
               updatedUser.updatedAt = new Date().toISOString();
               await setDoc(doc(db, 'users', firebaseUser.uid), updatedUser, { merge: true });
               setUser(updatedUser);
@@ -113,7 +113,7 @@ export default function App() {
               setUser(existingUser);
             }
           } else {
-            console.log('User profile not found by UID, searching by email...', firebaseUser.email);
+            // User profile not found by UID, searching by email
             
             // 2. Try searching by email in case of UID mismatch
             if (firebaseUser.email) {
@@ -145,7 +145,7 @@ export default function App() {
               const existingUser = await findExistingUser();
               
               if (existingUser) {
-                console.log('User profile found by email search. Linking to new UID:', firebaseUser.uid);
+                // User profile found by email search; linking to new UID
                 
                 // Create a new user doc with current UID to ensure rules work
                 const newUser: UserProfile = {
@@ -174,20 +174,20 @@ export default function App() {
                 
                 try {
                   await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
-                  console.log('Successfully linked profile to new UID');
+                  // Profile linked successfully
                   setUser(newUser);
                 } catch (setErr) {
                   console.error('Error linking profile to new UID:', setErr);
                   setUser(existingUser);
                 }
               } else {
-                console.log('No existing profile found for email alternatives:', emailsToTry);
+                // No existing profile found for any email variant
                 
                 // 3. Auto-create super admin if email matches
                 const userEmailLower = firebaseUser.email.toLowerCase();
                 const superAdminEmails = ['imagicityart@gmail.com', 'deweshkk@gmail.com'];
                 if (superAdminEmails.includes(userEmailLower)) {
-                  console.log('Auto-creating super admin profile...');
+                  // Auto-creating super admin profile
                   const newAdmin: UserProfile = {
                     uid: firebaseUser.uid,
                     email: userEmailLower,
@@ -211,7 +211,7 @@ export default function App() {
           setUser(null);
         }
       } else {
-        console.log('Auth state changed: User logged out');
+        // Auth state: user logged out
         setUser(null);
       }
       setLoading(false);

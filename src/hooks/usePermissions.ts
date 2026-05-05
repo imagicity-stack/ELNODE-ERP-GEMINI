@@ -30,16 +30,16 @@ export function usePermissions(role: UserRole | undefined) {
 
   const canAccess = (moduleId: string): boolean => {
     if (role === 'super_admin') return true;
-    if (!permissions) return true; // Default to historical behavior if not configured? 
-    // Actually, user wants tighter control. But for existing apps, maybe default to true?
-    // User said "principal's most access should be view only", implying they want to limit it.
+    // Fail-closed: if no permissions document exists, deny access rather than grant it.
+    if (!permissions) return false;
     const module = permissions.modules[moduleId];
     return module?.enabled !== false;
   };
 
   const isReadOnly = (moduleId: string): boolean => {
     if (role === 'super_admin') return false;
-    if (!permissions) return false;
+    // Fail-closed: if no permissions document exists, treat as read-only.
+    if (!permissions) return true;
     const module = permissions.modules[moduleId];
     return module?.readOnly === true;
   };

@@ -121,10 +121,15 @@ export function DataProvider({ children, user }: { children: React.ReactNode, us
       }, 'teachers');
       unsubscribes.push(unsubTeachers);
 
-      const unsubStudents = safeOnSnapshot(collection(db, 'students'), (snapshot) => {
-        setStudents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Student)));
-      }, 'students');
-      unsubscribes.push(unsubStudents);
+      // Only fetch the full students collection for roles that legitimately need it.
+      // Parents and students receive their own student record via the role-specific listener below.
+      const adminRoles = ['super_admin', 'admin', 'office_staff', 'principal', 'teacher', 'accounts'];
+      if (user.role && adminRoles.includes(user.role)) {
+        const unsubStudents = safeOnSnapshot(collection(db, 'students'), (snapshot) => {
+          setStudents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Student)));
+        }, 'students');
+        unsubscribes.push(unsubStudents);
+      }
 
       const unsubSubjects = safeOnSnapshot(collection(db, 'subjects'), (snapshot) => {
         const map: Record<string, string> = {};

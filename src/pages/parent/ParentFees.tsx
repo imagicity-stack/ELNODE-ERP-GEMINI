@@ -1,9 +1,10 @@
 import { UserProfile, Student, FeeRequest, FeePayment, FineConfig } from '../../types';
 import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Download, Wallet, Scale, ShieldOff } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, orderBy, getDoc } from 'firebase/firestore';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
-import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../../firebase';
+import { getIdToken } from 'firebase/auth';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
@@ -93,24 +94,27 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
       return;
     }
 
-    const amountInPaise = Math.round(remainingAmount * 100);
-    
-    if (amountInPaise < 100) {
-      alert('Minimum payment amount is ₹1.');
-      return;
-    }
-
     setLoading(true);
     try {
-      // 1. Create order on server
+      if (!auth.currentUser) throw new Error('Not authenticated');
+      const idToken = await getIdToken(auth.currentUser);
+
+      // 1. Create order on server — amount is derived server-side from the feeRequest
       const orderResponse = await fetch('/api/payment/create-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amountInPaise, currency: 'INR' })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ feeRequestId: request.id, currency: 'INR' }),
       });
-      
+
+      if (!orderResponse.ok) {
+        const err = await orderResponse.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create order');
+      }
       const orderData = await orderResponse.json();
-      
+
       if (!orderData.id) {
         throw new Error('Failed to create order');
       }
@@ -122,20 +126,24 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
         name: 'School Fee Payment',
         description: `Fees for ${request.month} - ${selectedStudent?.name}`,
         order_id: orderData.id,
-        theme: {
-          color: '#EF4444',
-        },
+        theme: { color: '#EF4444' },
         handler: async function (response: any) {
           try {
-            // 2. Verify signature on server
+            // Refresh token before verify call (session may have aged)
+            const freshToken = await getIdToken(auth.currentUser!, true);
+
+            // 2. Verify on server — server writes Firestore records via Admin SDK
             const verifyResponse = await fetch('/api/payment/verify', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${freshToken}`,
+              },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature
-              })
+                razorpay_signature: response.razorpay_signature,
+              }),
             });
 
             const verifyData = await verifyResponse.json();
@@ -144,57 +152,21 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
               throw new Error('Payment verification failed');
             }
 
-            // 3. Record payment in Firestore
-            const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
-            const payment: Omit<FeePayment, 'id'> = {
-              studentId: request.studentId,
-              classId: selectedStudent?.classId || '',
-              feeRequestId: request.id,
-              feeHead: request.heads[0]?.name || 'Academic Fee',
-              amount: remainingAmount,
-              date: new Date().toISOString().split('T')[0],
-              method: 'online',
-              transactionId: response.razorpay_payment_id,
-              receiptNumber: `REC-${Date.now()}`,
-              remarks: `Online Payment - ${request.month}`,
-            };
-
-            await addDoc(collection(db, 'feePayments'), payment);
-            
-            const newPaidAmount = (request.paidAmount || 0) + remainingAmount;
-            const totalRequired = request.totalAmount + currentFine - (request.waivedAmount || 0);
-            const newStatus = newPaidAmount >= totalRequired ? 'paid' : 'partially_paid';
-            const now = new Date().toISOString();
-
-            await updateDoc(doc(db, 'feeRequests', request.id), { 
-              paidAmount: newPaidAmount,
-              fineAmount: currentFine, // Snapshot the fine
-              status: newStatus,
-              updatedAt: now
-            });
-
-          if (newStatus === 'paid') {
-            await updateDoc(doc(db, 'students', request.studentId), { 
-              feeStatus: 'paid',
-              updatedAt: now
-            });
+            logActivity(
+              user,
+              'Paid Fees Online',
+              'Parents',
+              `Paid ₹${(verifyData.amountPaid ?? remainingAmount).toLocaleString()} via Razorpay`,
+              { studentId: request.studentId, amount: verifyData.amountPaid ?? remainingAmount }
+            );
+            showToast('Payment Successful! Transaction ID: ' + verifyData.transactionId, 'success');
+            fetchData();
+          } catch (err) {
+            console.error('Payment process error:', err);
+            showToast('Error recording payment. Please contact support with your transaction ID.', 'error');
           }
-
-          logActivity(
-            user, 
-            'Paid Fees Online', 
-            'Parents', 
-            `Paid ₹${remainingAmount.toLocaleString()} for ${payment.feeHead} via Razorpay`,
-            { studentId: request.studentId, amount: remainingAmount }
-          );
-          showToast('Payment Successful! Transaction ID: ' + response.razorpay_payment_id, 'success');
-          fetchData();
-        } catch (err) {
-          console.error('Payment process error:', err);
-          showToast('Error recording payment, but transaction was successful. Please contact support.', 'error');
-        }
-      }
-    };
+        },
+      };
 
       const rzp = new window.Razorpay(options);
       rzp.open();

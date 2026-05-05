@@ -161,22 +161,35 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         isAnyAdmin() || isAccountant() || isLinkedToStudent(resource.data.studentId)
       );
-      allow create: if isSignedIn() && (
-        isAnyAdmin() || isAccountant() || (
-          isLinkedToStudent(incoming().studentId) && incoming().method == 'online'
-        )
-      );
+      // Online payments are written server-side via Admin SDK (bypasses rules).
+      // Client-side creates are restricted to admins/accountants for manual/offline payments only.
+      allow create: if isSignedIn() && (isAnyAdmin() || isAccountant()) &&
+        incoming().amount is number && incoming().amount > 0 &&
+        incoming().method is string;
       allow delete: if isSuperAdmin();
     }
 
     match /feeRequests/{requestId} {
-      allow read: if isSignedIn();
-      allow create: if isAnyAdmin() || isAccountant();
-      allow update: if isAnyAdmin() || isAccountant() || (
-        isLinkedToStudent(existing().studentId) &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['paidAmount', 'status', 'updatedAt'])
+      allow read: if isSignedIn() && (
+        isAnyAdmin() || isAccountant() || isLinkedToStudent(resource.data.studentId)
       );
+      allow create: if isAnyAdmin() || isAccountant();
+      // paidAmount and status are updated server-side via Admin SDK for online payments.
+      // Client-side updates are restricted to admins/accountants only.
+      allow update: if isAnyAdmin() || isAccountant();
       allow delete: if isAnyAdmin() || isAccountant();
+    }
+
+    // Fine configuration — readable by all authenticated users (needed for fee calculations),
+    // writable only by admins.
+    match /fine-config/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+
+    // Transient payment order records created and deleted server-side only.
+    match /paymentOrders/{orderId} {
+      allow read, write: if false;
     }
 
     // Salaries & Expenses
