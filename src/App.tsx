@@ -27,7 +27,8 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true); // Ensure loading is true when state starts changing
+      console.log('[App] Auth state changed, firebaseUser:', firebaseUser?.email || 'none', 'Loading:', loading);
+      setLoading(true);
       if (firebaseUser) {
         try {
           console.log('Auth state changed: User logged in', firebaseUser.email, firebaseUser.uid);
@@ -219,6 +220,19 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  const getPortalPath = (role: string) => {
+    switch (role) {
+      case 'super_admin': return '/superadmin';
+      case 'office_staff': return '/staff';
+      case 'principal': return '/principal';
+      case 'teacher': return '/teacher';
+      case 'student': return '/student';
+      case 'parent': return '/parent';
+      case 'accounts': return '/accounts';
+      default: return '/login';
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -233,16 +247,18 @@ export default function App() {
         <DataProvider user={user}>
           <Router>
             <Routes>
-              <Route path="/login" element={user ? <Navigate to={`/${user.role.replace('_', '')}`} /> : <Login />} />
+              <Route path="/login" element={user ? <Navigate to={getPortalPath(user.role)} /> : <Login />} />
               
               <Route path="/superadmin/*" element={user?.role === 'super_admin' ? <AdminPortal user={user} /> : <Navigate to="/login" />} />
+              <Route path="/staff/*" element={user?.role === 'office_staff' ? <AdminPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/student/*" element={user?.role === 'student' ? <StudentPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/parent/*" element={user?.role === 'parent' ? <ParentPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/accounts/*" element={user?.role === 'accounts' ? <AccountsPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/teacher/*" element={user?.role === 'teacher' ? <TeacherPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/principal/*" element={user?.role === 'principal' ? <PrincipalPortal user={user} /> : <Navigate to="/login" />} />
               
-              <Route path="/" element={<Navigate to={user ? `/${user.role.replace('_', '')}` : "/login"} />} />
+              <Route path="/" element={<Navigate to={user ? getPortalPath(user.role) : "/login"} />} />
+              <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Router>
         </DataProvider>

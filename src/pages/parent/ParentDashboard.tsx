@@ -20,6 +20,7 @@ import {
   Badge,
   EmptyState,
 } from '../../components/ui';
+import UpdatesSection from '../../components/UpdatesSection';
 
 interface ParentDashboardProps {
   user: UserProfile;
@@ -150,6 +151,8 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
           index={2}
         />
       </div>
+
+      <UpdatesSection user={user} className="mb-8" />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Fee Tracking */}

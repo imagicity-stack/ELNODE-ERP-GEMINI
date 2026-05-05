@@ -5,6 +5,7 @@ import { Plus, Book, Trash2, Edit2, Hash, Layers } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Subject, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
+import { usePermissions } from '../../hooks/usePermissions';
 import {
   PageHeader, Card, Badge, Button, IconButton, Modal, ConfirmModal,
   SearchInput, FormField, Input, Select, Table, Thead, Th, Tbody, Tr, Td, EmptyState
@@ -19,6 +20,9 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('subjects');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -108,17 +112,19 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
         icon={Book}
         iconColor="gradient-indigo"
         actions={
-          <Button
-            icon={Plus}
-            onClick={() => {
-              setIsEditMode(false);
-              setEditingSubject(null);
-              setFormData({ name: '', code: '', type: 'theory' });
-              setIsModalOpen(true);
-            }}
-          >
-            Add New Subject
-          </Button>
+          !readOnly && (
+            <Button
+              icon={Plus}
+              onClick={() => {
+                setIsEditMode(false);
+                setEditingSubject(null);
+                setFormData({ name: '', code: '', type: 'theory' });
+                setIsModalOpen(true);
+              }}
+            >
+              Add New Subject
+            </Button>
+          )
         }
       />
 
@@ -164,10 +170,12 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
                   </Badge>
                 </Td>
                 <Td className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(subject)} />
-                    <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(subject.id)} />
-                  </div>
+                  {!readOnly && (
+                    <div className="flex items-center justify-end gap-1">
+                      <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(subject)} />
+                      <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(subject.id)} />
+                    </div>
+                  )}
                 </Td>
               </Tr>
             ))}

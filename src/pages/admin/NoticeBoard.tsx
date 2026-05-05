@@ -16,6 +16,7 @@ import {
   PageHeader, Card, Badge, Button, IconButton, Modal, ConfirmModal,
   SearchInput, FormField, Input, Select, Textarea, EmptyState
 } from '../../components/ui';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface NoticeBoardProps {
   user: UserProfile;
@@ -30,7 +31,11 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<UserRole | 'all'>('all');
 
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('notices');
+
   const isAdmin = user.role === 'super_admin' || user.role === 'principal';
+  const canWrite = user.role === 'super_admin' || (user.role === 'principal' && !readOnly);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -144,7 +149,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
         icon={Bell}
         iconColor="gradient-amber"
         actions={
-          isAdmin ? (
+          canWrite ? (
             <Button icon={Plus} onClick={() => setIsModalOpen(true)}>
               Post New Notice
             </Button>
@@ -216,7 +221,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
                   <User className="w-3 h-3" />
                   {notice.authorName}
                 </div>
-                {isAdmin && (
+                {canWrite && (
                   <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDeleteNotice(notice.id)} />
                 )}
               </div>

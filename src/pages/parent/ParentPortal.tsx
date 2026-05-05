@@ -6,12 +6,15 @@ import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firesto
 import { UserProfile, Student } from '../../types';
 import ParentDashboard from './ParentDashboard';
 import ParentFees from './ParentFees';
+import ParentLeaves from './ParentLeaves';
 import ParentAttendance from './ParentAttendance';
-import ParentHomework from './ParentHomework';
-import ParentProfile from './ParentProfile';
+import ProfileSettings from '../shared/ProfileSettings';
+import ParentTimetable from './ParentTimetable';
+import ParentSubjects from './ParentSubjects';
 import ResultView from '../shared/ResultView';
 import AcademicCalendar from '../admin/AcademicCalendar';
 import NoticeBoard from '../admin/NoticeBoard';
+import LessonLogs from '../shared/LessonLogs';
 import { ChevronDown, Users } from 'lucide-react';
 
 export default function ParentPortal({ user }: { user: UserProfile }) {
@@ -49,8 +52,7 @@ export default function ParentPortal({ user }: { user: UserProfile }) {
 
   return (
     <PortalLayout 
-      role="parent" 
-      userName={user.name}
+      user={user}
       customHeader={
         students.length > 1 ? (
           <div className="relative group">
@@ -77,12 +79,15 @@ export default function ParentPortal({ user }: { user: UserProfile }) {
       <Routes>
         <Route path="/" element={<ParentDashboard user={user} selectedStudent={selectedStudent} />} />
         <Route path="/fees" element={<ParentFees user={user} selectedStudent={selectedStudent} />} />
+        <Route path="/leaves" element={<ParentLeaves user={user} selectedStudent={selectedStudent} />} />
         <Route path="/attendance" element={<ParentAttendance user={user} selectedStudent={selectedStudent} />} />
-        <Route path="/homework" element={<ParentHomework user={user} selectedStudent={selectedStudent} />} />
-        <Route path="/profile" element={<ParentProfile user={user} selectedStudent={selectedStudent} />} />
+        <Route path="/timetable" element={<ParentTimetable user={user} selectedStudent={selectedStudent} />} />
+        <Route path="/subjects" element={<ParentSubjects user={user} selectedStudent={selectedStudent} />} />
+        <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="/exams" element={selectedStudent ? <ResultView student={selectedStudent} /> : null} />
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />
         <Route path="/notices" element={<NoticeBoard user={user} />} />
+        <Route path="/diary" element={<LessonLogs user={user} student={selectedStudent || undefined} />} />
         <Route path="*" element={<Navigate to="/parent" />} />
       </Routes>
     </PortalLayout>

@@ -29,7 +29,7 @@ import {
   EmptyState,
   IconButton
 } from '../../components/ui';
-import { ActivityLog, ActivitySection } from '../../types';
+import { ActivityLog, ActivitySection, UserProfile } from '../../types';
 import { getActivityLogs } from '../../services/activityService';
 import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
@@ -39,7 +39,7 @@ const SECTIONS: ActivitySection[] = [
   'Super Admin', 'Accounts', 'Parents', 'Students', 'Academic', 'Teachers', 'Exam', 'Staff'
 ];
 
-export default function ActivityTracker() {
+export default function ActivityTracker({ user }: { user: UserProfile }) {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -160,8 +160,8 @@ export default function ActivityTracker() {
             <Tr>
               <Th>Timestamp</Th>
               <Th>User</Th>
-              <Th>Section</Th>
-              <Th>Action</Th>
+              <Th className="hidden md:table-cell">Section</Th>
+              <Th className="hidden sm:table-cell">Action</Th>
               <Th>Details</Th>
             </Tr>
           </Thead>
@@ -173,28 +173,28 @@ export default function ActivityTracker() {
                     <span className="text-sm font-bold text-slate-900">
                       {format(new Date(log.timestamp), 'MMM dd, h:mm a')}
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {format(new Date(log.timestamp), 'yyyy-MM-dd')}
+                    <span className="text-[10px] text-slate-400 font-mono sm:hidden">
+                      {log.section} · {log.action}
                     </span>
                   </div>
                 </Td>
                 <Td>
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
                       <User className="w-4 h-4 text-slate-500" />
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-900">{log.userName}</span>
-                      <span className="text-xs text-slate-500 capitalize">{log.userRole.replace('_', ' ')}</span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm font-bold text-slate-900 truncate">{log.userName}</span>
+                      <span className="text-xs text-slate-500 capitalize md:hidden">{log.userRole.replace('_', ' ')}</span>
                     </div>
                   </div>
                 </Td>
-                <Td>
+                <Td className="hidden md:table-cell">
                   <Badge variant={getSectionColor(log.section) as any}>
                     {log.section}
                   </Badge>
                 </Td>
-                <Td>
+                <Td className="hidden sm:table-cell">
                   <span className="text-sm font-medium text-slate-700">{log.action}</span>
                 </Td>
                 <Td className="max-w-xs truncate">

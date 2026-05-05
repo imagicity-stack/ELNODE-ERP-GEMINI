@@ -16,6 +16,7 @@ import {
   SearchInput, FormField, Input, Select, Textarea,
   Table, Thead, Th, Tbody, Tr, Td, EmptyState
 } from '../../components/ui';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface AdmissionLead {
   id: string;
@@ -29,12 +30,15 @@ interface AdmissionLead {
   notes: string;
 }
 
-export default function AdmissionManagement() {
+export default function AdmissionManagement({ user }: { user: any }) {
   const [leads, setLeads] = useState<AdmissionLead[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('admissions');
 
   const [formData, setFormData] = useState({
     studentName: '',
@@ -128,9 +132,11 @@ export default function AdmissionManagement() {
         icon={UserPlus}
         iconColor="gradient-blue"
         actions={
-          <Button icon={Plus} onClick={() => setIsModalOpen(true)}>
-            New Enquiry
-          </Button>
+          !readOnly && (
+            <Button icon={Plus} onClick={() => setIsModalOpen(true)}>
+              New Enquiry
+            </Button>
+          )
         }
       />
 
@@ -204,18 +210,24 @@ export default function AdmissionManagement() {
                 <Td>{getClassName(lead.classInterested)}</Td>
                 <Td>{lead.date}</Td>
                 <Td>
-                  <select
-                    value={lead.status}
-                    onChange={(e) => updateStatus(lead.id, e.target.value as any)}
-                    className="text-xs font-semibold bg-transparent border-none focus:ring-0 cursor-pointer outline-none"
-                  >
-                    <option value="enquiry">Enquiry</option>
-                    <option value="follow-up">Follow-up</option>
-                    <option value="registered">Registered</option>
-                    <option value="admitted">Admitted</option>
-                    <option value="rejected">Rejected</option>
-                  </select>
-                  <Badge variant={statusVariant(lead.status)} className="ml-1">{lead.status}</Badge>
+                  {readOnly ? (
+                    <Badge variant={statusVariant(lead.status)}>{lead.status}</Badge>
+                  ) : (
+                    <>
+                      <select
+                        value={lead.status}
+                        onChange={(e) => updateStatus(lead.id, e.target.value as any)}
+                        className="text-xs font-semibold bg-transparent border-none focus:ring-0 cursor-pointer outline-none"
+                      >
+                        <option value="enquiry">Enquiry</option>
+                        <option value="follow-up">Follow-up</option>
+                        <option value="registered">Registered</option>
+                        <option value="admitted">Admitted</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                      <Badge variant={statusVariant(lead.status)} className="ml-1">{lead.status}</Badge>
+                    </>
+                  )}
                 </Td>
               </Tr>
             ))}

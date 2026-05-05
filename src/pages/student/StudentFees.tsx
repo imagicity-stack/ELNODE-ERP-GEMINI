@@ -1,9 +1,12 @@
-import { UserProfile, FeeRequest, FeePayment, PaymentMethod, Student } from '../../types';
-import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Wallet, Download } from 'lucide-react';
+import { UserProfile, FeeRequest, FeePayment, PaymentMethod, Student, FineConfig } from '../../types';
+import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Wallet, Download, Scale, ShieldOff } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
+import { useToast } from '../../components/Toast';
+import { logActivity } from '../../services/activityService';
 import {
   PageHeader,
   Card,
@@ -35,7 +38,9 @@ export default function StudentFees({ user }: StudentFeesProps) {
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [student, setStudent] = useState<Student | null>(null);
+  const [fineConfig, setFineConfig] = useState<FineConfig | null>(null);
   const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
   const fetchData = async () => {
     if (!user.uid) return;
@@ -51,17 +56,22 @@ export default function StudentFees({ user }: StudentFeesProps) {
       const requestsQuery = query(collection(db, 'feeRequests'), where('studentId', '==', studentId));
       const paymentsQuery = query(collection(db, 'feePayments'), where('studentId', '==', studentId), orderBy('date', 'desc'));
       const studentDocRef = doc(db, 'students', studentId);
+      const fineConfigRef = doc(db, 'fine-config', 'global');
 
-      const [requestsSnap, paymentsSnap, studentSnap] = await Promise.all([
+      const [requestsSnap, paymentsSnap, studentSnap, fineSnap] = await Promise.all([
         getDocs(requestsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feeRequests'); throw err; }),
         getDocs(paymentsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feePayments'); throw err; }),
-        getDoc(studentDocRef).catch(err => { handleFirestoreError(err, OperationType.GET, 'students'); throw err; })
+        getDoc(studentDocRef).catch(err => { handleFirestoreError(err, OperationType.GET, 'students'); throw err; }),
+        getDoc(fineConfigRef).catch(err => { handleFirestoreError(err, OperationType.GET, 'fine-config'); throw err; })
       ]);
 
       setFeeRequests(requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
       setPayments(paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeePayment)));
       if (studentSnap.exists()) {
         setStudent({ id: studentSnap.id, ...studentSnap.data() } as Student);
+      }
+      if (fineSnap.exists()) {
+        setFineConfig(fineSnap.data() as FineConfig);
       }
     } catch (err) {
       console.error('Error fetching student fee data:', err);
@@ -84,19 +94,35 @@ export default function StudentFees({ user }: StudentFeesProps) {
   };
 
   const handlePayNow = (request: FeeRequest) => {
+    const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
+    const netAmount = request.totalAmount + currentFine - (request.waivedAmount || 0);
+    const amountInPaise = Math.round((netAmount - (request.paidAmount || 0)) * 100);
+    
+    if (amountInPaise < 100) {
+      alert('Minimum payment amount is ₹1.');
+      return;
+    }
+
+    const amountPaid = amountInPaise / 100;
+
     const options = {
       key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || '',
-      amount: (request.totalAmount || 0) * 100, // in paise
+      amount: amountInPaise,
       currency: 'INR',
-      name: 'School Management System',
+      name: 'School Fee Payment',
       description: `Fees for ${request.month}`,
+      theme: {
+        color: '#EF4444',
+      },
       handler: async function (response: any) {
         try {
           const payment: Omit<FeePayment, 'id'> = {
             studentId: request.studentId,
+            classId: student?.classId || '',
             feeRequestId: request.id,
-            amount: request.totalAmount,
-            date: new Date().toISOString().split('T')[0],
+            feeHead: request.heads[0]?.name || 'Academic Fee',
+            amount: amountPaid,
+            date: new Date().toISOString(),
             method: 'online',
             transactionId: response.razorpay_payment_id,
             receiptNumber: `REC-${Date.now()}`,
@@ -104,25 +130,36 @@ export default function StudentFees({ user }: StudentFeesProps) {
           };
 
           await addDoc(collection(db, 'feePayments'), payment);
+          
+          const newPaidAmount = (request.paidAmount || 0) + amountPaid;
+          const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
+          const totalRequired = request.totalAmount + currentFine - (request.waivedAmount || 0);
+          const isFullyPaid = newPaidAmount >= totalRequired;
+
           await updateDoc(doc(db, 'feeRequests', request.id), { 
-            status: 'paid',
-            paidAmount: request.totalAmount,
+            status: isFullyPaid ? 'paid' : 'partially_paid',
+            paidAmount: newPaidAmount,
+            fineAmount: currentFine,
             updatedAt: new Date().toISOString()
           });
-          await updateDoc(doc(db, 'students', request.studentId), { feeStatus: 'paid' });
+          
+          if (isFullyPaid) {
+            await updateDoc(doc(db, 'students', request.studentId), {
+              feeStatus: 'paid'
+            });
+          }
 
-          alert('Payment Successful! Transaction ID: ' + response.razorpay_payment_id);
+          logActivity(user, 'Paid Fees Online', 'Students', `Paid ₹${amountPaid.toLocaleString()} for ${payment.feeHead} via Razorpay`);
+          showToast('Payment Successful! Transaction ID: ' + response.razorpay_payment_id, 'success');
           fetchData();
         } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, 'feePayments');
+          console.error('Payment error:', err);
+          showToast('Error recording payment. Please contact support.', 'error');
         }
       },
       prefill: {
         name: user.name,
         email: user.email,
-      },
-      theme: {
-        color: '#2563eb',
       },
     };
 
@@ -132,9 +169,10 @@ export default function StudentFees({ user }: StudentFeesProps) {
 
   const outstandingAmount = feeRequests
     .filter(r => r.status !== 'paid')
-    .reduce((sum, r) => sum + (r.totalAmount - (r.paidAmount || 0)), 0);
+    .reduce((sum, r) => sum + (r.totalAmount + (fineConfig ? calculateFine(r, fineConfig) : 0) - (r.waivedAmount || 0) - (r.paidAmount || 0)), 0);
 
   const currentRequest = feeRequests.find(r => r.status !== 'paid');
+  const currentFineAmount = currentRequest && fineConfig ? calculateFine(currentRequest, fineConfig) : 0;
 
   return (
     <div className="space-y-8">
@@ -185,22 +223,42 @@ export default function StudentFees({ user }: StudentFeesProps) {
                     </div>
                   </div>
                 ))}
-                <div className="p-6 bg-slate-50 flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500 text-sm">Total Request Amount</span>
-                    <span className="font-bold text-slate-900">₹{(currentRequest.totalAmount || 0).toLocaleString()}</span>
-                  </div>
-                  {(currentRequest.paidAmount || 0) > 0 && (
+                  <div className="p-6 bg-slate-50 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-500 text-sm">Amount Paid</span>
-                      <span className="font-bold text-emerald-600">- ₹{(currentRequest.paidAmount || 0).toLocaleString()}</span>
+                      <span className="text-slate-500 text-sm">Base Request Amount</span>
+                      <span className="font-bold text-slate-900">₹{(currentRequest.totalAmount || 0).toLocaleString()}</span>
                     </div>
-                  )}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                    <span className="font-bold text-slate-900 text-lg">Balance Due</span>
-                    <span className="text-2xl font-black text-emerald-600">₹{((currentRequest.totalAmount || 0) - (currentRequest.paidAmount || 0)).toLocaleString()}</span>
+                    {currentFineAmount > 0 && (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 text-rose-500 text-sm font-medium">
+                          <Scale className="w-3.5 h-3.5" />
+                          <span>Late Penalty Fine</span>
+                        </div>
+                        <span className="font-bold text-rose-600">+ ₹{currentFineAmount.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {(currentRequest.waivedAmount || 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1 text-emerald-600 text-sm font-medium">
+                          <ShieldOff className="w-3.5 h-3.5" />
+                          <span>Waiver Applied</span>
+                        </div>
+                        <span className="font-bold text-emerald-600">- ₹{(currentRequest.waivedAmount || 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {(currentRequest.paidAmount || 0) > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 text-sm">Previously Paid</span>
+                        <span className="font-bold text-slate-600">- ₹{(currentRequest.paidAmount || 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                      <span className="font-bold text-slate-900 text-lg">Net Balance Due</span>
+                      <span className="text-2xl font-black text-emerald-600">
+                        ₹{(currentRequest.totalAmount + currentFineAmount - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0)).toLocaleString()}
+                      </span>
+                    </div>
                   </div>
-                </div>
               </div>
             </Card>
           ) : (
@@ -228,6 +286,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
                   <Th>Date</Th>
                   <Th>Amount</Th>
                   <Th>Method</Th>
+                  <Th>Trans. ID</Th>
                   <Th className="text-right">Receipt</Th>
                 </tr>
               </Thead>
@@ -238,6 +297,11 @@ export default function StudentFees({ user }: StudentFeesProps) {
                     <Td>{tx.date}</Td>
                     <Td><span className="font-bold text-emerald-600">₹{(tx.amount || 0).toLocaleString()}</span></Td>
                     <Td className="capitalize">{tx.method.replace('_', ' ')}</Td>
+                    <Td>
+                      <span className="text-[10px] font-mono text-slate-500 truncate block max-w-[100px]" title={tx.transactionId || tx.referenceNumber}>
+                        {tx.transactionId || tx.referenceNumber || '-'}
+                      </span>
+                    </Td>
                     <Td className="text-right">
                       <IconButton
                         icon={Download}
@@ -299,11 +363,11 @@ export default function StudentFees({ user }: StudentFeesProps) {
             <ul className="space-y-4 text-xs text-slate-600">
               <li className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-1.5 shrink-0"></div>
-                Fees must be paid by the 10th of each month to avoid late charges.
+                Fees must be paid by the due date to avoid automated late charges.
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-1.5 shrink-0"></div>
-                Late fee of ₹500 per week applies after the due date.
+                Late penalties are applied dynamically based on the current school fine policy.
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-1.5 shrink-0"></div>

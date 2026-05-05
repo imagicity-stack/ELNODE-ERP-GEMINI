@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { createUserWithEmailAndPassword, getAuth, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { initializeApp, getApp } from 'firebase/app';
-import { db, auth, firebaseConfig, handleFirestoreError, OperationType } from '../../firebase';
+import { db, auth, storage, firebaseConfig, handleFirestoreError, OperationType } from '../../firebase';
 import { Student, UserProfile, Class, House } from '../../types';
 import { logActivity } from '../../services/activityService';
 import { SCHOOL_DOMAIN } from '../../constants';
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { usePermissions } from '../../hooks/usePermissions';
 import {
   PageHeader, Card, Badge, Button, IconButton, Modal, SearchInput,
   FormField, Input, Select, Textarea, Table, Thead, Th, Tbody, Tr, Td,
@@ -41,6 +43,9 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState('All Classes');
 
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('students');
+
   // Form State
   const [formData, setFormData] = useState({
     name: '',
@@ -57,6 +62,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     academicHistory: '',
     houseId: '',
     address: '',
+    photoURL: '',
   });
 
   const fetchData = async () => {
@@ -102,6 +108,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         classId: formData.classId,
         section: formData.section,
         houseId: formData.houseId,
+        photoURL: formData.photoURL,
         transportDetails: formData.transportDetails,
         medicalNotes: formData.medicalNotes,
         academicHistory: formData.academicHistory,
@@ -128,6 +135,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             name: formData.name,
             classId: formData.classId,
             section: formData.section,
+            photoURL: formData.photoURL,
           }, { merge: true });
         }
         
@@ -231,6 +239,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         section: formData.section,
         parentId: parentUid,
         studentId: studentRef.id, // Linked student record ID
+        photoURL: formData.photoURL,
         createdAt: new Date().toISOString(),
       });
 
@@ -265,23 +274,6 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         'Students',
         `Admitted new student ${formData.name} (${schoolNumber})`
       );
-
-      setFormData({
-        name: '',
-        schoolNumber: '',
-        admissionNumber: '',
-        classId: '',
-        section: '',
-        fatherName: '',
-        motherName: '',
-        phone: '',
-        email: '',
-        transportDetails: '',
-        medicalNotes: '',
-        academicHistory: '',
-        houseId: '',
-        address: '',
-      });
     } catch (err: any) {
       console.error(err);
       if (err.code === 'auth/operation-not-allowed') {
@@ -316,7 +308,8 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       medicalNotes: student.medicalNotes || '',
       academicHistory: student.academicHistory || '',
       houseId: houseObj?.id || student.houseId || '',
-      address: '' // This might need to be fetched from the parent's profile if we want to edit it here
+      address: '',
+      photoURL: student.photoURL || ''
     });
     setIsModalOpen(true);
   };
@@ -506,8 +499,26 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const openAddModal = () => {
     setIsEditMode(false);
     setEditingStudent(null);
-    setFormData({ name: '', schoolNumber: '', admissionNumber: '', classId: '', section: '', fatherName: '', motherName: '', phone: '', email: '', transportDetails: '', medicalNotes: '', academicHistory: '', houseId: '', address: '' });
+    setFormData({ name: '', schoolNumber: '', admissionNumber: '', classId: '', section: '', fatherName: '', motherName: '', phone: '', email: '', transportDetails: '', medicalNotes: '', academicHistory: '', houseId: '', address: '', photoURL: '' });
     setIsModalOpen(true);
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setLoading(true);
+    try {
+      const storageRef = ref(storage, `profiles/${formData.schoolNumber || 'temp'}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      setFormData(prev => ({ ...prev, photoURL: url }));
+    } catch (err) {
+      console.error('Error uploading photo:', err);
+      alert('Failed to upload photo');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -520,7 +531,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         actions={
           <>
             <Button variant="secondary" size="sm" icon={Download}>Export</Button>
-            <Button size="sm" icon={UserPlus} onClick={openAddModal}>Add Student</Button>
+            {!readOnly && <Button size="sm" icon={UserPlus} onClick={openAddModal}>Add Student</Button>}
           </>
         }
       />
@@ -551,9 +562,9 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           <Thead>
             <tr>
               <Th>Student</Th>
-              <Th>Admission / School No.</Th>
-              <Th>Class & Section</Th>
-              <Th>Parent Details</Th>
+              <Th className="hidden sm:table-cell">Admission / School No.</Th>
+              <Th className="hidden md:table-cell">Class & Section</Th>
+              <Th className="hidden lg:table-cell">Parent Details</Th>
               <Th>Fee Status</Th>
               <Th className="text-right">Actions</Th>
             </tr>
@@ -563,13 +574,17 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
               <Tr key={student.id}>
                 <Td>
                   <div className="flex items-center gap-3">
-                    <Avatar name={student.name} size="sm" />
-                    <span className="font-semibold text-slate-900">{student.name}</span>
+                    <Avatar name={student.name} src={student.photoURL} size="sm" />
+                    <div>
+                      <span className="font-semibold text-slate-900 block">{student.name}</span>
+                      <span className="text-[10px] text-slate-400 sm:hidden">{student.admissionNumber}</span>
+                      <span className="text-[10px] text-slate-400 md:hidden block">Class {student.classId}</span>
+                    </div>
                   </div>
                 </Td>
-                <Td><span className="font-mono text-slate-600">{student.admissionNumber}</span></Td>
-                <Td className="text-slate-600">{getClassName(student.classId)} {student.section && `- ${student.section}`}</Td>
-                <Td>
+                <Td className="hidden sm:table-cell"><span className="font-mono text-slate-600">{student.admissionNumber}</span></Td>
+                <Td className="hidden md:table-cell text-slate-600">{getClassName(student.classId)} {student.section && `- ${student.section}`}</Td>
+                <Td className="hidden lg:table-cell">
                   <div className="space-y-0.5">
                     <p className="text-sm font-medium text-slate-900">{student.parentDetails?.fatherName || 'N/A'}</p>
                     <p className="text-xs text-slate-400 flex items-center gap-1">
@@ -583,10 +598,12 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                   </Badge>
                 </Td>
                 <Td>
-                  <div className="flex items-center justify-end gap-1">
-                    <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(student)} title="Edit" />
-                    <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => { setDeletingStudent(student); setIsDeleteModalOpen(true); }} title="Delete" />
-                  </div>
+                  {!readOnly && (
+                    <div className="flex items-center justify-end gap-1">
+                      <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(student)} title="Edit" />
+                      <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => { setDeletingStudent(student); setIsDeleteModalOpen(true); }} title="Delete" />
+                    </div>
+                  )}
                 </Td>
               </Tr>
             )) : (
@@ -623,6 +640,21 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
               <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2">
                 <UserPlus className="w-3.5 h-3.5" /> Basic Information
               </p>
+              
+              <div className="flex items-center gap-6 mb-6">
+                <div className="relative group">
+                  <Avatar name={formData.name || 'S'} src={formData.photoURL} size="lg" className="w-20 h-20 shadow-lg" />
+                  <label className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-lg shadow-md border border-slate-100 flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all">
+                    <Plus className="w-4 h-4 text-indigo-600" />
+                    <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+                  </label>
+                </div>
+                <div>
+                   <p className="text-sm font-bold text-slate-900">Student Photo</p>
+                   <p className="text-[10px] text-slate-400">Click the + to upload</p>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Full Name" required className="col-span-2">
                   <Input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Student's full name" />

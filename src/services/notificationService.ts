@@ -46,10 +46,26 @@ export function showLocalNotification(title: string, options?: NotificationOptio
 }
 
 // Function to start listening for global notifications (like notices)
-export function startNotificationListeners(userId: string, role: string) {
-  if (Notification.permission !== 'granted') return () => {};
+export function startNotificationListeners(
+  userId: string, 
+  role: string, 
+  onNotify?: (title: string, body: string, type: 'info' | 'success') => void
+) {
+  // We want to try starting listeners even if browser notification permission isn't granted,
+  // because we'll also use UI toasts now.
+  
+  const handleNotify = (title: string, body: string, type: 'info' | 'success' = 'info', tag: string) => {
+    // 1. Show browser notification if allowed
+    if (Notification.permission === 'granted') {
+      showLocalNotification(title, { body, tag });
+    }
+    // 2. Show UI toast via callback
+    if (onNotify) {
+      onNotify(title, body, type);
+    }
+  };
 
-  // Listen for new notices - Filter by role to satisfy security rules
+  // Listen for new notices
   const noticesQuery = query(
     collection(db, 'notices'),
     where('targetRoles', 'array-contains', role),
@@ -67,10 +83,12 @@ export function startNotificationListeners(userId: string, role: string) {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
         const notice = change.doc.data();
-        showLocalNotification('New Notice: ' + notice.title, {
-          body: notice.content?.substring(0, 50) + '...',
-          tag: 'new-notice'
-        });
+        handleNotify(
+          'New Notice: ' + notice.title, 
+          notice.content?.substring(0, 100) + (notice.content?.length > 100 ? '...' : ''),
+          'info',
+          'new-notice'
+        );
       }
     });
   });
@@ -95,10 +113,74 @@ export function startNotificationListeners(userId: string, role: string) {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const fee = change.doc.data();
-          showLocalNotification('New Fee Request', {
-            body: `A new fee request of ₹${fee.totalAmount} has been generated.`,
-            tag: 'new-fee'
-          });
+          handleNotify(
+            'New Fee Request', 
+            `A new fee request of ₹${fee.totalAmount} has been generated.`,
+            'info',
+            'new-fee'
+          );
+        }
+      });
+    });
+  }
+
+  // Listen for homework (if student)
+  let unsubscribeHomework = () => {};
+  if (role === 'student' || role === 'parent') {
+    const homeworkQuery = query(
+      collection(db, 'homework'),
+      orderBy('dueDate', 'desc'),
+      limit(1)
+    );
+
+    let initialHwLoad = true;
+    unsubscribeHomework = onSnapshot(homeworkQuery, (snapshot) => {
+      if (initialHwLoad) {
+        initialHwLoad = false;
+        return;
+      }
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const hw = change.doc.data();
+          handleNotify(
+            'New Homework Assigned', 
+            `Homework for ${hw.subjectId} due on ${new Date(hw.dueDate).toLocaleDateString()}.`,
+            'info',
+            'new-homework'
+          );
+        }
+      });
+    });
+  }
+
+  // Listen for lesson logs (diary updates)
+  let unsubscribeLessonLogs = () => {};
+  if (role === 'student' || role === 'parent') {
+    // For simplicity in this demo, we'll listen for any new log and if we had the classId we'd filter.
+    // In a real app, we'd pass the classId here.
+    const lessonLogsQuery = query(
+      collection(db, 'lessonLogs'),
+      orderBy('updatedAt', 'desc'),
+      limit(1)
+    );
+
+    let initialLessonLoad = true;
+    unsubscribeLessonLogs = onSnapshot(lessonLogsQuery, (snapshot) => {
+      if (initialLessonLoad) {
+        initialLessonLoad = false;
+        return;
+      }
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added' || change.type === 'modified') {
+          const log = change.doc.data();
+          handleNotify(
+            'Diary Update: ' + log.topic, 
+            `New classwork/homework logged for your class.`,
+            'success',
+            'lesson-log-' + change.doc.id
+          );
         }
       });
     });
@@ -107,5 +189,7 @@ export function startNotificationListeners(userId: string, role: string) {
   return () => {
     unsubscribeNotices();
     unsubscribeFees();
+    unsubscribeHomework();
+    unsubscribeLessonLogs();
   };
 }

@@ -518,6 +518,7 @@ interface AvatarProps {
   size?: 'sm' | 'md' | 'lg';
   color?: string;
   className?: string;
+  src?: string;
 }
 
 const avatarColors = [
@@ -531,12 +532,16 @@ const avatarColors = [
   'bg-rose-100 text-rose-700',
 ];
 
-export function Avatar({ name, size = 'md', className }: AvatarProps) {
+export function Avatar({ name, size = 'md', className, src }: AvatarProps) {
   const colorIndex = name.charCodeAt(0) % avatarColors.length;
   const sizes = { sm: 'w-8 h-8 text-xs', md: 'w-10 h-10 text-sm', lg: 'w-12 h-12 text-base' };
   return (
-    <div className={cn('rounded-xl flex items-center justify-center font-bold shrink-0', sizes[size], avatarColors[colorIndex], className)}>
-      {name.charAt(0).toUpperCase()}
+    <div className={cn('rounded-xl flex items-center justify-center font-bold shrink-0 overflow-hidden', sizes[size], avatarColors[colorIndex], className)}>
+      {src ? (
+        <img src={src} alt={name} className="w-full h-full object-cover" />
+      ) : (
+        name.charAt(0).toUpperCase()
+      )}
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
   Spinner,
   EmptyState,
 } from '../../components/ui';
+import UpdatesSection from '../../components/UpdatesSection';
 
 interface StudentDashboardProps {
   user: UserProfile;
@@ -131,6 +132,8 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
           index={2}
         />
       </div>
+
+      <UpdatesSection user={user} className="mb-8" />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Homework Tracking */}

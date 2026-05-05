@@ -2,8 +2,10 @@ import { UserProfile, Exam, ExamResult, Student, Subject, GradingScale, Teacher 
 import { Plus, FileText, TrendingUp, Calendar, Trash2, CheckCircle2, AlertCircle, Save } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, getDocs, query, where, orderBy, doc, updateDoc, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { useToast } from '../../components/Toast';
@@ -36,6 +38,7 @@ interface ExamManagementProps {
 }
 
 export default function ExamManagement({ user }: ExamManagementProps) {
+  const navigate = useNavigate();
   const [exams, setExams] = useState<Exam[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [gradingScales, setGradingScales] = useState<GradingScale[]>([]);
@@ -43,10 +46,6 @@ export default function ExamManagement({ user }: ExamManagementProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [isMarksModalOpen, setIsMarksModalOpen] = useState(false);
-  const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [marks, setMarks] = useState<{ [studentId: string]: number }>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
@@ -61,10 +60,12 @@ export default function ExamManagement({ user }: ExamManagementProps) {
     term: 'Term 1',
     status: 'scheduled' as const,
     gradingScaleId: '',
-    type: 'scheduled' as 'scheduled' | 'surprise',
+    type: 'scheduled' as 'scheduled' | 'surprise' | 'internal' | 'practical',
     syllabusText: '',
     syllabusPhoto: null as File | null,
     topic: '',
+    startTime: '',
+    room: '',
   });
 
   useEffect(() => {
@@ -113,6 +114,16 @@ export default function ExamManagement({ user }: ExamManagementProps) {
   const performDelete = async () => {
     if (!deletingId) return;
     try {
+      const examToDelete = exams.find(e => e.id === deletingId);
+      if (examToDelete?.syllabus?.storagePath) {
+        try {
+          const photoRef = ref(storage, examToDelete.syllabus.storagePath);
+          await deleteObject(photoRef);
+        } catch (storageErr) {
+          console.error('Error deleting syllabus photo:', storageErr);
+        }
+      }
+
       await deleteDoc(doc(db, 'exams', deletingId));
       fetchData();
       showToast('Exam deleted successfully', 'success');
@@ -127,12 +138,14 @@ export default function ExamManagement({ user }: ExamManagementProps) {
     e.preventDefault();
     try {
       let syllabusPhotoUrl = '';
+      let storagePath = '';
       if (newExam.syllabusPhoto) {
-        syllabusPhotoUrl = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(newExam.syllabusPhoto!);
-        });
+        const timestamp = new Date().getTime();
+        storagePath = `exams/syllabus/${user.uid}/${timestamp}_${newExam.syllabusPhoto.name}`;
+        const storageRef = ref(storage, storagePath);
+        
+        const uploadResult = await uploadBytes(storageRef, newExam.syllabusPhoto);
+        syllabusPhotoUrl = await getDownloadURL(uploadResult.ref);
       }
 
       await addDoc(collection(db, 'exams'), {
@@ -146,11 +159,14 @@ export default function ExamManagement({ user }: ExamManagementProps) {
         gradingScaleId: newExam.gradingScaleId,
         type: newExam.type,
         status: 'scheduled',
-        syllabus: newExam.type === 'scheduled' ? {
+        syllabus: (newExam.type === 'scheduled' || newExam.type === 'internal' || newExam.type === 'practical') ? {
           text: newExam.syllabusText,
-          photoUrl: syllabusPhotoUrl
+          photoUrl: syllabusPhotoUrl,
+          storagePath: storagePath || undefined
         } : undefined,
         topic: newExam.type === 'surprise' ? newExam.topic : undefined,
+        startTime: newExam.startTime,
+        room: newExam.room,
         createdAt: new Date().toISOString(),
         createdBy: user.uid
       });
@@ -169,80 +185,12 @@ export default function ExamManagement({ user }: ExamManagementProps) {
         type: 'scheduled',
         syllabusText: '',
         syllabusPhoto: null,
-        topic: ''
+        topic: '',
+        startTime: '',
+        room: ''
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'exams');
-    }
-  };
-
-  const openMarksEntry = async (exam: Exam) => {
-    try {
-      setSelectedExam(exam);
-      // For now, we assume the exam is for a single class or we fetch students for all classIds
-      const studentsSnap = await getDocs(query(collection(db, 'students'), where('classId', 'in', exam.classIds)));
-      const studentList = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
-      setStudents(studentList);
-
-      const resultsSnap = await getDocs(query(collection(db, 'examResults'), where('examId', '==', exam.id)));
-      const existingMarks: { [studentId: string]: number } = {};
-      resultsSnap.docs.forEach(doc => {
-        const data = doc.data() as ExamResult;
-        // Find the mark for the specific subject
-        const subjectResult = data.subjectResults.find(sr => sr.subjectId === exam.subjectId);
-        if (subjectResult) {
-          existingMarks[data.studentId] = subjectResult.marksObtained;
-        }
-      });
-      setMarks(existingMarks);
-      setIsMarksModalOpen(true);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, 'students/examResults');
-    }
-  };
-
-  const saveMarks = async () => {
-    if (!selectedExam) return;
-    try {
-      const scale = gradingScales.find(s => s.id === selectedExam.gradingScaleId);
-
-      for (const studentId of Object.keys(marks)) {
-        const percentage = (marks[studentId] / selectedExam.maxMarks) * 100;
-        let grade = 'F';
-        if (scale) {
-          const matchedGrade = scale.ranges.find(s => percentage >= s.min && percentage <= s.max);
-          if (matchedGrade) grade = matchedGrade.grade;
-        }
-
-        const resultId = `${selectedExam.id}_${studentId}`;
-        const student = students.find(s => s.id === studentId);
-
-        await setDoc(doc(db, 'examResults', resultId), {
-          examId: selectedExam.id,
-          studentId,
-          classId: student?.classId || selectedExam.classIds[0],
-          subjectResults: [{
-            subjectId: selectedExam.subjectId,
-            marksObtained: marks[studentId],
-            maxMarks: selectedExam.maxMarks,
-            grade
-          }],
-          totalMarks: marks[studentId],
-          percentage,
-          overallGrade: grade,
-          published: true,
-          updatedAt: new Date().toISOString()
-        });
-      }
-
-      if (selectedExam.status === 'scheduled' || selectedExam.status === 'ongoing') {
-        await updateDoc(doc(db, 'exams', selectedExam.id), { status: 'completed' });
-      }
-
-      setIsMarksModalOpen(false);
-      fetchData();
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'examResults');
     }
   };
 
@@ -356,7 +304,7 @@ export default function ExamManagement({ user }: ExamManagementProps) {
                     <Button
                       size="xs"
                       variant={exam.status === 'completed' ? 'secondary' : 'primary'}
-                      onClick={() => openMarksEntry(exam)}
+                      onClick={() => navigate(`/teacher/exams/${exam.id}/marks`)}
                     >
                       {exam.status === 'completed' ? 'Edit Results' : 'Enter Results'}
                     </Button>
@@ -415,26 +363,19 @@ export default function ExamManagement({ user }: ExamManagementProps) {
         <form id="exam-form" onSubmit={handleScheduleExam} className="space-y-5">
           {/* Exam type toggle */}
           <div className="flex p-1 bg-slate-100 rounded-xl">
-            <button
-              type="button"
-              onClick={() => setNewExam({ ...newExam, type: 'scheduled' })}
-              className={cn(
-                "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
-                newExam.type === 'scheduled' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              Scheduled Test
-            </button>
-            <button
-              type="button"
-              onClick={() => setNewExam({ ...newExam, type: 'surprise' })}
-              className={cn(
-                "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
-                newExam.type === 'surprise' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              Surprise Test
-            </button>
+            {(['scheduled', 'surprise', 'internal', 'practical'] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setNewExam({ ...newExam, type })}
+                className={cn(
+                  "flex-1 py-2 text-[10px] font-bold rounded-lg transition-all capitalize",
+                  newExam.type === type ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                )}
+              >
+                {type}
+              </button>
+            ))}
           </div>
 
           <FormField label="Exam Name" required>
@@ -455,7 +396,7 @@ export default function ExamManagement({ user }: ExamManagementProps) {
                 onChange={e => setNewExam({ ...newExam, classIds: [e.target.value] })}
               >
                 <option value="">Select Class</option>
-                {teacherData?.classes?.map(cls => <option key={cls} value={cls}>{cls}</option>)}
+                {teacherData?.classes?.map(cls => <option key={cls} value={cls}>Class {cls}</option>)}
               </Select>
             </FormField>
             <FormField label="Subject" required>
@@ -465,12 +406,32 @@ export default function ExamManagement({ user }: ExamManagementProps) {
                 onChange={e => setNewExam({ ...newExam, subjectId: e.target.value })}
               >
                 <option value="">Select Subject</option>
-                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {subjects.filter(s => teacherData?.subjects?.includes(s.id)).map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
               </Select>
             </FormField>
           </div>
 
-          {newExam.type === 'scheduled' ? (
+          <div className="grid grid-cols-2 gap-4">
+             <FormField label="Start Time">
+                <Input
+                  type="time"
+                  value={newExam.startTime}
+                  onChange={e => setNewExam({ ...newExam, startTime: e.target.value })}
+                />
+             </FormField>
+             <FormField label="Room / Venue">
+                <Input
+                  type="text"
+                  value={newExam.room}
+                  onChange={e => setNewExam({ ...newExam, room: e.target.value })}
+                  placeholder="e.g. Hall A"
+                />
+             </FormField>
+          </div>
+
+          {newExam.type !== 'surprise' ? (
             <>
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="Start Date" required>
@@ -531,56 +492,6 @@ export default function ExamManagement({ user }: ExamManagementProps) {
           </FormField>
         </form>
       </Modal>
-
-      {/* Marks Entry Modal */}
-      {selectedExam && (
-        <Modal
-          isOpen={isMarksModalOpen}
-          onClose={() => setIsMarksModalOpen(false)}
-          title={selectedExam.name}
-          subtitle={`Marks Entry for Class ${selectedExam.classIds.join(', ')}`}
-          size="lg"
-          footer={
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-500">
-                Total Students: <span className="font-bold text-slate-900">{students.length}</span>
-              </p>
-              <div className="flex items-center gap-3">
-                <Button variant="secondary" onClick={() => setIsMarksModalOpen(false)}>Cancel</Button>
-                <Button icon={Save} onClick={saveMarks}>Save Results</Button>
-              </div>
-            </div>
-          }
-        >
-          <Table>
-            <Thead>
-              <tr>
-                <Th>Student Name</Th>
-                <Th>Admission No.</Th>
-                <Th>Marks ({selectedExam.maxMarks})</Th>
-              </tr>
-            </Thead>
-            <Tbody>
-              {students.map((student) => (
-                <Tr key={student.id}>
-                  <Td className="font-medium text-slate-900">{student.name}</Td>
-                  <Td className="text-slate-500">{student.admissionNumber}</Td>
-                  <Td>
-                    <Input
-                      type="number"
-                      max={selectedExam.maxMarks}
-                      min={0}
-                      value={marks[student.id] || ''}
-                      onChange={(e) => setMarks({ ...marks, [student.id]: parseInt(e.target.value) || 0 })}
-                      className="w-28 font-bold"
-                    />
-                  </Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </Modal>
-      )}
     </div>
   );
 }

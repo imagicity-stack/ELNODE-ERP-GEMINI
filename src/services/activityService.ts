@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, orderBy, limit, where, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { ActivityLog, ActivitySection, UserProfile } from '../types';
 
@@ -6,13 +6,14 @@ export const logActivity = async (
   user: UserProfile | null,
   action: string,
   section: ActivitySection,
-  details: string
+  details: string,
+  metadata?: any
 ) => {
   if (!user) return;
 
   try {
-    const log: Omit<ActivityLog, 'id'> = {
-      timestamp: new Date().toISOString(),
+    const log: any = {
+      timestamp: serverTimestamp(),
       userId: user.uid,
       userName: user.name,
       userRole: user.role,
@@ -20,6 +21,7 @@ export const logActivity = async (
       section,
       details,
       userAgent: navigator.userAgent,
+      metadata,
     };
 
     await addDoc(collection(db, 'activityLogs'), log);

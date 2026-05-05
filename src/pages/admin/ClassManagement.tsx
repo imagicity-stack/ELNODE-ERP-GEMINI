@@ -5,6 +5,7 @@ import { Plus, GraduationCap, Trash2, Edit2, Users, Layers } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react';
 import { Class, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
+import { usePermissions } from '../../hooks/usePermissions';
 import { PageHeader, Button, IconButton, Modal, ConfirmModal, SearchInput, FormField, Input, EmptyState } from '../../components/ui';
 
 export default function ClassManagement({ user }: { user: UserProfile }) {
@@ -16,6 +17,9 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
   const [editingClass, setEditingClass] = useState<Class | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('classes');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -113,7 +117,7 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
   return (
     <div className="space-y-6">
       <PageHeader title="Academic Classes" subtitle="Define grade levels, sections, and capacities" icon={GraduationCap} iconColor="gradient-violet"
-        actions={<Button size="sm" icon={Plus} onClick={openAdd}>New Class</Button>} />
+        actions={!readOnly && <Button size="sm" icon={Plus} onClick={openAdd}>New Class</Button>} />
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
         <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search classes..." />
@@ -132,10 +136,12 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
                   <div className="w-12 h-12 rounded-xl gradient-violet flex items-center justify-center shadow-lg">
                     <GraduationCap className="w-6 h-6 text-white" />
                   </div>
-                  <div className="flex gap-1">
-                    <IconButton icon={Edit2} size="sm" onClick={() => handleEdit(cls)} />
-                    <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(cls.id)} />
-                  </div>
+                  {!readOnly && (
+                    <div className="flex gap-1">
+                      <IconButton icon={Edit2} size="sm" onClick={() => handleEdit(cls)} />
+                      <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(cls.id)} />
+                    </div>
+                  )}
                 </div>
                 <h3 className="text-xl font-bold text-slate-900">Class {cls.name}</h3>
                 <div className="flex items-center gap-1.5 mt-1">

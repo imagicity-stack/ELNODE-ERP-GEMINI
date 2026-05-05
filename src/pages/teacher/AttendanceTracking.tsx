@@ -1,4 +1,4 @@
-import { UserProfile, Teacher, Student, Attendance } from '../../types';
+import { UserProfile, Teacher, Student, Attendance, StudentLeaveRequest } from '../../types';
 import { ClipboardCheck, Save, Users, BookOpen, TrendingUp } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
@@ -6,6 +6,7 @@ import { collection, getDocs, query, where, doc, getDoc, writeBatch, serverTimes
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
 import { useData } from '../../contexts/DataContext';
+import { logActivity } from '../../services/activityService';
 import {
   PageHeader,
   Card,
@@ -32,7 +33,8 @@ export default function AttendanceTracking({ user }: AttendanceTrackingProps) {
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [currentAllocatedClass, setCurrentAllocatedClass] = useState<string | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
-  const [attendance, setAttendance] = useState<Record<string, 'present' | 'absent' | 'late'>>({});
+  const [attendance, setAttendance] = useState<Record<string, Attendance['status']>>({});
+  const [leaves, setLeaves] = useState<Record<string, StudentLeaveRequest>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -118,13 +120,39 @@ export default function AttendanceTracking({ user }: AttendanceTrackingProps) {
 
         // Fetch Today's Attendance
         const today = new Date().toISOString().split('T')[0];
+        
+        // Fetch Leaves
+        const leavesSnap = await getDocs(query(
+          collection(db, 'studentLeaves'),
+          where('classId', '==', selectedClass),
+          where('startDate', '<=', today),
+          where('endDate', '>=', today)
+        ));
+        const leaveMap: Record<string, StudentLeaveRequest> = {};
+        leavesSnap.docs.forEach(doc => {
+          const data = doc.data() as StudentLeaveRequest;
+          leaveMap[data.studentId] = { id: doc.id, ...data };
+        });
+        setLeaves(leaveMap);
+
         const attendanceSnap = await getDocs(query(
           collection(db, 'attendance'),
           where('date', '==', today),
           where('type', '==', 'student')
         ));
 
-        const attendanceMap: Record<string, 'present' | 'absent' | 'late'> = {};
+        const attendanceMap: Record<string, Attendance['status']> = {};
+        studentsList.forEach(s => {
+          if (leaveMap[s.id]) {
+            const leave = leaveMap[s.id];
+            if (leave.status === 'approved' || leave.status === 'regularized') {
+              attendanceMap[s.id] = 'approved_leave';
+            } else if (leave.status === 'submitted' || leave.status === 'pending') {
+              attendanceMap[s.id] = 'leave_pending';
+            }
+          }
+        });
+
         attendanceSnap.docs.forEach(doc => {
           const data = doc.data() as Attendance;
           if (studentsList.some(s => s.id === data.studentId)) {
@@ -141,7 +169,7 @@ export default function AttendanceTracking({ user }: AttendanceTrackingProps) {
     fetchStudentsAndAttendance();
   }, [selectedClass]);
 
-  const toggleAttendance = (id: string, status: 'present' | 'absent' | 'late') => {
+  const toggleAttendance = (id: string, status: Attendance['status']) => {
     setAttendance(prev => ({ ...prev, [id]: status }));
   };
 
@@ -166,15 +194,22 @@ export default function AttendanceTracking({ user }: AttendanceTrackingProps) {
       });
 
       Object.entries(attendance).forEach(([studentId, status]) => {
+        let finalStatus = status;
+        
+        // If it's absent and no leave exists, mark as uninformed_absence
+        if (status === 'absent' && !leaves[studentId]) {
+          finalStatus = 'uninformed_absence';
+        }
+
         if (existingRecords[studentId]) {
           const docRef = doc(db, 'attendance', existingRecords[studentId]);
-          batch.update(docRef, { status, updatedAt: serverTimestamp() });
+          batch.update(docRef, { status: finalStatus, updatedAt: serverTimestamp() });
         } else {
           const docRef = doc(collection(db, 'attendance'));
           batch.set(docRef, {
             date: today,
             studentId,
-            status,
+            status: finalStatus,
             type: 'student',
             classId: selectedClass,
             markedBy: user.teacherId || user.uid,
@@ -184,6 +219,16 @@ export default function AttendanceTracking({ user }: AttendanceTrackingProps) {
       });
 
       await batch.commit();
+      
+      // Log activity
+      logActivity(
+        user,
+        'Attendance Marked',
+        'Teachers',
+        `Marked attendance for Class ${selectedClass}`,
+        { classId: selectedClass }
+      );
+
       showToast('Attendance saved successfully!', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'attendance');
@@ -201,7 +246,9 @@ export default function AttendanceTracking({ user }: AttendanceTrackingProps) {
     present: Object.values(attendance).filter(s => s === 'present').length,
     absent: Object.values(attendance).filter(s => s === 'absent').length,
     late: Object.values(attendance).filter(s => s === 'late').length,
-    total: students.length
+    total: students.length,
+    approvedLeave: Object.values(attendance).filter(s => s === 'approved_leave').length,
+    leavePending: Object.values(attendance).filter(s => s === 'leave_pending').length,
   };
 
   return (
@@ -295,12 +342,16 @@ export default function AttendanceTracking({ user }: AttendanceTrackingProps) {
                   </div>
                   <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                     <div className="text-center flex-1 border-r border-slate-100">
-                      <p className="text-sm font-bold text-red-600">{stats.absent}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Absent</p>
+                      <p className="text-sm font-bold text-slate-600">{stats.approvedLeave}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase leading-none">Leave</p>
+                    </div>
+                    <div className="text-center flex-1 border-r border-slate-100">
+                      <p className="text-sm font-bold text-amber-600">{stats.late}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase leading-none">Late</p>
                     </div>
                     <div className="text-center flex-1">
-                      <p className="text-sm font-bold text-amber-600">{stats.late}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Late</p>
+                      <p className="text-sm font-bold text-red-600">{stats.absent}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase leading-none">Absent</p>
                     </div>
                   </div>
                 </div>
@@ -342,13 +393,13 @@ export default function AttendanceTracking({ user }: AttendanceTrackingProps) {
                           <Td className="font-bold text-slate-500">{student.admissionNumber}</Td>
                           <Td className="font-bold text-slate-900">{student.name}</Td>
                           <Td>
-                            <div className="flex items-center justify-center gap-2">
+                            <div className="flex items-center justify-center gap-1.5 flex-wrap">
                               <button
                                 onClick={() => toggleAttendance(student.id, 'present')}
                                 className={cn(
-                                  "px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all",
+                                  "px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all",
                                   attendance[student.id] === 'present'
-                                    ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/20"
+                                    ? "bg-emerald-600 text-white shadow-sm"
                                     : "bg-slate-100 text-slate-400 hover:bg-slate-200"
                                 )}
                               >
@@ -357,9 +408,9 @@ export default function AttendanceTracking({ user }: AttendanceTrackingProps) {
                               <button
                                 onClick={() => toggleAttendance(student.id, 'absent')}
                                 className={cn(
-                                  "px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all",
-                                  attendance[student.id] === 'absent'
-                                    ? "bg-red-600 text-white shadow-lg shadow-red-600/20"
+                                  "px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all",
+                                  attendance[student.id] === 'absent' || attendance[student.id] === 'uninformed_absence'
+                                    ? "bg-red-600 text-white shadow-sm"
                                     : "bg-slate-100 text-slate-400 hover:bg-slate-200"
                                 )}
                               >
@@ -368,14 +419,30 @@ export default function AttendanceTracking({ user }: AttendanceTrackingProps) {
                               <button
                                 onClick={() => toggleAttendance(student.id, 'late')}
                                 className={cn(
-                                  "px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all",
+                                  "px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all",
                                   attendance[student.id] === 'late'
-                                    ? "bg-amber-500 text-white shadow-lg shadow-amber-500/20"
+                                    ? "bg-amber-500 text-white shadow-sm"
                                     : "bg-slate-100 text-slate-400 hover:bg-slate-200"
                                 )}
                               >
                                 Late
                               </button>
+                              <button
+                                onClick={() => toggleAttendance(student.id, 'approved_leave')}
+                                className={cn(
+                                  "px-3 py-1 rounded-lg text-[9px] font-bold uppercase transition-all",
+                                  attendance[student.id] === 'approved_leave'
+                                    ? "bg-slate-700 text-white shadow-sm"
+                                    : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                                )}
+                              >
+                                Leave
+                              </button>
+                              {leaves[student.id] && (
+                                <Badge variant={leaves[student.id].status === 'approved' ? 'success' : 'warning'} className="text-[8px] px-1 py-0 uppercase">
+                                  {leaves[student.id].status}
+                                </Badge>
+                              )}
                             </div>
                           </Td>
                         </Tr>

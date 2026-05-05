@@ -4,8 +4,8 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
 
-// Register service worker for PWA functionality
-registerSW({ immediate: true });
+// Register service worker for PWA functionality - disabled to troubleshoot reload loop
+// registerSW({ immediate: true });
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

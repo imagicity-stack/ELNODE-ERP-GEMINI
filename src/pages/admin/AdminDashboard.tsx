@@ -8,6 +8,7 @@ import {
   Building2,
   TrendingUp,
   ArrowUpRight,
+  Clock,
 } from 'lucide-react';
 import {
   BarChart,
@@ -26,11 +27,12 @@ import {
 import { motion } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Notice, UserProfile } from '../../types';
 import { Link } from 'react-router-dom';
 import { StatCard, Card, Badge, Button, Avatar, PageHeader } from '../../components/ui';
+import UpdatesSection from '../../components/UpdatesSection';
 
 const GENDER_COLORS = ['#6366f1', '#ec4899'];
 
@@ -54,17 +56,21 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     { month: 'Apr', amount: 0 }, { month: 'May', amount: 0 }, { month: 'Jun', amount: 0 },
   ]);
   const [genderStats, setGenderStats] = useState([{ name: 'Boys', value: 0 }, { name: 'Girls', value: 0 }]);
+  const [pendingLeaves, setPendingLeaves] = useState(0);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        const [studentsSnap, teachersSnap, classesSnap, noticesSnap, recentSnap, feesSnap] = await Promise.all([
+        const today = new Date().toISOString().split('T')[0];
+        const [studentsSnap, teachersSnap, classesSnap, noticesSnap, recentSnap, feesSnap, leaveSnap, attendanceSnap] = await Promise.all([
           getDocs(collection(db, 'students')),
           getDocs(collection(db, 'teachers')),
           getDocs(collection(db, 'classes')),
           getDocs(query(collection(db, 'notices'), orderBy('createdAt', 'desc'), limit(3))),
           getDocs(query(collection(db, 'students'), orderBy('createdAt', 'desc'), limit(5))),
           getDocs(collection(db, 'feePayments')),
+          getDocs(query(collection(db, 'studentLeaves'), where('status', 'in', ['submitted', 'pending']))),
+          getDocs(query(collection(db, 'attendance'), where('date', '==', today)))
         ]);
 
         const students = studentsSnap.docs.map(d => d.data());
@@ -76,12 +82,18 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         setCounts({ students: studentsSnap.size, teachers: teachersSnap.size, classes: classesSnap.size, feeCollection: totalFees });
         setNotices(noticesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Notice)));
         setRecentAdmissions(recentSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setPendingLeaves(leaveSnap.size);
+
+        // Real attendance for today
+        const presentToday = attendanceSnap.docs.filter(d => d.data().status === 'present').length;
+        const totalPossible = studentsSnap.size;
+        const attendRate = totalPossible > 0 ? Math.round((presentToday / totalPossible) * 100) : 0;
 
         const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
         setAttendanceStats(days.map(day => ({
           name: day,
-          students: Math.floor(Math.random() * 20) + 80,
-          staff: Math.floor(Math.random() * 10) + 90,
+          students: day === 'Fri' ? attendRate : Math.floor(Math.random() * 5) + 90, // Real for today, mock for past
+          staff: 98,
         })));
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
         setFeeTrendData(months.map(month => ({ month, amount: Math.floor(Math.random() * 50000) + 10000 })));
@@ -125,6 +137,31 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           <StatCard key={stat.label} {...stat} index={i} />
         ))}
       </div>
+
+      <UpdatesSection user={user} className="mb-8" />
+
+      {pendingLeaves > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between shadow-sm"
+        >
+          <div className="flex items-center gap-3 text-amber-800">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="font-bold text-sm">Action Required: Pending Leave Requests</p>
+              <p className="text-xs font-medium opacity-80">There are {pendingLeaves} new leave requests waiting for your review.</p>
+            </div>
+          </div>
+          <Link to="/superadmin/leaves">
+            <Button variant="secondary" size="sm" className="bg-white border-amber-200 text-amber-700 hover:bg-amber-100">
+              Review Now
+            </Button>
+          </Link>
+        </motion.div>
+      )}
 
       {/* Notices + Quick Tip */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -1,7 +1,8 @@
-import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure, PaymentMethod, FeeHead } from '../../types';
-import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History } from 'lucide-react';
+import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure, PaymentMethod, FeeHead, FineConfig } from '../../types';
+import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { useToast } from '../../components/Toast';
@@ -41,6 +42,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
   const [globalHeads, setGlobalHeads] = useState<FeeHead[]>([]);
+  const [fineConfig, setFineConfig] = useState<FineConfig | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -52,10 +54,19 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
   const [paymentData, setPaymentData] = useState({
     amount: '',
+    head: 'Tuition Fees',
     method: 'cash' as PaymentMethod,
     date: new Date().toISOString().split('T')[0],
     referenceNumber: '',
     remarks: '',
+  });
+
+  const [waiverData, setWaiverData] = useState({
+    amount: '',
+    reason: '',
+    isOpen: false,
+    requestId: '',
+    studentName: ''
   });
 
   const [requestData, setRequestData] = useState<{
@@ -71,13 +82,14 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [studentsSnap, requestsSnap, paymentsSnap, structuresSnap, classesSnap, headsSnap] = await Promise.all([
+      const [studentsSnap, requestsSnap, paymentsSnap, structuresSnap, classesSnap, headsSnap, fineSnap] = await Promise.all([
         getDocs(collection(db, 'students')),
         getDocs(collection(db, 'feeRequests')),
         getDocs(query(collection(db, 'feePayments'), orderBy('date', 'desc'))),
         getDocs(collection(db, 'feeStructures')),
         getDocs(collection(db, 'classes')),
-        getDocs(collection(db, 'feeHeads'))
+        getDocs(collection(db, 'feeHeads')),
+        getDoc(doc(db, 'fine-config', 'global'))
       ]);
 
       setStudents(studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student)));
@@ -86,6 +98,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       setFeeStructures(structuresSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeStructure)));
       setClasses(classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class)));
       setGlobalHeads(headsSnap.docs.map(doc => ({ ...doc.data() } as FeeHead)));
+      if (fineSnap.exists()) {
+        setFineConfig(fineSnap.data() as FineConfig);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'feeRequests');
     } finally {
@@ -123,7 +138,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       if (!pendingRequest) throw new Error('No pending fee request found for student');
 
       const payAmount = Number(paymentData.amount);
-      const remaining = pendingRequest.totalAmount - (pendingRequest.paidAmount || 0);
+      const currentFine = fineConfig ? calculateFine(pendingRequest, fineConfig) : 0;
+      const totalRequired = pendingRequest.totalAmount + currentFine - (pendingRequest.waivedAmount || 0);
+      const remaining = totalRequired - (pendingRequest.paidAmount || 0);
 
       if (payAmount > remaining) {
         showToast(`Payment amount exceeds remaining balance (₹${remaining})`, 'error');
@@ -133,7 +150,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       const paymentDoc: Omit<FeePayment, 'id'> = {
         studentId: selectedStudent.id,
+        classId: selectedStudent.classId,
         feeRequestId: pendingRequest.id,
+        feeHead: paymentData.head,
         amount: payAmount,
         date: paymentData.date,
         method: paymentData.method,
@@ -143,13 +162,21 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       };
 
       await addDoc(collection(db, 'feePayments'), paymentDoc);
+      logActivity(
+        user, 
+        'Recorded Fee Payment', 
+        'Accounts', 
+        `Collected ₹${payAmount.toLocaleString()} from ${selectedStudent.name} for ${paymentData.head}`,
+        { studentId: selectedStudent.id, feeHead: paymentData.head, amount: payAmount }
+      );
 
       const newPaidAmount = (pendingRequest.paidAmount || 0) + payAmount;
-      const newStatus = newPaidAmount >= pendingRequest.totalAmount ? 'paid' : 'partially_paid';
+      const newStatus = newPaidAmount >= totalRequired ? 'paid' : 'partially_paid';
 
       // Update request status
       await updateDoc(doc(db, 'feeRequests', pendingRequest.id), { 
         paidAmount: newPaidAmount,
+        fineAmount: currentFine, // Snapshot the fine amount at time of payment
         status: newStatus 
       });
 
@@ -165,7 +192,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         user,
         'RECORD_PAYMENT',
         'Accounts',
-        `Recorded payment of ₹${payAmount} for ${selectedStudent.name} (${selectedStudent.schoolNumber})`
+        `Recorded payment of ₹${payAmount} for ${selectedStudent.name} (${selectedStudent.schoolNumber})`,
+        { studentId: selectedStudent.id }
       );
 
       setIsModalOpen(false);
@@ -202,7 +230,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           user,
           'UPDATE_FEE_REQUEST',
           'Accounts',
-          `Updated fee request for ${selectedStudent.name} (${requestData.month})`
+          `Updated fee request for ${selectedStudent.name} (${requestData.month})`,
+          { studentId: selectedStudent.id, month: requestData.month }
         );
       } else {
         const newRequest: Omit<FeeRequest, 'id'> = {
@@ -217,7 +246,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           user,
           'GENERATE_FEE_REQUEST',
           'Accounts',
-          `Generated fee request for ${selectedStudent.name} (${requestData.month})`
+          `Generated fee request for ${selectedStudent.name} (${requestData.month})`,
+          { studentId: selectedStudent.id, month: requestData.month }
         );
       }
 
@@ -249,7 +279,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         user,
         'CANCEL_FEE_REQUEST',
         'Accounts',
-        `Cancelled fee request for ${student?.name || studentId}`
+        `Cancelled fee request for ${student?.name || studentId}`,
+        { studentId }
       );
       
       fetchData();
@@ -298,13 +329,46 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         user,
         'DELETE_PAYMENT',
         'Super Admin',
-        `Deleted payment record ${payment.receiptNumber} for ₹${payment.amount}`
+        `Deleted payment record ${payment.receiptNumber} for ₹${payment.amount}`,
+        { studentId: payment.studentId }
       );
 
       showToast('Payment record deleted successfully', 'success');
       fetchData();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'feePayments');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWaiveFine = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const request = feeRequests.find(r => r.id === waiverData.requestId);
+      if (!request) return;
+
+      const updatedRequest: Partial<FeeRequest> = {
+        waivedAmount: (request.waivedAmount || 0) + Number(waiverData.amount),
+        waivedBy: user.uid,
+        waivedAt: new Date().toISOString(),
+        waiverReason: waiverData.reason
+      };
+
+      await updateDoc(doc(db, 'feeRequests', request.id), updatedRequest);
+      logActivity(
+        user, 
+        'Waived Penalty', 
+        'Super Admin', 
+        `Waived ₹${waiverData.amount} for ${waiverData.studentName}`,
+        { studentId: request.studentId, amount: waiverData.amount }
+      );
+      showToast('Penalty waived successfully', 'success');
+      setWaiverData({ ...waiverData, isOpen: false });
+      fetchData();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'feeRequests');
     } finally {
       setLoading(false);
     }
@@ -459,9 +523,11 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               {filteredStudents.map((student) => {
                 const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
                 const totalFee = studentRequests.reduce((sum, r) => sum + r.totalAmount, 0);
+                const currentFine = studentRequests.reduce((sum, r) => sum + (fineConfig ? calculateFine(r, fineConfig) : 0), 0);
+                const waiverAmount = studentRequests.reduce((sum, r) => sum + (r.waivedAmount || 0), 0);
                 const paidAmount = studentRequests.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
-                const balance = totalFee - paidAmount;
-                const studentRequest = studentRequests[0]; // For edit/individual actions
+                const balance = totalFee + currentFine - waiverAmount - paidAmount;
+                const studentRequest = studentRequests[0]; 
 
                 return (
                   <Tr key={student.id}>
@@ -475,7 +541,23 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                       </div>
                     </Td>
                     <Td>{student.schoolNumber}</Td>
-                    <Td className="font-bold text-slate-900">₹{(totalFee || 0).toLocaleString()}</Td>
+                    <Td>
+                      <div className="space-y-1">
+                        <p className="font-bold text-slate-900 leading-none">₹{(totalFee || 0).toLocaleString()}</p>
+                        {currentFine > 0 && (
+                          <p className="text-[10px] text-rose-500 font-bold flex items-center gap-1">
+                            <Scale className="w-2.5 h-2.5" />
+                            +₹{currentFine.toLocaleString()} Fine
+                          </p>
+                        )}
+                        {waiverAmount > 0 && (
+                          <p className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                            <ShieldOff className="w-2.5 h-2.5" />
+                            -₹{waiverAmount.toLocaleString()} Waived
+                          </p>
+                        )}
+                      </div>
+                    </Td>
                     <Td className="font-bold text-emerald-600">₹{(paidAmount || 0).toLocaleString()}</Td>
                     <Td className="font-bold text-red-600">₹{(balance || 0).toLocaleString()}</Td>
                     <Td>
@@ -514,6 +596,20 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                             size="sm"
                             onClick={() => handleCancelRequest(studentRequest.id, student.id)}
                           />
+                          {user.role === 'super_admin' && currentFine > 0 && (
+                            <IconButton
+                              icon={ShieldOff}
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => setWaiverData({
+                                isOpen: true,
+                                amount: (currentFine - (studentRequest.waivedAmount || 0)).toString(),
+                                reason: '',
+                                requestId: studentRequest.id,
+                                studentName: student.name
+                              })}
+                            />
+                          )}
                           <Button
                             variant="primary"
                             size="xs"
@@ -778,6 +874,19 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         }
       >
         <form onSubmit={handleRecordPayment} data-payment-form className="space-y-5">
+          <FormField label="Fee Category (Head)" required>
+            <Select
+              value={paymentData.head}
+              onChange={(e) => setPaymentData({ ...paymentData, head: e.target.value })}
+            >
+              <option value="Tuition Fees">Tuition Fees</option>
+              <option value="Transport Fees">Transport Fees</option>
+              <option value="Examination Fees">Examination Fees</option>
+              <option value="Hostel Fees">Hostel Fees</option>
+              <option value="Academic Fees">Academic Fees</option>
+              <option value="Miscellaneous">Miscellaneous</option>
+            </Select>
+          </FormField>
           <FormField label="Amount (₹)" required>
             <Input
               type="number"
@@ -824,6 +933,50 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               rows={3}
             />
           </FormField>
+        </form>
+      </Modal>
+
+      {/* Waive Fine Modal */}
+      <Modal
+        isOpen={waiverData.isOpen}
+        onClose={() => setWaiverData({ ...waiverData, isOpen: false })}
+        title="Waive Penalty Fine"
+        subtitle={`Student: ${waiverData.studentName}`}
+        size="sm"
+        footer={
+          <div className="flex items-center justify-end gap-3">
+            <Button variant="secondary" onClick={() => setWaiverData({ ...waiverData, isOpen: false })}>Cancel</Button>
+            <Button variant="danger" loading={loading} onClick={(e: any) => {
+              const form = document.querySelector('form[data-waiver-form]') as HTMLFormElement;
+              if (form) form.requestSubmit();
+            }}>Confirm Waiver</Button>
+          </div>
+        }
+      >
+        <form onSubmit={handleWaiveFine} data-waiver-form className="space-y-4">
+          <FormField label="Amount to Waive (₹)" required hint="Enter the amount you wish to waive from the calculated fine">
+            <Input 
+              type="number"
+              required
+              value={waiverData.amount}
+              onChange={(e) => setWaiverData({ ...waiverData, amount: e.target.value })}
+            />
+          </FormField>
+          <FormField label="Reason for Waiver" required>
+            <Textarea 
+              required
+              value={waiverData.reason}
+              onChange={(e) => setWaiverData({ ...waiverData, reason: e.target.value })}
+              placeholder="e.g. Negotiated with Parent, Technical Issue, etc."
+              rows={3}
+            />
+          </FormField>
+          <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 flex gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
+            <p className="text-[10px] text-amber-700 leading-relaxed italic">
+              Warning: This action is permanent and will be logged as a waiver by {user.name}.
+            </p>
+          </div>
         </form>
       </Modal>
     </div>

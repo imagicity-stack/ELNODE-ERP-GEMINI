@@ -1,9 +1,12 @@
-import { UserProfile, Student, FeeRequest, FeePayment } from '../../types';
-import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Download, Wallet } from 'lucide-react';
+import { UserProfile, Student, FeeRequest, FeePayment, FineConfig } from '../../types';
+import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Download, Wallet, Scale, ShieldOff } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, getDoc } from 'firebase/firestore';
+import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
+import { useToast } from '../../components/Toast';
+import { logActivity } from '../../services/activityService';
 import {
   PageHeader,
   Card,
@@ -35,7 +38,9 @@ declare global {
 export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
+  const [fineConfig, setFineConfig] = useState<FineConfig | null>(null);
   const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
   const fetchData = async () => {
     if (!selectedStudent?.id) return;
@@ -44,13 +49,17 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
       const requestsQuery = query(collection(db, 'feeRequests'), where('studentId', '==', selectedStudent.id));
       const paymentsQuery = query(collection(db, 'feePayments'), where('studentId', '==', selectedStudent.id), orderBy('date', 'desc'));
 
-      const [requestsSnap, paymentsSnap] = await Promise.all([
+      const [requestsSnap, paymentsSnap, fineSnap] = await Promise.all([
         getDocs(requestsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feeRequests'); throw err; }),
-        getDocs(paymentsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feePayments'); throw err; })
+        getDocs(paymentsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feePayments'); throw err; }),
+        getDoc(doc(db, 'fine-config', 'global'))
       ]);
 
       setFeeRequests(requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
       setPayments(paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeePayment)));
+      if (fineSnap.exists()) {
+        setFineConfig(fineSnap.data() as FineConfig);
+      }
     } catch (err) {
       console.error('Error fetching parent fee data:', err);
     } finally {
@@ -77,23 +86,37 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
       return;
     }
 
-    const remainingAmount = request.totalAmount - (request.paidAmount || 0);
+    const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
+    const remainingAmount = request.totalAmount + currentFine - (request.waivedAmount || 0) - (request.paidAmount || 0);
     if (remainingAmount <= 0) {
       alert('This fee request is already fully paid.');
       return;
     }
 
+    const amountInPaise = Math.round(remainingAmount * 100);
+    
+    if (amountInPaise < 100) {
+      alert('Minimum payment amount is ₹1.');
+      return;
+    }
+
     const options = {
       key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || '',
-      amount: remainingAmount * 100, // in paise
+      amount: amountInPaise, 
       currency: 'INR',
-      name: 'School Management System',
+      name: 'School Fee Payment',
       description: `Fees for ${request.month} - ${selectedStudent?.name}`,
+      theme: {
+        color: '#EF4444',
+      },
       handler: async function (response: any) {
         try {
+          const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
           const payment: Omit<FeePayment, 'id'> = {
             studentId: request.studentId,
+            classId: selectedStudent?.classId || '',
             feeRequestId: request.id,
+            feeHead: request.heads[0]?.name || 'Academic Fee',
             amount: remainingAmount,
             date: new Date().toISOString().split('T')[0],
             method: 'online',
@@ -105,29 +128,41 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
           await addDoc(collection(db, 'feePayments'), payment);
           
           const newPaidAmount = (request.paidAmount || 0) + remainingAmount;
-          const newStatus = newPaidAmount >= request.totalAmount ? 'paid' : 'partially_paid';
+          const totalRequired = request.totalAmount + currentFine - (request.waivedAmount || 0);
+          const newStatus = newPaidAmount >= totalRequired ? 'paid' : 'partially_paid';
+          const now = new Date().toISOString();
 
           await updateDoc(doc(db, 'feeRequests', request.id), { 
             paidAmount: newPaidAmount,
-            status: newStatus 
+            fineAmount: currentFine, // Snapshot the fine
+            status: newStatus,
+            updatedAt: now
           });
 
           if (newStatus === 'paid') {
-            await updateDoc(doc(db, 'students', request.studentId), { feeStatus: 'paid' });
+            await updateDoc(doc(db, 'students', request.studentId), { 
+              feeStatus: 'paid',
+              updatedAt: now
+            });
           }
 
-          alert('Payment Successful! Transaction ID: ' + response.razorpay_payment_id);
+          logActivity(
+            user, 
+            'Paid Fees Online', 
+            'Parents', 
+            `Paid ₹${remainingAmount.toLocaleString()} for ${payment.feeHead} via Razorpay`,
+            { studentId: request.studentId, amount: remainingAmount }
+          );
+          showToast('Payment Successful! Transaction ID: ' + response.razorpay_payment_id, 'success');
           fetchData();
         } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, 'feePayments');
+          console.error('Payment process error:', err);
+          showToast('Error recording payment, but transaction was successful. Please contact support.', 'error');
         }
       },
       prefill: {
         name: user.name,
         email: user.email,
-      },
-      theme: {
-        color: '#4f46e5',
       },
     };
 
@@ -139,9 +174,11 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
 
   const outstandingAmount = feeRequests
     .filter(r => r.status !== 'paid')
-    .reduce((sum, r) => sum + (r.totalAmount - (r.paidAmount || 0)), 0);
+    .reduce((sum, r) => sum + (r.totalAmount + (fineConfig ? calculateFine(r, fineConfig) : 0) - (r.waivedAmount || 0) - (r.paidAmount || 0)), 0);
 
   const currentRequest = feeRequests.find(r => r.status !== 'paid' && r.status !== 'overdue') || feeRequests.find(r => r.status === 'overdue');
+
+  const currentFineForRequest = currentRequest && fineConfig ? calculateFine(currentRequest, fineConfig) : 0;
 
   return (
     <div className="space-y-8">
@@ -195,13 +232,29 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                 ))}
                 <div className="p-6 bg-slate-50 flex items-center justify-between">
                   <div className="space-y-1">
-                    <span className="font-bold text-slate-900 block">Total Amount Due</span>
-                    {currentRequest.paidAmount > 0 && (
-                      <span className="text-xs text-emerald-600 font-bold">Already Paid: ₹{currentRequest.paidAmount.toLocaleString()}</span>
-                    )}
+                    <span className="font-bold text-slate-900 block">Net Payable Amount</span>
+                    <div className="flex flex-wrap gap-2">
+                      {currentFineForRequest > 0 && (
+                        <Badge variant="error" className="text-[10px] flex items-center gap-1">
+                          <Scale className="w-2.5 h-2.5" />
+                          Late Fine: ₹{currentFineForRequest.toLocaleString()}
+                        </Badge>
+                      )}
+                      {currentRequest.waivedAmount > 0 && (
+                        <Badge variant="success" className="text-[10px] flex items-center gap-1">
+                          <ShieldOff className="w-2.5 h-2.5" />
+                          Waived: ₹{currentRequest.waivedAmount.toLocaleString()}
+                        </Badge>
+                      )}
+                      {currentRequest.paidAmount > 0 && (
+                        <span className="text-xs text-emerald-600 font-bold">Already Paid: ₹{currentRequest.paidAmount.toLocaleString()}</span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-2xl font-black text-violet-600">₹{(currentRequest.totalAmount - (currentRequest.paidAmount || 0)).toLocaleString()}</span>
+                    <span className="text-2xl font-black text-violet-600">
+                      ₹{(currentRequest.totalAmount + currentFineForRequest - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0)).toLocaleString()}
+                    </span>
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Remaining Balance</p>
                   </div>
                 </div>
@@ -235,6 +288,7 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                     <Th>Date</Th>
                     <Th>Amount</Th>
                     <Th>Method</Th>
+                    <Th>Trans. ID</Th>
                     <Th className="text-right">Receipt</Th>
                   </tr>
                 </Thead>
@@ -245,6 +299,11 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                       <Td>{tx.date}</Td>
                       <Td className="font-bold text-emerald-600">₹{(tx.amount || 0).toLocaleString()}</Td>
                       <Td className="capitalize">{tx.method.replace('_', ' ')}</Td>
+                      <Td>
+                        <span className="text-[10px] font-mono text-slate-500 truncate block max-w-[100px]" title={tx.transactionId || tx.referenceNumber}>
+                          {tx.transactionId || tx.referenceNumber || '-'}
+                        </span>
+                      </Td>
                       <Td className="text-right">
                         <IconButton
                           icon={Download}
@@ -301,11 +360,11 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
             <ul className="space-y-4 text-xs text-slate-600">
               <li className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-violet-600 mt-1.5"></div>
-                Fees must be paid by the 10th of each month to avoid late charges.
+                Fees must be paid by the due date to avoid automated late charges.
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-violet-600 mt-1.5"></div>
-                Late fee of ₹500 per week applies after the due date.
+                Late penalties are applied dynamically based on the current school fine policy.
               </li>
               <li className="flex items-start gap-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-violet-600 mt-1.5"></div>

@@ -1,4 +1,15 @@
-export type UserRole = 'super_admin' | 'student' | 'parent' | 'accounts' | 'teacher' | 'principal';
+export type UserRole = 'super_admin' | 'student' | 'parent' | 'accounts' | 'teacher' | 'principal' | 'office_staff';
+
+export interface ModulePermission {
+  enabled: boolean;
+  readOnly: boolean;
+}
+
+export interface RolePermissions {
+  id: string; // role name e.g., 'principal'
+  modules: Record<string, ModulePermission>;
+  updatedAt: string;
+}
 
 export interface UserProfile {
   uid: string;
@@ -39,23 +50,45 @@ export interface Student {
   academicHistory?: string;
   houseId?: string;
   feeStatus: 'paid' | 'pending' | 'overdue';
+  photoURL?: string;
 }
 
 export interface Teacher {
   id: string;
   name: string;
   email: string;
+  role?: string; // For categorization
   subjects: string[]; // Subject IDs
   classes: string[]; // Class IDs or formatted strings
   salaryStructure: number;
   joiningDetails: string;
+  category?: 'Teacher';
   houseInchargeId?: string;
   isHouseIncharge?: boolean;
   classTeacherOf?: {
     classId: string;
     section: string;
   };
+  photoURL?: string;
 }
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string; // 'principal', 'accounts', 'security', etc.
+  joiningDate: string;
+  salary: number;
+  status: 'active' | 'on-leave' | 'resigned';
+  category?: 'Staff' | 'Management' | 'Administration';
+  updatedAt?: string;
+  photoURL?: string;
+}
+
+export type UnifiedStaff = (Teacher | StaffMember) & {
+  staffCategory: 'Teacher' | 'Principal' | 'Accounts' | 'Admin' | 'Other Staff';
+  baseSalary: number;
+};
 
 export interface Class {
   id: string;
@@ -126,6 +159,24 @@ export interface FeeStructure {
   updatedAt: string;
 }
 
+export interface FineSlab {
+  startDay: number;
+  endDay?: number;
+  fixedPenalty: number;
+  percentagePenalty: number;
+  isHigherOf: boolean;
+  escalationRate?: number;
+}
+
+export interface FineConfig {
+  id: string;
+  isEnabled: boolean;
+  gracePeriodDays: number;
+  slabs: FineSlab[];
+  updatedBy: string;
+  updatedAt: string;
+}
+
 export interface FeeRequest {
   id: string;
   studentId: string;
@@ -139,10 +190,15 @@ export interface FeeRequest {
     finalAmount: number;
   }[];
   totalAmount: number;
+  fineAmount: number;
+  waivedAmount: number;
   paidAmount: number;
   status: 'paid' | 'pending' | 'partially_paid' | 'overdue';
   dueDate: string;
   createdAt: string;
+  waivedBy?: string;
+  waivedAt?: string;
+  waiverReason?: string;
 }
 
 export type PaymentMethod = 'bank_transfer' | 'cheque' | 'cash' | 'upi' | 'net_banking' | 'online';
@@ -175,9 +231,10 @@ export interface Attendance {
   id: string;
   date: string;
   studentId: string;
-  status: 'present' | 'absent' | 'late';
+  status: 'present' | 'absent' | 'late' | 'approved_leave' | 'leave_pending' | 'uninformed_absence';
   type: 'student' | 'staff';
   remarks?: string;
+  classId?: string; // Add classId for better searching
 }
 
 export interface Homework {
@@ -187,6 +244,8 @@ export interface Homework {
   teacherId: string;
   content: string;
   dueDate: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
   submissions: {
     studentId: string;
     content: string;
@@ -206,12 +265,15 @@ export interface Exam {
   maxMarks: number;
   gradingScaleId: string;
   status: 'scheduled' | 'ongoing' | 'completed' | 'published';
-  type: 'scheduled' | 'surprise';
+  type: 'scheduled' | 'surprise' | 'internal' | 'practical';
   syllabus?: {
     text?: string;
     photoUrl?: string;
+    storagePath?: string;
   };
   topic?: string;
+  startTime?: string;
+  room?: string;
   createdAt: string;
   createdBy: string;
 }
@@ -291,22 +353,52 @@ export interface Expense {
   receiptUrl?: string;
 }
 
+export interface PayrollConfig {
+  id: string;
+  workingDaysInYear: number; // e.g. 240
+  leaveDeductionPerDay?: number; // Fixed override if set
+  pfRate: number; // percentage
+  professionalTax: number; // flat amount
+  updatedBy: string;
+  updatedAt: string;
+}
+
 export interface Salary {
   id: string;
-  teacherId: string;
-  month: string; // e.g. "2023-10"
-  amount: number;
-  status: 'paid' | 'pending';
-  paidAt?: string;
-  bonus?: number;
-  deductions?: number;
+  employeeId: string;
+  employeeName: string;
+  employeeRole: string;
+  month: string;
+  baseAmount: number;
+  allowances: number;
+  deductions: {
+    pf: number;
+    tax: number;
+    leaves: number;
+    leaveDeduction: number;
+    other: number;
+  };
+  netAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  status: 'pending' | 'partially_paid' | 'paid';
   remarks?: string;
+  paymentHistory?: {
+    amount: number;
+    date: string;
+    method: string;
+    transactionId?: string;
+  }[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface FeePayment {
   id: string;
   studentId: string;
+  classId: string;
   feeRequestId: string;
+  feeHead: string; // e.g. Tuition, Transport
   amount: number;
   date: string;
   method: PaymentMethod;
@@ -314,6 +406,53 @@ export interface FeePayment {
   transactionId?: string;
   receiptNumber: string;
   remarks?: string;
+}
+
+export interface LessonLog {
+  id: string;
+  classId: string;
+  subjectId: string;
+  teacherId: string;
+  date: string;
+  slotId: string;
+  topic: string;
+  classwork: string;
+  classworkFileUrl?: string;
+  classworkFileName?: string;
+  homework: string;
+  homeworkFileUrl?: string;
+  homeworkFileName?: string;
+  createdAt: string;
+}
+
+export type LeaveType = 'planned' | 'medical' | 'emergency' | 'half_day' | 'regularization';
+export type LeaveStatus = 'submitted' | 'pending' | 'approved' | 'rejected' | 'document_required' | 'regularized' | 'unregularized' | 'cancelled';
+export type LeaveReasonCategory = 'Medical' | 'Family Function' | 'Travel' | 'Emergency' | 'Religious Reason' | 'Personal Reason' | 'Exam-related' | 'Other';
+
+export interface StudentLeaveRequest {
+  id: string;
+  studentId: string;
+  parentId: string;
+  studentName: string;
+  classId: string;
+  section: string;
+  leaveType: LeaveType;
+  reasonCategory: LeaveReasonCategory;
+  reason: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  documentUrl?: string;
+  documentName?: string;
+  isEmergency: boolean;
+  parentDeclaration: boolean;
+  status: LeaveStatus;
+  adminRemarks?: string;
+  submittedAt: string;
+  updatedAt: string;
+  processedBy?: string;
+  processedAt?: string;
+  attendanceConnectionStatus: 'pending' | 'connected' | 'not_applicable';
 }
 
 export type ActivitySection = 'Super Admin' | 'Accounts' | 'Parents' | 'Students' | 'Academic' | 'Teachers' | 'Exam' | 'Staff' | 'Principal';

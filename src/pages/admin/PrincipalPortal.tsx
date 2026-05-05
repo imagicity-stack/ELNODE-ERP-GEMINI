@@ -10,15 +10,19 @@ import HouseManagement from './HouseManagement';
 import StaffManagement from './StaffManagement';
 import AdmissionManagement from './AdmissionManagement';
 import ExamManagement from './ExamManagement';
+import ResultEntry from '../teacher/ResultEntry';
+import LeaveManagement from './LeaveManagement';
 import NoticeBoard from './NoticeBoard';
+import LessonLogs from '../shared/LessonLogs';
 import AcademicCalendar from './AcademicCalendar';
 import GradingScaleManagement from './GradingScaleManagement';
 import TimetableManagement from './TimetableManagement';
 import ActivityTracker from './ActivityTracker';
+import ProfileSettings from '../shared/ProfileSettings';
 
 export default function PrincipalPortal({ user }: { user: UserProfile }) {
   return (
-    <PortalLayout role="principal" userName={user.name}>
+    <PortalLayout user={user}>
       <Routes>
         <Route path="/" element={<PrincipalDashboard user={user} />} />
         <Route path="/students" element={<StudentManagement user={user} />} />
@@ -26,14 +30,18 @@ export default function PrincipalPortal({ user }: { user: UserProfile }) {
         <Route path="/classes" element={<ClassManagement user={user} />} />
         <Route path="/subjects" element={<SubjectManagement user={user} />} />
         <Route path="/houses" element={<HouseManagement user={user} />} />
-        <Route path="/staff" element={<StaffManagement />} />
-        <Route path="/admissions" element={<AdmissionManagement />} />
+        <Route path="/staff" element={<StaffManagement user={user} />} />
+        <Route path="/admissions" element={<AdmissionManagement user={user} />} />
         <Route path="/exams" element={<ExamManagement user={user} />} />
-        <Route path="/timetable" element={<TimetableManagement />} />
-        <Route path="/grading-scales" element={<GradingScaleManagement />} />
+        <Route path="/exams/:examId/marks" element={<ResultEntry user={user} />} />
+        <Route path="/leaves" element={<LeaveManagement user={user} />} />
+        <Route path="/timetable" element={<TimetableManagement user={user} />} />
+        <Route path="/grading-scales" element={<GradingScaleManagement user={user} />} />
         <Route path="/notices" element={<NoticeBoard user={user} />} />
-        <Route path="/activity-logs" element={<ActivityTracker />} />
+        <Route path="/diary" element={<LessonLogs user={user} />} />
+        <Route path="/activity-logs" element={<ActivityTracker user={user} />} />
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />
+        <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="*" element={<Navigate to="/principal" />} />
       </Routes>
     </PortalLayout>

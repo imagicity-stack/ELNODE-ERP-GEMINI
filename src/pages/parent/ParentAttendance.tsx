@@ -110,15 +110,22 @@ export default function ParentAttendance({ user, selectedStudent }: ParentAttend
                   <div
                     key={day}
                     className={cn(
-                      "aspect-square rounded-xl flex items-center justify-center text-xs font-bold transition-all border",
+                      "aspect-square rounded-xl flex items-center justify-center text-xs font-bold transition-all border relative group",
                       isWeekend ? "bg-slate-50 text-slate-300 border-slate-50" :
                         !record ? "bg-white border-slate-100 text-slate-400" :
                           record.status === 'present' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                            record.status === 'absent' ? "bg-red-50 text-red-600 border-red-100" :
-                              "bg-amber-50 text-amber-600 border-amber-100"
+                            record.status === 'absent' || record.status === 'uninformed_absence' ? "bg-red-50 text-red-600 border-red-100" :
+                              record.status === 'approved_leave' ? "bg-indigo-50 text-indigo-600 border-indigo-100" :
+                                record.status === 'leave_pending' ? "bg-amber-50 text-amber-600 border-amber-100" :
+                                  "bg-amber-50 text-amber-600 border-amber-100"
                     )}
                   >
                     {day}
+                    {record && (
+                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-slate-900 border text-white text-[8px] px-1.5 py-0.5 rounded shadow-xl z-10 pointer-events-none uppercase font-black tracking-widest">
+                         {record.status.replace('_', ' ')}
+                      </div>
+                    )}
                   </div>
                 );
               })}

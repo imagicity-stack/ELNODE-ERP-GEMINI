@@ -11,10 +11,43 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
         workbox: {
-          maximumFileSizeToCacheInBytes: 5000000, 
+          maximumFileSizeToCacheInBytes: 5000000,
+          navigateFallback: 'index.html',
+          navigateFallbackDenylist: [/^\/api/],
+          runtimeCaching: [
+            {
+              urlPattern: ({ request }) => request.destination === 'image',
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'images-cache',
+                expiration: {
+                  maxEntries: 50,
+                  maxAgeSeconds: 30 * 24 * 60 * 60, // 30 Days
+                },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 365 * 24 * 60 * 60, // 1 Year
+                },
+              },
+            },
+            {
+              urlPattern: /\.(?:js|css)$/,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'static-resources',
+              },
+            },
+          ],
         },
         manifest: false // Use the static file in /public instead
       })

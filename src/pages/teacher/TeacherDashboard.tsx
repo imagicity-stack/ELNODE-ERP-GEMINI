@@ -10,7 +10,7 @@ import {
   ClipboardCheck,
   FileText
 } from 'lucide-react';
-import { UserProfile, Teacher, Attendance, Homework, Notice, Timetable, TimetableConfig } from '../../types';
+import { UserProfile, Teacher, Attendance, Homework, Notice, Timetable, TimetableConfig, Exam } from '../../types';
 import { cn } from '../../lib/utils';
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -25,6 +25,7 @@ import {
   EmptyState,
   Spinner,
 } from '../../components/ui';
+import UpdatesSection from '../../components/UpdatesSection';
 
 interface TeacherDashboardProps {
   user: UserProfile;
@@ -35,6 +36,7 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
   const [attendanceCount, setAttendanceCount] = useState({ marked: 0, total: 0 });
   const [pendingHomework, setPendingHomework] = useState<Homework[]>([]);
   const [schedule, setSchedule] = useState<any[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
   const [classPerformance, setClassPerformance] = useState<Record<string, { avg: number, trend: number }>>({});
   const [localLoading, setLocalLoading] = useState(true);
 
@@ -93,6 +95,15 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
         });
         
         setSchedule(teachersSchedule);
+
+        // Fetch Upcoming Exams
+        const examsSnap = await getDocs(query(
+          collection(db, 'exams'),
+          where('status', '==', 'scheduled'),
+          orderBy('startDate', 'asc'),
+          limit(3)
+        ));
+        setExams(examsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Exam)));
 
         // Fetch Class Performance (Exam Results)
         const performanceData: Record<string, { avg: number, trend: number }> = {};
@@ -176,6 +187,8 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
           index={2}
         />
       </div>
+
+      <UpdatesSection user={user} className="mb-8" />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Today's Schedule */}
@@ -289,6 +302,51 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
                   title="No recent notices"
                   description="No staff notices at this time."
                 />
+              )}
+            </div>
+          </Card>
+          
+          {/* Upcoming Exams */}
+          <Card>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-500" />
+                Upcoming Exams
+              </h3>
+              <Link to="/teacher/exams" className="text-xs text-blue-600 font-bold hover:underline">View All</Link>
+            </div>
+            <div className="space-y-4">
+              {localLoading ? (
+                <div className="py-4 flex justify-center"><Spinner size="sm" /></div>
+              ) : exams.length > 0 ? exams.map((exam, i) => (
+                <div key={i} className="p-3 bg-slate-50 rounded-xl border border-transparent hover:border-blue-100 transition-all">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <Badge variant={exam.type === 'surprise' ? 'warning' : 'info'} className="capitalize text-[8px] px-1.5 py-0.5">
+                      {exam.type}
+                    </Badge>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {new Date(exam.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-900 line-clamp-1 mb-1">{exam.name}</h4>
+                  <p className="text-[10px] text-slate-500">
+                    {subjects[exam.subjectId] || exam.subjectId} • Class {exam.classIds.join(', ')}
+                  </p>
+                  {exam.startTime && (
+                    <div className="mt-2 pt-2 border-t border-slate-200/50 flex items-center gap-2 text-[9px] text-slate-400">
+                       <Clock className="w-3 h-3" />
+                       <span>{exam.startTime}</span>
+                       {exam.room && (
+                         <>
+                           <span className="w-1 h-1 rounded-full bg-slate-300" />
+                           <span>Room {exam.room}</span>
+                         </>
+                       )}
+                    </div>
+                  )}
+                </div>
+              )) : (
+                <p className="text-center py-4 text-xs text-slate-400 italic">No upcoming exams</p>
               )}
             </div>
           </Card>

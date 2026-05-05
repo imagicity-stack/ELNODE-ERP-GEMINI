@@ -4,6 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { Plus, Home, Trash2, Edit2, User } from 'lucide-react';
 import { House, Teacher, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
+import { usePermissions } from '../../hooks/usePermissions';
 import {
   PageHeader, Card, Button, IconButton, Modal, ConfirmModal,
   SearchInput, FormField, Input, Select, Table, Thead, Th, Tbody, Tr, Td, EmptyState, Avatar
@@ -19,6 +20,9 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
   const [editingHouse, setEditingHouse] = useState<House | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('houses');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -105,17 +109,19 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
         icon={Home}
         iconColor="gradient-violet"
         actions={
-          <Button
-            icon={Plus}
-            onClick={() => {
-              setIsEditMode(false);
-              setEditingHouse(null);
-              setFormData({ name: '', color: '#4f46e5', teacherInchargeId: '' });
-              setIsModalOpen(true);
-            }}
-          >
-            Create New House
-          </Button>
+          !readOnly && (
+            <Button
+              icon={Plus}
+              onClick={() => {
+                setIsEditMode(false);
+                setEditingHouse(null);
+                setFormData({ name: '', color: '#4f46e5', teacherInchargeId: '' });
+                setIsModalOpen(true);
+              }}
+            >
+              Create New House
+            </Button>
+          )
         }
       />
 
@@ -170,10 +176,12 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
                     )}
                   </Td>
                   <Td className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(house)} />
-                      <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(house.id)} />
-                    </div>
+                    {!readOnly && (
+                      <div className="flex items-center justify-end gap-1">
+                        <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(house)} />
+                        <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(house.id)} />
+                      </div>
+                    )}
                   </Td>
                 </Tr>
               );

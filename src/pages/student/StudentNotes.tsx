@@ -1,5 +1,5 @@
-import { UserProfile } from '../../types';
-import { FileText, Download, Upload, Filter, BookOpen, MoreVertical } from 'lucide-react';
+import { UserProfile, Subject } from '../../types';
+import { FileText, Download, Upload, Filter, BookOpen, MoreVertical, Clock } from 'lucide-react';
 import {
   PageHeader,
   Card,
@@ -9,8 +9,25 @@ import {
   SearchInput,
   Avatar,
   EmptyState,
+  Spinner,
 } from '../../components/ui';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../../firebase';
+
+interface StudyMaterial {
+  id: string;
+  title: string;
+  description?: string;
+  subjectId: string;
+  classId: string;
+  fileUrl: string;
+  fileName: string;
+  fileType: string;
+  fileSize: string;
+  teacherId: string;
+  createdAt: string;
+}
 
 interface StudentNotesProps {
   user: UserProfile;
@@ -18,48 +35,93 @@ interface StudentNotesProps {
 
 export default function StudentNotes({ user }: StudentNotesProps) {
   const [search, setSearch] = useState('');
+  const [materials, setMaterials] = useState<StudyMaterial[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchData();
+  }, [user.classId]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // 1. Fetch materials for the student's class
+      const q = query(
+        collection(db, 'studyMaterials'),
+        where('classId', '==', user.classId || ''),
+        orderBy('createdAt', 'desc')
+      );
+      const snap = await getDocs(q);
+      const materialsList = snap.docs.map(d => ({ id: d.id, ...d.data() } as StudyMaterial));
+      setMaterials(materialsList);
+
+      // 2. Fetch subjects to get names
+      const subSnap = await getDocs(collection(db, 'subjects'));
+      setSubjects(subSnap.docs.map(d => ({ id: d.id, ...d.data() } as Subject)));
+
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'studyMaterials');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredMaterials = materials.filter(m => {
+    const matchesSearch = m.title.toLowerCase().includes(search.toLowerCase()) || 
+                         m.description?.toLowerCase().includes(search.toLowerCase());
+    const matchesSubject = selectedSubject ? m.subjectId === selectedSubject : true;
+    return matchesSearch && matchesSubject;
+  });
+
+  const subjectCounts = materials.reduce((acc, m) => {
+    acc[m.subjectId] = (acc[m.subjectId] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const activeSubjects = subjects.filter(s => subjectCounts[s.id] > 0);
 
   return (
     <div className="space-y-8">
       <PageHeader
         title="Study Materials & Notes"
-        subtitle="Access and upload study resources for your classes."
+        subtitle="Access resources uploaded by your teachers for your class."
         icon={BookOpen}
         iconColor="gradient-emerald"
-        actions={
-          <Button variant="primary" icon={Upload}>
-            Upload Notes
-          </Button>
-        }
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         {/* Subjects Sidebar */}
         <div className="lg:col-span-1">
           <Card>
-            <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-emerald-600" />
+            <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
+              <BookOpen className="w-4 h-4 text-emerald-600" />
               Subjects
             </h3>
             <div className="space-y-1">
-              {[
-                { name: 'Mathematics', count: 12 },
-                { name: 'Physics', count: 8 },
-                { name: 'Chemistry', count: 15 },
-                { name: 'English', count: 5 },
-                { name: 'History', count: 10 },
-              ].map((subject) => (
+              <button
+                onClick={() => setSelectedSubject(null)}
+                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${!selectedSubject ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'hover:bg-slate-50 text-slate-600'}`}
+              >
+                <span className="text-sm font-bold">All Materials</span>
+                <Badge variant={!selectedSubject ? 'success' : 'default'}>{materials.length}</Badge>
+              </button>
+              {activeSubjects.map((subject) => (
                 <button
-                  key={subject.name}
-                  className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-all group"
+                  key={subject.id}
+                  onClick={() => setSelectedSubject(subject.id)}
+                  className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${selectedSubject === subject.id ? 'bg-emerald-50 text-emerald-700 shadow-sm' : 'hover:bg-slate-50 text-slate-600'}`}
                 >
                   <div className="flex items-center gap-3">
                     <Avatar name={subject.name} size="sm" />
-                    <span className="text-sm font-bold text-slate-700 group-hover:text-emerald-600 transition-all">
+                    <span className="text-sm font-bold group-hover:text-emerald-600 transition-all">
                       {subject.name}
                     </span>
                   </div>
-                  <Badge variant="default">{subject.count}</Badge>
+                  <Badge variant={selectedSubject === subject.id ? 'success' : 'default'}>
+                    {subjectCounts[subject.id]}
+                  </Badge>
                 </button>
               ))}
             </div>
@@ -72,38 +134,60 @@ export default function StudentNotes({ user }: StudentNotesProps) {
             <SearchInput
               value={search}
               onChange={setSearch}
-              placeholder="Search notes..."
+              placeholder="Search by title or description..."
               className="flex-1 max-w-md"
             />
-            <IconButton icon={Filter} variant="ghost" />
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[
-              { title: 'Calculus - Derivatives Part 1', subject: 'Mathematics', date: 'Oct 10, 2023', size: '2.4 MB', type: 'PDF' },
-              { title: 'Optics - Lens Formula Notes', subject: 'Physics', date: 'Oct 08, 2023', size: '1.8 MB', type: 'PDF' },
-              { title: 'Organic Chemistry Basics', subject: 'Chemistry', date: 'Oct 05, 2023', size: '3.1 MB', type: 'DOCX' },
-              { title: 'Shakespearean Tragedy Essay', subject: 'English', date: 'Oct 02, 2023', size: '1.2 MB', type: 'PDF' },
-            ].map((note, i) => (
-              <Card key={i} hover>
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 rounded-xl gradient-emerald flex items-center justify-center text-white">
-                    <FileText className="w-6 h-6" />
+          {loading ? (
+            <Spinner />
+          ) : filteredMaterials.length === 0 ? (
+            <EmptyState
+              icon={FileText}
+              title="No materials found"
+              description="Your teachers haven't uploaded any materials yet, or none match your search."
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {filteredMaterials.map((note) => (
+                <Card key={note.id} hover className="group flex flex-col h-full">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="w-12 h-12 rounded-xl gradient-emerald flex items-center justify-center text-white">
+                      <FileText className="w-6 h-6" />
+                    </div>
+                    <a 
+                      href={note.fileUrl} 
+                      download={note.fileName}
+                      className="text-slate-400 hover:text-emerald-600 transition-colors p-2 rounded-lg hover:bg-emerald-50"
+                    >
+                      <Download className="w-5 h-5" />
+                    </a>
                   </div>
-                  <IconButton icon={MoreVertical} variant="ghost" size="sm" />
-                </div>
-                <h4 className="font-bold text-slate-900 mb-1 group-hover:text-emerald-600 transition-all">{note.title}</h4>
-                <p className="text-xs text-slate-500 mb-4">{note.subject} • {note.date}</p>
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="indigo">{note.type}</Badge>
-                    <span className="text-xs text-slate-400">{note.size}</span>
+                  <h4 className="font-bold text-slate-900 group-hover:text-emerald-600 transition-all mb-1">{note.title}</h4>
+                  <p className="text-xs text-slate-500 mb-3">
+                    {subjects.find(s => s.id === note.subjectId)?.name || note.subjectId} • {new Date(note.createdAt).toLocaleDateString()}
+                  </p>
+                  
+                  {note.description && (
+                    <p className="text-sm text-slate-600 line-clamp-2 flex-grow mb-4">
+                      {note.description}
+                    </p>
+                  )}
+
+                  <div className="pt-4 border-t border-slate-50 flex items-center justify-between mt-auto">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="info">{note.fileType}</Badge>
+                      <span className="text-[10px] text-slate-400 font-medium">{note.fileSize}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                      <Clock className="w-3 h-3" />
+                      <span>Shared Recently</span>
+                    </div>
                   </div>
-                  <IconButton icon={Download} variant="ghost" size="sm" />
-                </div>
-              </Card>
-            ))}
-          </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

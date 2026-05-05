@@ -7,22 +7,29 @@ import { UserProfile } from '../../types';
 import TeacherDashboard from './TeacherDashboard';
 import MyClasses from './MyClasses';
 import AttendanceTracking from './AttendanceTracking';
-import HomeworkManagement from './HomeworkManagement';
 import ExamManagement from './ExamManagement';
 import TeacherTimetable from './TeacherTimetable';
+import TeacherNotes from './TeacherNotes';
+import ResultEntry from './ResultEntry';
 import AcademicCalendar from '../admin/AcademicCalendar';
+import NoticeBoard from '../admin/NoticeBoard';
+import LessonLogs from '../shared/LessonLogs';
+import ProfileSettings from '../shared/ProfileSettings';
 
 export default function TeacherPortal({ user }: { user: UserProfile }) {
   return (
-    <PortalLayout role="teacher" userName={user.name}>
+    <PortalLayout user={user}>
       <Routes>
         <Route path="/" element={<TeacherDashboard user={user} />} />
         <Route path="/classes" element={<MyClasses user={user} />} />
         <Route path="/attendance" element={<AttendanceTracking user={user} />} />
-        <Route path="/homework" element={<HomeworkManagement user={user} />} />
+        <Route path="/notes" element={<TeacherNotes user={user} />} />
         <Route path="/exams" element={<ExamManagement user={user} />} />
+        <Route path="/exams/:examId/marks" element={<ResultEntry user={user} />} />
         <Route path="/timetable" element={<TeacherTimetable user={user} />} />
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />
+        <Route path="/diary" element={<LessonLogs user={user} />} />
+        <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="*" element={<Navigate to="/teacher" />} />
       </Routes>
     </PortalLayout>

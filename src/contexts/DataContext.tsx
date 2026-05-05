@@ -8,8 +8,8 @@ import {
   orderBy, 
   limit 
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { UserProfile, Teacher, Student, Notice, TimetableConfig, Timetable } from '../types';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
+import { UserProfile, Teacher, Student, Notice, TimetableConfig, Timetable, Class } from '../types';
 
 interface DataContextType {
   teacherData: Teacher | null;
@@ -17,8 +17,12 @@ interface DataContextType {
   notices: Notice[];
   timetableConfig: TimetableConfig | null;
   timetables: Timetable[];
+  classes: Class[];
+  students: Student[];
+  teachers: Teacher[];
   classesMap: Record<string, string>;
   subjectsMap: Record<string, string>;
+  teachersMap: Record<string, string>;
   loading: boolean;
   refreshGlobalData: () => void;
 }
@@ -30,8 +34,12 @@ export function DataProvider({ children, user }: { children: React.ReactNode, us
   const [studentData, setStudentData] = useState<Student | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [timetableConfig, setTimetableConfig] = useState<TimetableConfig | null>(null);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classesMap, setClassesMap] = useState<Record<string, string>>({});
   const [subjectsMap, setSubjectsMap] = useState<Record<string, string>>({});
+  const [teachersMap, setTeachersMap] = useState<Record<string, string>>({});
   const [timetables, setTimetables] = useState<Timetable[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,13 +57,29 @@ export function DataProvider({ children, user }: { children: React.ReactNode, us
 
     // Utility for safe listeners
     const safeOnSnapshot = (ref: any, onNext: (snap: any) => void, name: string, operationType: OperationType = OperationType.LIST) => {
+      // Don't start listeners if auth is not ready
+      if (!auth.currentUser) {
+        console.warn(`Attempted to start listener for ${name} without currentUser. Skipping.`);
+        return () => {};
+      }
+
       return onSnapshot(ref, onNext, (err) => {
-        console.error(`Listener error for ${name}:`, err);
-        try {
-          handleFirestoreError(err, operationType, name);
-        } catch (e) {
-          // Logged inside helper
+        // If we get a permission-denied error, it might be due to auth transition
+        if (err.code === 'permission-denied') {
+          console.warn(`Permission denied for ${name}. Auth state:`, auth.currentUser?.uid ? 'Logged in' : 'Not logged in');
+          
+          // Only report the error if we are genuinely supposed to be logged in
+          if (auth.currentUser) {
+            try {
+              handleFirestoreError(err, operationType, name);
+            } catch (e) {
+              // Logged inside helper
+            }
+          }
+        } else {
+          console.error(`Listener error for ${name}:`, err);
         }
+
         // We don't block the whole app for one listener failure
         if (name === 'teacher' || name === 'student') {
           setLoading(false);
@@ -75,10 +99,32 @@ export function DataProvider({ children, user }: { children: React.ReactNode, us
     setTimeout(() => {
       const unsubClasses = safeOnSnapshot(collection(db, 'classes'), (snapshot) => {
         const map: Record<string, string> = {};
-        snapshot.docs.forEach(d => map[d.id] = d.data().name);
+        const list: Class[] = [];
+        snapshot.docs.forEach(d => {
+          map[d.id] = d.data().name;
+          list.push({ id: d.id, ...d.data() } as Class);
+        });
         setClassesMap(map);
+        setClasses(list);
       }, 'classes');
       unsubscribes.push(unsubClasses);
+
+      const unsubTeachers = safeOnSnapshot(collection(db, 'teachers'), (snapshot) => {
+        const map: Record<string, string> = {};
+        const list: Teacher[] = [];
+        snapshot.docs.forEach(d => {
+          map[d.id] = d.data().name;
+          list.push({ id: d.id, ...d.data() } as Teacher);
+        });
+        setTeachersMap(map);
+        setTeachers(list);
+      }, 'teachers');
+      unsubscribes.push(unsubTeachers);
+
+      const unsubStudents = safeOnSnapshot(collection(db, 'students'), (snapshot) => {
+        setStudents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Student)));
+      }, 'students');
+      unsubscribes.push(unsubStudents);
 
       const unsubSubjects = safeOnSnapshot(collection(db, 'subjects'), (snapshot) => {
         const map: Record<string, string> = {};
@@ -89,7 +135,7 @@ export function DataProvider({ children, user }: { children: React.ReactNode, us
 
       const unsubTimetables = safeOnSnapshot(collection(db, 'timetable'), (snapshot) => {
         setTimetables(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Timetable)));
-      }, 'timetables');
+      }, 'timetable');
       unsubscribes.push(unsubTimetables);
     }, 500);
 
@@ -152,8 +198,12 @@ export function DataProvider({ children, user }: { children: React.ReactNode, us
       notices, 
       timetableConfig, 
       timetables,
+      classes,
+      students,
+      teachers,
       classesMap,
       subjectsMap,
+      teachersMap,
       loading,
       refreshGlobalData 
     }}>

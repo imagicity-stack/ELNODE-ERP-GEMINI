@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, setDoc, query, where, deleteDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { createUserWithEmailAndPassword, getAuth, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { initializeApp, getApp } from 'firebase/app';
-import { db, firebaseConfig, handleFirestoreError, OperationType } from '../../firebase';
+import { db, storage, firebaseConfig, handleFirestoreError, OperationType } from '../../firebase';
 import { Teacher, Subject, Class, House, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
 import {
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { usePermissions } from '../../hooks/usePermissions';
 import { PageHeader, Button, IconButton, Modal, ConfirmModal, SearchInput, FormField, Input, Select, EmptyState, Badge, Avatar } from '../../components/ui';
 
 export default function TeacherManagement({ user }: { user: UserProfile }) {
@@ -33,6 +35,9 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('teachers');
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -46,7 +51,8 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
     classTeacherOf: {
       classId: '',
       section: '',
-    }
+    },
+    photoURL: '',
   });
 
   const fetchData = async () => {
@@ -102,6 +108,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
             await setDoc(doc(db, 'users', teacherDocs.docs[0].id), {
               name: formData.name,
               teacherId: editingTeacher.id,
+              photoURL: formData.photoURL,
             }, { merge: true });
           }
         } catch (err) {
@@ -143,6 +150,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
             name: formData.name,
             role: 'teacher',
             teacherId: teacherRef.id,
+            photoURL: formData.photoURL,
             createdAt: new Date().toISOString(),
           });
           await logActivity(
@@ -178,7 +186,8 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
       isHouseIncharge: false,
       houseInchargeId: '',
       isClassTeacher: false,
-      classTeacherOf: { classId: '', section: '' }
+      classTeacherOf: { classId: '', section: '' },
+      photoURL: ''
     });
     setIsEditMode(false);
     setEditingTeacher(null);
@@ -197,7 +206,8 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
       isHouseIncharge: !!teacher.houseInchargeId,
       houseInchargeId: teacher.houseInchargeId || '',
       isClassTeacher: !!teacher.classTeacherOf?.classId,
-      classTeacherOf: teacher.classTeacherOf || { classId: '', section: '' }
+      classTeacherOf: teacher.classTeacherOf || { classId: '', section: '' },
+      photoURL: teacher.photoURL || ''
     });
     setIsModalOpen(true);
   };
@@ -228,6 +238,24 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
     }
   };
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setLoading(true);
+    try {
+      const storageRef = ref(storage, `profiles/teacher_${formData.email}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      setFormData(prev => ({ ...prev, photoURL: url }));
+    } catch (err) {
+      console.error('Error uploading photo:', err);
+      alert('Failed to upload photo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredTeachers = teachers.filter(t => 
     t.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     t.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -240,7 +268,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
         subtitle={`${filteredTeachers.length} teachers`}
         icon={GraduationCap}
         iconColor="gradient-blue"
-        actions={<Button size="sm" icon={UserPlus} onClick={() => { resetForm(); setIsModalOpen(true); }}>Add Teacher</Button>}
+        actions={!readOnly && <Button size="sm" icon={UserPlus} onClick={() => { resetForm(); setIsModalOpen(true); }}>Add Teacher</Button>}
       />
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
@@ -257,11 +285,13 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
                 className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 hover:shadow-md hover:-translate-y-0.5 transition-all group"
               >
                 <div className="flex items-start justify-between mb-5">
-                  <Avatar name={teacher.name} size="lg" />
-                  <div className="flex gap-1">
-                    <IconButton icon={Edit2} size="sm" onClick={() => handleEdit(teacher)} />
-                    <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(teacher.id)} />
-                  </div>
+                  <Avatar name={teacher.name} src={teacher.photoURL} size="lg" />
+                  {!readOnly && (
+                    <div className="flex gap-1">
+                      <IconButton icon={Edit2} size="sm" onClick={() => handleEdit(teacher)} />
+                      <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(teacher.id)} />
+                    </div>
+                  )}
                 </div>
                 <h3 className="font-bold text-slate-900 text-base">{teacher.name}</h3>
                 <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><Mail className="w-3 h-3" />{teacher.email}</p>
@@ -313,6 +343,21 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Basic Information</p>
+              
+              <div className="flex items-center gap-6 mb-6">
+                <div className="relative group">
+                  <Avatar name={formData.name || 'T'} src={formData.photoURL} size="lg" className="w-20 h-20 shadow-lg" />
+                  <label className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-lg shadow-md border border-slate-100 flex items-center justify-center cursor-pointer hover:bg-slate-50 transition-all">
+                    <Plus className="w-4 h-4 text-indigo-600" />
+                    <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+                  </label>
+                </div>
+                <div>
+                   <p className="text-sm font-bold text-slate-900">Teacher Photo</p>
+                   <p className="text-[10px] text-slate-400">Click the + to upload</p>
+                </div>
+              </div>
+
               <FormField label="Full Name" required><Input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></FormField>
               <FormField label="Email Address" required><Input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /></FormField>
               <FormField label="Monthly Salary" required><Input type="number" required value={formData.salaryStructure} onChange={e => setFormData({...formData, salaryStructure: e.target.value})} /></FormField>

@@ -1,6 +1,15 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+import { 
+  getFirestore, 
+  doc, 
+  getDocFromServer, 
+  enableIndexedDbPersistence,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from 'firebase/firestore';
 
 // Import the Firebase configuration
 import firebaseConfigImport from '../firebase-applet-config.json';
@@ -8,18 +17,14 @@ export const firebaseConfig = firebaseConfigImport;
 
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfigImport);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
-// Enable Persistence
-if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Persistence failed: Multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Persistence failed: Browser not supported');
-    }
-  });
-}
+// Use initializeFirestore to configure experimentalForceLongPolling for better cross-network compatibility
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  experimentalForceLongPolling: true, // This helps in environments where WebSockets/gRPC might be blocked
+}, firebaseConfig.firestoreDatabaseId);
+
+export const storage = getStorage(app);
 
 export const auth = getAuth();
 
@@ -75,17 +80,21 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Validate Connection to Firestore
+// Validate Connection to Firestore with a slight delay to allow setup
 async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("Firestore connection test successful.");
-  } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. The client is offline.");
+  if (typeof window === 'undefined') return;
+  
+  // Wait 2 seconds before checking to allow the SDK to initialize
+  setTimeout(async () => {
+    try {
+      await getDocFromServer(doc(db, 'test', 'connection'));
+      console.log("Firestore connection test successful.");
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes('the client is offline') || error.message.includes('Backend didn\'t respond'))) {
+        console.warn("Firestore is operating in offline mode. This is normal if you have a slow connection.");
+      }
     }
-    // Skip logging for other errors, as this is simply a connection test.
-  }
+  }, 2000);
 }
 
 testConnection();

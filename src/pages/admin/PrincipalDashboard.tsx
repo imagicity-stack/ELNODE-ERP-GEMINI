@@ -26,6 +26,8 @@ import {
 import { db } from '../../firebase';
 import { UserProfile } from '../../types';
 import { cn } from '../../lib/utils';
+import { usePermissions } from '../../hooks/usePermissions';
+import UpdatesSection from '../../components/UpdatesSection';
 
 // ─── Stat Cards ───────────────────────────────────────────────────────────────
 
@@ -72,45 +74,37 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
     notices: 0,
     attendanceToday: '0%',
   });
-  const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const { isReadOnly } = usePermissions(user.role);
+  const noticesReadOnly = isReadOnly('notices');
 
   useEffect(() => {
     setLoading(true);
 
-    // Real-time Activity Listener
-    const activityQ = query(
-      collection(db, 'activity_logs'),
-      // Filter out financial activities if any sneaky ones leaked in logs
-      // But usually logs are academic/auth/admin
-      orderBy('timestamp', 'desc'),
-      limit(6)
-    );
-
-    const unsubActivity = onSnapshot(activityQ, (snap) => {
-      setRecentActivity(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
     // Fetch Stats
     const fetchStats = async () => {
       try {
-        const [studentSnap, teacherSnap, classSnap, noticeSnap] = await Promise.all([
+        const today = new Date().toISOString().split('T')[0];
+        const [studentSnap, teacherSnap, classSnap, noticeSnap, attendanceSnap] = await Promise.all([
           getDocs(collection(db, 'students')),
           getDocs(collection(db, 'teachers')),
           getDocs(collection(db, 'classes')),
-          getDocs(collection(db, 'notices'))
+          getDocs(collection(db, 'notices')),
+          getDocs(query(collection(db, 'attendance'), where('date', '==', today)))
         ]);
 
-        // Mocking attendance percentage for demonstration (Real logic would query today's attendance doc)
-        const mockAttendance = 94; 
+        const totalStudents = studentSnap.size;
+        const presentToday = attendanceSnap.docs.filter(d => d.data().status === 'present').length;
+        const attendPercent = totalStudents > 0 ? Math.round((presentToday / totalStudents) * 100) : 0;
 
         setStats({
-          students: studentSnap.size,
+          students: totalStudents,
           teachers: teacherSnap.size,
           classes: classSnap.size,
           notices: noticeSnap.size,
-          attendanceToday: `${mockAttendance}%`
+          attendanceToday: `${attendPercent}%`
         });
       } catch (err) {
         console.error('Error fetching dashboard stats:', err);
@@ -120,7 +114,6 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
     };
 
     fetchStats();
-    return () => unsubActivity();
   }, []);
 
   return (
@@ -263,52 +256,7 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
             </div>
           </motion.div>
 
-          {/* Activity Feed */}
-          <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white">
-                  <Activity className="w-5 h-5" />
-                </div>
-                <h2 className="text-xl font-black text-slate-900">Global Activity Feed</h2>
-              </div>
-              <button className="text-sm font-bold text-indigo-600 hover:text-indigo-700">View All</button>
-            </div>
-
-            <div className="space-y-6">
-              {recentActivity.map((activity, idx) => (
-                <motion.div
-                  key={activity.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 + idx * 0.1 }}
-                  className="flex gap-4 relative group"
-                >
-                  {idx !== recentActivity.length - 1 && (
-                    <div className="absolute left-5 top-10 bottom-0 w-px bg-slate-100 -mb-6" />
-                  )}
-                  <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 group-hover:bg-indigo-50 group-hover:border-indigo-100 transition-colors">
-                    <Zap className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
-                  </div>
-                  <div className="flex-1 pb-6">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-bold text-slate-900">{activity.description}</p>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">
-                        {activity.timestamp?.toDate ? activity.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1">Performed by {activity.userName || activity.userEmail || 'System Component'}</p>
-                  </div>
-                </motion.div>
-              ))}
-              {recentActivity.length === 0 && (
-                <div className="text-center py-12">
-                  <Activity className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                  <p className="text-slate-400 font-medium">No recent activity detected.</p>
-                </div>
-              )}
-            </div>
-          </div>
+          <UpdatesSection user={user} className="rounded-[2rem]" />
         </div>
 
         {/* Right Column: Quick Actions & Notices */}
@@ -337,22 +285,24 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
           </div>
 
           {/* Quick Message / Notice */}
-          <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-                <Megaphone className="w-5 h-5 text-indigo-600" />
+          {!noticesReadOnly && (
+            <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                  <Megaphone className="w-5 h-5 text-indigo-600" />
+                </div>
+                <h2 className="text-lg font-bold text-slate-900">Emergency Notice</h2>
               </div>
-              <h2 className="text-lg font-bold text-slate-900">Emergency Notice</h2>
+              <textarea
+                placeholder="Type school-wide announcement here..."
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 focus:outline-none min-h-[120px] resize-none"
+              />
+              <button className="w-full mt-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all">
+                Broadcast Now
+              </button>
+              <p className="text-[10px] text-center text-slate-400 mt-2 font-medium">This will sync to all portals instantly.</p>
             </div>
-            <textarea
-              placeholder="Type school-wide announcement here..."
-              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 focus:outline-none min-h-[120px] resize-none"
-            />
-            <button className="w-full mt-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all">
-              Broadcast Now
-            </button>
-            <p className="text-[10px] text-center text-slate-400 mt-2 font-medium">This will sync to all portals instantly.</p>
-          </div>
+          )}
 
           {/* Upcoming Card */}
           <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-[2rem] p-8 shadow-xl text-white relative overflow-hidden">

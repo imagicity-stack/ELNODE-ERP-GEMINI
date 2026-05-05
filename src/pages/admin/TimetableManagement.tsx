@@ -3,9 +3,10 @@ import { collection, getDocs, doc, query, where, addDoc, updateDoc, deleteDoc, g
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { Calendar, Plus, Trash2, Edit2, Clock, Users, BookOpen, AlertCircle, Settings, Save, Trash } from 'lucide-react';
 import { PageHeader, Card, Button, IconButton, Modal, ConfirmModal, Select, FormField, Input, Badge } from '../../components/ui';
-import { Class, Subject, Teacher, Timetable, TimetableConfig, TimeSlot } from '../../types';
+import { Class, Subject, Teacher, Timetable, TimetableConfig, TimeSlot, UserProfile } from '../../types';
+import { usePermissions } from '../../hooks/usePermissions';
 
-export default function TimetableManagement() {
+export default function TimetableManagement({ user }: { user: UserProfile }) {
   const [classes, setClasses] = useState<Class[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -19,6 +20,9 @@ export default function TimetableManagement() {
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [configLoading, setConfigLoading] = useState(false);
+
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('timetable');
   
   const [formData, setFormData] = useState({
     day: '',
@@ -260,13 +264,15 @@ export default function TimetableManagement() {
         iconColor="gradient-blue"
         actions={
           <div className="flex items-center gap-3">
-             <Button 
-                variant="secondary"
-                icon={Settings} 
-                onClick={() => setIsConfigModalOpen(true)}
-            >
-                Schedule Settings
-            </Button>
+             {!readOnly && (
+               <Button 
+                  variant="secondary"
+                  icon={Settings} 
+                  onClick={() => setIsConfigModalOpen(true)}
+              >
+                  Schedule Settings
+              </Button>
+             )}
              <Select
               value={selectedClassId}
               onChange={(e) => setSelectedClassId(e.target.value)}
@@ -277,16 +283,18 @@ export default function TimetableManagement() {
                 <option key={c.id} value={c.id}>Class {c.name}</option>
               ))}
             </Select>
-            <Button 
-                icon={Plus} 
-                disabled={!selectedClassId}
-                onClick={() => {
-                   setFormData({ ...formData, day: config?.days[0] || '', slotId: config?.slots[0]?.id || '' });
-                   setIsModalOpen(true);
-                }}
-            >
-                Add Period
-            </Button>
+            {!readOnly && (
+              <Button 
+                  icon={Plus} 
+                  disabled={!selectedClassId}
+                  onClick={() => {
+                     setFormData({ ...formData, day: config?.days[0] || '', slotId: config?.slots[0]?.id || '' });
+                     setIsModalOpen(true);
+                  }}
+              >
+                  Add Period
+              </Button>
+            )}
           </div>
         }
       />
@@ -359,14 +367,16 @@ export default function TimetableManagement() {
                                             <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-sm group-hover:border-blue-400 transition-all border-l-4 border-l-blue-500">
                                                 <div className="flex items-center justify-between mb-2">
                                                     <Badge variant="indigo">{subject?.code || 'N/A'}</Badge>
-                                                    <div className="flex opacity-0 group-hover/cell:opacity-100 transition-opacity">
-                                                        <IconButton 
-                                                            icon={Trash2} 
-                                                            size="sm" 
-                                                            variant="danger" 
-                                                            onClick={() => removePeriod(day, slot.id)} 
-                                                        />
-                                                    </div>
+                                                    {!readOnly && (
+                                                      <div className="flex opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                                                          <IconButton 
+                                                              icon={Trash2} 
+                                                              size="sm" 
+                                                              variant="danger" 
+                                                              onClick={() => removePeriod(day, slot.id)} 
+                                                          />
+                                                      </div>
+                                                    )}
                                                 </div>
                                                 <p className="text-xs font-bold text-slate-900 line-clamp-1">{subject?.name || 'Unknown'}</p>
                                                 <div className="flex items-center gap-1.5 mt-2">
@@ -383,16 +393,20 @@ export default function TimetableManagement() {
                                                 )}
                                             </div>
                                         ) : (
-                                            <button 
-                                                onClick={() => {
-                                                    setFormData({ ...formData, day, slotId: slot.id });
-                                                    setIsModalOpen(true);
-                                                }}
-                                                className="w-full h-24 border-2 border-dashed border-slate-100 rounded-xl flex flex-col items-center justify-center hover:border-blue-300 hover:bg-blue-50/50 transition-all text-slate-300 hover:text-blue-500 group/btn"
-                                            >
-                                                <Plus className="w-5 h-5 mb-1 group-hover/btn:scale-110 transition-transform" />
-                                                <span className="text-[10px] font-bold uppercase tracking-widest opacity-0 group-hover/btn:opacity-100">Add</span>
-                                            </button>
+                                            !readOnly ? (
+                                              <button 
+                                                  onClick={() => {
+                                                      setFormData({ ...formData, day, slotId: slot.id });
+                                                      setIsModalOpen(true);
+                                                  }}
+                                                  className="w-full h-24 border-2 border-dashed border-slate-100 rounded-xl flex flex-col items-center justify-center hover:border-blue-300 hover:bg-blue-50/50 transition-all text-slate-300 hover:text-blue-500 group/btn"
+                                              >
+                                                  <Plus className="w-5 h-5 mb-1 group-hover/btn:scale-110 transition-transform" />
+                                                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-0 group-hover/btn:opacity-100">Add</span>
+                                              </button>
+                                            ) : (
+                                              <div className="w-full h-24 border-2 border-dashed border-slate-50 rounded-xl bg-slate-50/20" />
+                                            )
                                         )}
                                     </td>
                                 );

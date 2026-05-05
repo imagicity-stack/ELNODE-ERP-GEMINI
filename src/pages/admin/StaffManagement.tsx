@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, setDoc, query, where } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, getAuth, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { initializeApp, getApp } from 'firebase/app';
-import { db, firebaseConfig } from '../../firebase';
+import { db, firebaseConfig, handleFirestoreError, OperationType } from '../../firebase';
 import {
   Plus,
   Briefcase,
@@ -13,6 +13,7 @@ import {
   CreditCard
 } from 'lucide-react';
 import { useToast } from '../../components/Toast';
+import { usePermissions } from '../../hooks/usePermissions';
 import {
   PageHeader, Card, Badge, Button, IconButton, Modal,
   FormField, Input, Select, Table, Thead, Th, Tbody, Tr, Td, EmptyState, Avatar
@@ -28,13 +29,16 @@ interface StaffMember {
   status: 'active' | 'on-leave' | 'resigned';
 }
 
-export default function StaffManagement() {
+export default function StaffManagement({ user }: { user: any }) {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [loading, setLoading] = useState(false);
   const { showToast } = useToast();
+
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('staff');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -45,9 +49,13 @@ export default function StaffManagement() {
   });
 
   const fetchStaff = async () => {
-    const querySnapshot = await getDocs(collection(db, 'staff'));
-    const list = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StaffMember));
-    setStaff(list);
+    try {
+      const querySnapshot = await getDocs(collection(db, 'staff'));
+      const list = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StaffMember));
+      setStaff(list);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'staff');
+    }
   };
 
   useEffect(() => {
@@ -60,25 +68,34 @@ export default function StaffManagement() {
     try {
       if (isEditMode && editingStaff) {
         // Update existing staff
-        await setDoc(doc(db, 'staff', editingStaff.id), {
-          ...formData,
-          salary: Number(formData.salary),
-          updatedAt: new Date().toISOString(),
-        }, { merge: true });
+        try {
+          await setDoc(doc(db, 'staff', editingStaff.id), {
+            ...formData,
+            salary: Number(formData.salary),
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `staff/${editingStaff.id}`);
+        }
 
         // Update user profile
-        const staffQuery = query(collection(db, 'users'), where('email', '==', editingStaff.email), where('role', '==', editingStaff.role));
-        const staffDocs = await getDocs(staffQuery);
-        if (!staffDocs.empty) {
-          await setDoc(doc(db, 'users', staffDocs.docs[0].id), {
-            name: formData.name,
-          }, { merge: true });
+        try {
+          const staffQuery = query(collection(db, 'users'), where('email', '==', editingStaff.email), where('role', '==', editingStaff.role));
+          const staffDocs = await getDocs(staffQuery);
+          if (!staffDocs.empty) {
+            await setDoc(doc(db, 'users', staffDocs.docs[0].id), {
+              name: formData.name,
+            }, { merge: true });
+          }
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, 'users');
         }
 
         setIsModalOpen(false);
         setIsEditMode(false);
         setEditingStaff(null);
         fetchStaff();
+        showToast('Staff member updated successfully!', 'success');
         return;
       }
 
@@ -120,21 +137,31 @@ export default function StaffManagement() {
       // Create Auth Account
       const staffUid = await getOrCreateUser(formData.email);
 
-      const staffRef = await addDoc(collection(db, 'staff'), {
-        ...formData,
-        salary: Number(formData.salary),
-        status: 'active',
-      });
+      let staffRef;
+      try {
+        staffRef = await addDoc(collection(db, 'staff'), {
+          ...formData,
+          salary: Number(formData.salary),
+          status: 'active',
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, 'staff');
+      }
 
       // Create user profile for staff
-      await setDoc(doc(db, 'users', staffUid), {
-        uid: staffUid,
-        email: formData.email,
-        name: formData.name,
-        role: formData.role === 'principal' ? 'principal' : formData.role === 'accounts' ? 'accounts' : 'super_admin',
-        staffId: staffRef.id,
-        createdAt: new Date().toISOString(),
-      });
+      try {
+        await setDoc(doc(db, 'users', staffUid), {
+          uid: staffUid,
+          email: formData.email,
+          name: formData.name,
+          // Fixed role logic: default to a safer 'staff' role if not principal/accounts/admin
+          role: ['principal', 'accounts', 'admin'].includes(formData.role) ? formData.role : 'staff',
+          staffId: staffRef?.id,
+          createdAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${staffUid}`);
+      }
 
       setIsModalOpen(false);
       fetchStaff();
@@ -145,7 +172,7 @@ export default function StaffManagement() {
         joiningDate: '',
         salary: '',
       });
-      showToast(isEditMode ? 'Staff member updated successfully!' : 'Staff member created successfully!', 'success');
+      showToast('Staff member created successfully!', 'success');
     } catch (err: any) {
       console.error(err);
       if (err.code === 'auth/operation-not-allowed') {
@@ -185,17 +212,19 @@ export default function StaffManagement() {
         icon={Briefcase}
         iconColor="gradient-blue"
         actions={
-          <Button
-            icon={Plus}
-            onClick={() => {
-              setIsEditMode(false);
-              setEditingStaff(null);
-              setFormData({ name: '', email: '', role: 'accounts', joiningDate: '', salary: '' });
-              setIsModalOpen(true);
-            }}
-          >
-            Add Staff Member
-          </Button>
+          !readOnly && (
+            <Button
+              icon={Plus}
+              onClick={() => {
+                setIsEditMode(false);
+                setEditingStaff(null);
+                setFormData({ name: '', email: '', role: 'accounts', joiningDate: '', salary: '' });
+                setIsModalOpen(true);
+              }}
+            >
+              Add Staff Member
+            </Button>
+          )
         }
       />
 
@@ -205,9 +234,9 @@ export default function StaffManagement() {
             <Tr>
               <Th>Staff Member</Th>
               <Th>Role</Th>
-              <Th>Email</Th>
-              <Th>Joined</Th>
-              <Th>Salary</Th>
+              <Th className="hidden md:table-cell">Email</Th>
+              <Th className="hidden lg:table-cell">Joined</Th>
+              <Th className="hidden sm:table-cell">Salary</Th>
               <Th>Status</Th>
               <Th className="text-right">Actions</Th>
             </Tr>
@@ -218,25 +247,28 @@ export default function StaffManagement() {
                 <Td>
                   <div className="flex items-center gap-3">
                     <Avatar name={member.name} size="sm" />
-                    <span className="font-semibold text-slate-900">{member.name}</span>
+                    <div>
+                      <span className="font-semibold text-slate-900 block">{member.name}</span>
+                      <span className="text-[10px] text-slate-400 md:hidden">{member.email}</span>
+                    </div>
                   </div>
                 </Td>
                 <Td>
                   <Badge variant="indigo">{member.role}</Badge>
                 </Td>
-                <Td>
+                <Td className="hidden md:table-cell">
                   <div className="flex items-center gap-1.5 text-slate-600">
                     <Mail className="w-3.5 h-3.5 text-slate-400" />
                     {member.email}
                   </div>
                 </Td>
-                <Td>
+                <Td className="hidden lg:table-cell">
                   <div className="flex items-center gap-1.5 text-slate-600">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
                     {member.joiningDate}
                   </div>
                 </Td>
-                <Td>
+                <Td className="hidden sm:table-cell">
                   <div className="flex items-center gap-1.5 text-slate-600">
                     <CreditCard className="w-3.5 h-3.5 text-slate-400" />
                     ${(member.salary || 0).toLocaleString()}
@@ -248,7 +280,9 @@ export default function StaffManagement() {
                   </Badge>
                 </Td>
                 <Td className="text-right">
-                  <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(member)} />
+                  {!readOnly && (
+                    <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(member)} />
+                  )}
                 </Td>
               </Tr>
             ))}

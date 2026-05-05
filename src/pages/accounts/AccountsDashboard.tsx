@@ -43,6 +43,7 @@ import {
   EmptyState,
   Spinner,
 } from '../../components/ui';
+import UpdatesSection from '../../components/UpdatesSection';
 
 interface AccountsDashboardProps {
   user: UserProfile;
@@ -145,6 +146,8 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
         <StatCard label="Monthly Expenses" value={`₹${(monthlyExpenses || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" change="+2%" changePositive={true} index={2} />
         <StatCard label="Net Profit" value={`₹${(netProfit || 0).toLocaleString()}`} icon={TrendingUp} gradient="gradient-amber" change="+8%" changePositive={true} index={3} />
       </div>
+
+      <UpdatesSection user={user} className="mb-8" />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Collection vs Expense Chart */}

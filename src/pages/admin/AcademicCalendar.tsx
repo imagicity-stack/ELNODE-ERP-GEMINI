@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { SchoolEvent, UserProfile } from '../../types';
+import { usePermissions } from '../../hooks/usePermissions';
 import {
   ChevronLeft,
   ChevronRight,
@@ -42,7 +43,11 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('calendar');
+
   const isAdmin = user.role === 'super_admin' || user.role === 'principal';
+  const canWrite = user.role === 'super_admin' || (user.role === 'principal' && !readOnly);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -143,7 +148,7 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
-        {isAdmin && (
+        {canWrite && (
           <Button icon={Plus} onClick={() => setIsModalOpen(true)}>
             Add Event
           </Button>
@@ -218,7 +223,7 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
                     'bg-indigo-50 text-indigo-600'
                   )}
                   title={event.title}
-                  onClick={(e) => { e.stopPropagation(); if (isAdmin) handleDeleteEvent(event.id); }}
+                  onClick={(e) => { e.stopPropagation(); if (canWrite) handleDeleteEvent(event.id); }}
                 >
                   {event.title}
                 </div>

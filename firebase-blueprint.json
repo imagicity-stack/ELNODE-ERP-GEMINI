@@ -285,6 +285,30 @@
         "color": { "type": "string" }
       }
     },
+    "FineConfig": {
+      "title": "Fine Configuration",
+      "description": "Rules for late payment penalties.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "isEnabled": { "type": "boolean" },
+        "gracePeriodDays": { "type": "number" },
+        "slabs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "startDay": { "type": "number" },
+              "endDay": { "type": "number" },
+              "fixedPenalty": { "type": "number" },
+              "percentagePenalty": { "type": "number" },
+              "isHigherOf": { "type": "boolean" }
+            }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "FeeRequest": {
       "title": "Fee Request",
       "type": "object",
@@ -295,9 +319,15 @@
         "academicYear": { "type": "string" },
         "month": { "type": "string" },
         "totalAmount": { "type": "number" },
-        "status": { "type": "string", "enum": ["paid", "pending", "overdue"] },
+        "fineAmount": { "type": "number" },
+        "waivedAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["paid", "pending", "partially_paid", "overdue"] },
         "dueDate": { "type": "string", "format": "date" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "waivedBy": { "type": "string" },
+        "waivedAt": { "type": "string", "format": "date-time" },
+        "waiverReason": { "type": "string" }
       }
     },
     "FeePayment": {
@@ -307,10 +337,36 @@
         "id": { "type": "string" },
         "studentId": { "type": "string" },
         "feeRequestId": { "type": "string" },
+        "feeHead": { "type": "string" },
         "amount": { "type": "number" },
         "date": { "type": "string", "format": "date-time" },
         "method": { "type": "string" },
-        "receiptNumber": { "type": "string" }
+        "receiptNumber": { "type": "string" },
+        "transactionId": { "type": "string", "description": "Online payment transaction ID" },
+        "classId": { "type": "string", "description": "Cached class ID for filtering" },
+        "referenceNumber": { "type": "string" },
+        "remarks": { "type": "string" }
+      }
+    },
+    "LessonLog": {
+      "title": "Lesson Log",
+      "description": "Records what was taught in a class and what homework was given.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "classId": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "slotId": { "type": "string" },
+        "topic": { "type": "string" },
+        "classwork": { "type": "string" },
+        "classworkFileUrl": { "type": "string" },
+        "classworkFileName": { "type": "string" },
+        "homework": { "type": "string" },
+        "homeworkFileUrl": { "type": "string" },
+        "homeworkFileName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
       }
     },
     "Expense": {
@@ -326,14 +382,34 @@
       }
     },
     "Salary": {
-      "title": "Salary",
+      "title": "Salary Record",
+      "description": "Monthly salary disbursement details for both teachers and other staff.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "teacherId": { "type": "string" },
-        "month": { "type": "string" },
-        "amount": { "type": "number" },
-        "status": { "type": "string", "enum": ["paid", "pending"] }
+        "employeeId": { "type": "string" },
+        "employeeName": { "type": "string" },
+        "employeeRole": { "type": "string" },
+        "month": { "type": "string", "description": "YYYY-MM format" },
+        "baseAmount": { "type": "number" },
+        "allowances": { "type": "number" },
+        "deductions": {
+          "type": "object",
+          "properties": {
+            "pf": { "type": "number" },
+            "tax": { "type": "number" },
+            "leaves": { "type": "number" },
+            "leaveDeduction": { "type": "number" },
+            "other": { "type": "number" }
+          }
+        },
+        "netAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "balanceAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "partially_paid", "paid"] },
+        "remarks": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
     "TimetableConfig": {
@@ -357,6 +433,97 @@
           }
         }
       }
+    },
+    "StudyMaterial": {
+      "title": "Study Material",
+      "description": "Study materials shared by teachers with students.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "classId": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileType": { "type": "string" },
+        "fileSize": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "PayrollConfig": {
+      "title": "Payroll Configuration",
+      "description": "Global settings for salary calculations.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workingDaysInYear": { "type": "number", "description": "Total working days in a year (e.g., 240) for leave calculation" },
+        "leaveDeductionPerDay": { "type": "number", "description": "Fixed override amount to deduct per day of leave (optional)" },
+        "pfRate": { "type": "number" },
+        "professionalTax": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "StudentLeaveRequest": {
+      "title": "Student Leave Request",
+      "description": "Leave applications submitted by parents for students.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "parentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "classId": { "type": "string" },
+        "section": { "type": "string" },
+        "leaveType": { "type": "string", "enum": ["planned", "medical", "emergency", "half_day", "regularization"] },
+        "reasonCategory": { "type": "string", "enum": ["Medical", "Family Function", "Travel", "Emergency", "Religious Reason", "Personal Reason", "Exam-related", "Other"] },
+        "reason": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "totalDays": { "type": "number" },
+        "documentUrl": { "type": "string" },
+        "isEmergency": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["submitted", "pending", "approved", "rejected", "document_required", "regularized", "unregularized", "cancelled"] },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Staff": {
+      "title": "Staff Member",
+      "description": "General staff member details (non-faculty).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["principal", "accounts", "admin", "security", "transport"] },
+        "joiningDate": { "type": "string", "format": "date" },
+        "salary": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "on-leave", "resigned"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "role", "joiningDate", "salary", "status"]
+    },
+    "RolePermissions": {
+      "title": "Role Permissions",
+      "description": "Dynamic module access control and read-only settings for specific roles.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The role name (e.g., 'principal')" },
+        "modules": {
+          "type": "object",
+          "description": "Map of module IDs to their permission settings",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "readOnly": { "type": "boolean" }
+            }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
@@ -371,6 +538,18 @@
     "/teachers/{teacherId}": {
       "schema": "Teacher",
       "description": "Teacher profile and assignment details."
+    },
+    "/staff/{staffId}": {
+      "schema": "Staff",
+      "description": "General staff member details."
+    },
+    "/payroll-config/{configId}": {
+      "schema": "PayrollConfig",
+      "description": "Global payroll settings."
+    },
+    "/fine-config/{configId}": {
+      "schema": "FineConfig",
+      "description": "Global fine/penalty settings."
     },
     "/attendance/{attendanceId}": {
       "schema": "Attendance",
@@ -435,6 +614,22 @@
     "/timetableSettings/{id}": {
       "schema": "TimetableConfig",
       "description": "Global timetable settings."
+    },
+    "/studyMaterials/{id}": {
+      "schema": "StudyMaterial",
+      "description": "Study materials shared by teachers."
+    },
+    "/studentLeaves/{leaveId}": {
+      "schema": "StudentLeaveRequest",
+      "description": "Student leave applications."
+    },
+    "/lessonLogs/{id}": {
+      "schema": "LessonLog",
+      "description": "Records of lessons taught and homework assigned."
+    },
+    "/rolePermissions/{roleId}": {
+      "schema": "RolePermissions",
+      "description": "Module-level permissions for specific user roles."
     }
   }
 }

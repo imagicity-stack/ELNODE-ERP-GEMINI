@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { GradingScale } from '../../types';
+import { GradingScale, UserProfile } from '../../types';
+import { usePermissions } from '../../hooks/usePermissions';
 import {
   Plus,
   Trash2,
@@ -14,13 +15,16 @@ import {
   FormField, Input, Table, Thead, Th, Tbody, Tr, Td, EmptyState
 } from '../../components/ui';
 
-export default function GradingScaleManagement() {
+export default function GradingScaleManagement({ user }: { user: UserProfile }) {
   const [scales, setScales] = useState<GradingScale[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [editingScale, setEditingScale] = useState<GradingScale | null>(null);
+
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('grading-scales');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -115,26 +119,28 @@ export default function GradingScaleManagement() {
         icon={Settings}
         iconColor="gradient-amber"
         actions={
-          <Button
-            icon={Plus}
-            onClick={() => {
-              setEditingScale(null);
-              setFormData({
-                name: '',
-                ranges: [
-                  { grade: 'A+', min: 90, max: 100, point: 4.0, description: 'Excellent' },
-                  { grade: 'A', min: 80, max: 89, point: 3.7, description: 'Very Good' },
-                  { grade: 'B', min: 70, max: 79, point: 3.0, description: 'Good' },
-                  { grade: 'C', min: 60, max: 69, point: 2.0, description: 'Satisfactory' },
-                  { grade: 'D', min: 50, max: 59, point: 1.0, description: 'Pass' },
-                  { grade: 'F', min: 0, max: 49, point: 0.0, description: 'Fail' },
-                ]
-              });
-              setIsModalOpen(true);
-            }}
-          >
-            Create New Scale
-          </Button>
+          !readOnly && (
+            <Button
+              icon={Plus}
+              onClick={() => {
+                setEditingScale(null);
+                setFormData({
+                  name: '',
+                  ranges: [
+                    { grade: 'A+', min: 90, max: 100, point: 4.0, description: 'Excellent' },
+                    { grade: 'A', min: 80, max: 89, point: 3.7, description: 'Very Good' },
+                    { grade: 'B', min: 70, max: 79, point: 3.0, description: 'Good' },
+                    { grade: 'C', min: 60, max: 69, point: 2.0, description: 'Satisfactory' },
+                    { grade: 'D', min: 50, max: 59, point: 1.0, description: 'Pass' },
+                    { grade: 'F', min: 0, max: 49, point: 0.0, description: 'Fail' },
+                  ]
+                });
+                setIsModalOpen(true);
+              }}
+            >
+              Create New Scale
+            </Button>
+          )
         }
       />
 
@@ -143,24 +149,26 @@ export default function GradingScaleManagement() {
           <Card key={scale.id} padding="none">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 rounded-t-2xl">
               <h3 className="font-bold text-slate-900">{scale.name}</h3>
-              <div className="flex items-center gap-1">
-                <IconButton
-                  icon={Edit2}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEditingScale(scale);
-                    setFormData({ name: scale.name, ranges: scale.ranges });
-                    setIsModalOpen(true);
-                  }}
-                />
-                <IconButton
-                  icon={Trash2}
-                  variant="danger"
-                  size="sm"
-                  onClick={() => handleDelete(scale.id)}
-                />
-              </div>
+              {!readOnly && (
+                <div className="flex items-center gap-1">
+                  <IconButton
+                    icon={Edit2}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingScale(scale);
+                      setFormData({ name: scale.name, ranges: scale.ranges });
+                      setIsModalOpen(true);
+                    }}
+                  />
+                  <IconButton
+                    icon={Trash2}
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDelete(scale.id)}
+                  />
+                </div>
+              )}
             </div>
             <div className="p-5">
               <Table>

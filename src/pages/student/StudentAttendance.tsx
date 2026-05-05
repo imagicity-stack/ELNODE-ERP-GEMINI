@@ -126,10 +126,13 @@ export default function StudentAttendance({ user }: StudentAttendanceProps) {
                         variant={
                           record.status === 'present' ? 'success' :
                           record.status === 'absent' ? 'error' :
+                          record.status === 'approved_leave' ? 'info' :
+                          record.status === 'leave_pending' ? 'warning' :
+                          record.status === 'uninformed_absence' ? 'error' :
                           'warning'
                         }
                       >
-                        {record.status}
+                        {record.status.replace('_', ' ')}
                       </Badge>
                     </Td>
                     <Td className="text-slate-500 text-sm italic">

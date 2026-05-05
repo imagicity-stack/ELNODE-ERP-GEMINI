@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, getDocs, query, where, doc, setDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { Exam, Class, Subject, GradingScale, Student, UserProfile } from '../../types';
 import {
   Plus,
@@ -15,23 +17,24 @@ import {
 import { cn } from '../../lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { RefObject } from 'react';
+import { usePermissions } from '../../hooks/usePermissions';
 import {
   PageHeader, Card, Badge, Button, IconButton, Modal,
   FormField, Input, Select, Textarea, Table, Thead, Th, Tbody, Tr, Td, EmptyState, Avatar
 } from '../../components/ui';
 
 export default function ExamManagement({ user }: { user: UserProfile }) {
+  const navigate = useNavigate();
   const [exams, setExams] = useState<Exam[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [gradingScales, setGradingScales] = useState<GradingScale[]>([]);
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
-  const [isMarksModalOpen, setIsMarksModalOpen] = useState(false);
-  const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
-  const [selectedClass, setSelectedClass] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [marksData, setMarksData] = useState<Record<string, any>>({});
+
+  const { isReadOnly } = usePermissions(user.role);
+  const readOnly = isReadOnly('exams');
 
   // Form State for New Exam
   const [examForm, setExamForm] = useState({
@@ -100,14 +103,14 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
     setLoading(true);
     try {
       let syllabusPhotoUrl = '';
+      let storagePath = '';
       if (examForm.syllabusPhoto) {
-        // In a real app, we would upload to Firebase Storage
-        // For now, we'll use a data URL or placeholder
-        syllabusPhotoUrl = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(examForm.syllabusPhoto!);
-        });
+        const timestamp = new Date().getTime();
+        storagePath = `exams/syllabus/${user.uid}/${timestamp}_${examForm.syllabusPhoto.name}`;
+        const storageRef = ref(storage, storagePath);
+        
+        const uploadResult = await uploadBytes(storageRef, examForm.syllabusPhoto);
+        syllabusPhotoUrl = await getDownloadURL(uploadResult.ref);
       }
 
       await addDoc(collection(db, 'exams'), {
@@ -123,7 +126,8 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
         status: 'scheduled',
         syllabus: {
           text: examForm.syllabusText,
-          photoUrl: syllabusPhotoUrl
+          photoUrl: syllabusPhotoUrl,
+          storagePath: storagePath || undefined
         },
         createdAt: new Date().toISOString(),
         createdBy: user.uid
@@ -150,163 +154,11 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
     }
   };
 
-  const openMarksEntry = async (exam: Exam, classId: string) => {
-    setSelectedExam(exam);
-    setSelectedClass(classId);
-    setLoading(true);
-
-    // Fetch students of this class
-    const q = query(collection(db, 'students'), where('classId', '==', classId));
-    const studentSnapshot = await getDocs(q);
-    const studentList = studentSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
-    setStudents(studentList);
-
-    // Fetch existing marks if any
-    const resultsQ = query(
-      collection(db, 'examResults'),
-      where('examId', '==', exam.id),
-      where('classId', '==', classId)
-    );
-    const resultsSnapshot = await getDocs(resultsQ);
-    const resultsMap: Record<string, any> = {};
-    resultsSnapshot.docs.forEach(doc => {
-      const data = doc.data();
-      resultsMap[data.studentId] = data.subjectResults.reduce((acc: any, res: any) => {
-        acc[res.subjectId] = res.marksObtained;
-        return acc;
-      }, {});
-    });
-    setMarksData(resultsMap);
-
-    setIsMarksModalOpen(true);
-    setLoading(false);
-  };
-
   const calculateGrade = (percentage: number) => {
     const scale = gradingScales[0]; // Default to first scale for now
     if (!scale) return 'N/A';
     const range = scale.ranges.find(r => percentage >= r.min && percentage <= r.max);
     return range ? range.grade : 'F';
-  };
-
-  const handleSaveMarks = async () => {
-    setLoading(true);
-    try {
-      if (!selectedExam) return;
-      const scale = gradingScales.find(s => s.id === selectedExam.gradingScaleId) || gradingScales[0];
-
-      for (const student of students) {
-        const studentMarks = marksData[student.id] || {};
-        const subjectResults = subjects.map(sub => {
-          const marksObtained = Number(studentMarks[sub.id]) || 0;
-          const maxMarks = 100; // Default max marks
-          const percentage = (marksObtained / maxMarks) * 100;
-          let grade = 'F';
-          if (scale) {
-            const range = scale.ranges.find(r => percentage >= r.min && percentage <= r.max);
-            if (range) grade = range.grade;
-          }
-          return {
-            subjectId: sub.id,
-            marksObtained,
-            maxMarks,
-            grade,
-          };
-        });
-
-        const totalMarks = subjectResults.reduce((sum, res) => sum + res.marksObtained, 0);
-        const totalMaxMarks = subjectResults.length * 100;
-        const percentage = (totalMarks / totalMaxMarks) * 100;
-
-        let overallGrade = 'F';
-        if (scale) {
-          const range = scale.ranges.find(r => percentage >= r.min && percentage <= r.max);
-          if (range) overallGrade = range.grade;
-        }
-
-        const resultId = `${selectedExam.id}_${student.id}`;
-        await setDoc(doc(db, 'examResults', resultId), {
-          examId: selectedExam.id,
-          studentId: student.id,
-          classId: selectedClass,
-          subjectResults,
-          totalMarks,
-          percentage,
-          overallGrade,
-          published: true,
-          updatedAt: new Date().toISOString(),
-        });
-      }
-      setIsMarksModalOpen(false);
-      alert('Marks saved successfully!');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'examResults');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateReportCard = (student: Student, result: any) => {
-    const doc = new jsPDF();
-
-    // Header
-    doc.setFontSize(22);
-    doc.setTextColor(30, 58, 138); // Indigo-900
-    doc.text('ELDEN HEIGHTS ACADEMY', 105, 20, { align: 'center' });
-
-    doc.setFontSize(12);
-    doc.setTextColor(100);
-    doc.text('Academic Progress Report', 105, 28, { align: 'center' });
-
-    // Student Info
-    doc.setDrawColor(200);
-    doc.line(20, 35, 190, 35);
-
-    doc.setFontSize(10);
-    doc.setTextColor(0);
-    doc.text(`Student Name: ${student.name}`, 20, 45);
-    doc.text(`Class: ${student.classId} - ${student.section}`, 20, 52);
-    doc.text(`Admission No: ${student.admissionNumber}`, 20, 59);
-    doc.text(`Exam: ${selectedExam?.name} (${selectedExam?.term})`, 120, 45);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, 52);
-
-    // Marks Table
-    const tableData = result.subjectResults.map((res: any) => {
-      const subject = subjects.find(s => s.id === res.subjectId);
-      return [
-        subject?.name || 'Unknown',
-        res.maxMarks,
-        res.marksObtained,
-        res.grade,
-        res.marksObtained >= (res.maxMarks * 0.4) ? 'Pass' : 'Fail'
-      ];
-    });
-
-    autoTable(doc, {
-      startY: 70,
-      head: [['Subject', 'Max Marks', 'Marks Obtained', 'Grade', 'Status']],
-      body: tableData,
-      theme: 'striped',
-      headStyles: { fillColor: [79, 70, 229] }, // Indigo-600
-    });
-
-    // Summary
-    const finalY = (doc as any).lastAutoTable.finalY + 15;
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total Marks: ${result.totalMarks} / ${result.subjectResults.length * 100}`, 20, finalY);
-    doc.text(`Percentage: ${result.percentage.toFixed(2)}%`, 20, finalY + 10);
-    doc.text(`Overall Grade: ${result.overallGrade}`, 120, finalY);
-
-    // Footer
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Class Teacher Signature', 20, finalY + 40);
-    doc.text('Principal Signature', 120, finalY + 40);
-    doc.line(20, finalY + 35, 70, finalY + 35);
-    doc.line(120, finalY + 35, 170, finalY + 35);
-
-    doc.save(`${student.name}_Report_Card.pdf`);
   };
 
   const examStatusVariant = (status: string): 'info' | 'warning' | 'success' => {
@@ -323,9 +175,11 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
         icon={FileText}
         iconColor="gradient-indigo"
         actions={
-          <Button icon={Plus} onClick={() => setIsExamModalOpen(true)}>
-            Schedule Exam
-          </Button>
+          !readOnly && (
+            <Button icon={Plus} onClick={() => setIsExamModalOpen(true)}>
+              Schedule Exam
+            </Button>
+          )
         }
       />
 
@@ -357,7 +211,10 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
               {exam.classIds.map(classId => (
                 <button
                   key={classId}
-                  onClick={() => openMarksEntry(exam, classId)}
+                  onClick={() => {
+                    const basePath = user.role === 'super_admin' ? '/superadmin' : '/principal';
+                    navigate(`${basePath}/exams/${exam.id}/marks`);
+                  }}
                   className="w-full flex items-center justify-between p-2.5 bg-slate-50 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition-all text-xs font-bold text-slate-700"
                 >
                   Class {classId}
@@ -493,101 +350,6 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
             </div>
           </FormField>
         </form>
-      </Modal>
-
-      {/* Marks Entry Modal */}
-      <Modal
-        isOpen={isMarksModalOpen}
-        onClose={() => setIsMarksModalOpen(false)}
-        title={`Marks Entry: ${selectedExam?.name}`}
-        subtitle={`Class ${selectedClass} • ${subjects.length} Subjects`}
-        size="xl"
-        footer={
-          <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={() => setIsMarksModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveMarks} loading={loading}>
-              Save All Marks
-            </Button>
-          </div>
-        }
-      >
-        <Table>
-          <Thead>
-            <Tr>
-              <Th>Student Name</Th>
-              {subjects.map(sub => (
-                <Th key={sub.id} className="text-center min-w-[100px]">{sub.name}</Th>
-              ))}
-              <Th className="text-center">Report</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {students.map(student => (
-              <Tr key={student.id}>
-                <Td>
-                  <div className="flex items-center gap-2">
-                    <Avatar name={student.name} size="sm" />
-                    <span className="font-semibold text-slate-900 whitespace-nowrap">{student.name}</span>
-                  </div>
-                </Td>
-                {subjects.map(sub => (
-                  <Td key={sub.id}>
-                    <input
-                      type="number"
-                      max={100}
-                      min={0}
-                      value={marksData[student.id]?.[sub.id] || ''}
-                      onChange={(e) => {
-                        setMarksData({
-                          ...marksData,
-                          [student.id]: {
-                            ...(marksData[student.id] || {}),
-                            [sub.id]: e.target.value
-                          }
-                        });
-                      }}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-center text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none"
-                    />
-                  </Td>
-                ))}
-                <Td className="text-center">
-                  <IconButton
-                    icon={Download}
-                    variant="ghost"
-                    size="sm"
-                    title="Generate Report Card"
-                    onClick={() => {
-                      const studentMarks = marksData[student.id] || {};
-                      const subjectResults = subjects.map(sub => ({
-                        subjectId: sub.id,
-                        marksObtained: Number(studentMarks[sub.id]) || 0,
-                        maxMarks: 100,
-                        grade: calculateGrade(Number(studentMarks[sub.id]) || 0),
-                      }));
-                      const totalMarks = subjectResults.reduce((sum, res) => sum + res.marksObtained, 0);
-                      const percentage = totalMarks / (subjects.length * 100) * 100;
-                      const overallGrade = calculateGrade(percentage);
-
-                      generateReportCard(student, {
-                        subjectResults,
-                        totalMarks,
-                        percentage,
-                        overallGrade
-                      });
-                    }}
-                  />
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
-        {students.length === 0 && (
-          <EmptyState
-            icon={FileText}
-            title="No students in this class"
-            description="Enroll students to this class first."
-          />
-        )}
       </Modal>
     </div>
   );
