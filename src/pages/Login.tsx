@@ -109,13 +109,13 @@ export default function Login() {
 
         <div className="relative z-10">
           {/* Logo */}
-          <div className="flex items-center gap-4 mb-16">
-            <div className="w-16 h-16 rounded-2xl bg-white/10 p-2 flex items-center justify-center shadow-2xl backdrop-blur-sm border border-white/10 transition-transform hover:scale-105">
-              <img src={APP_LOGO} className="w-full h-full object-contain" alt={APP_NAME} referrerPolicy="no-referrer" />
+          <div className="flex items-center gap-3 mb-16">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-900/50">
+              <img src={APP_LOGO} className="w-7 h-7 object-contain" alt={APP_NAME} referrerPolicy="no-referrer" />
             </div>
             <div>
-              <p className="text-white font-bold text-2xl leading-tight tracking-tight">{APP_NAME}</p>
-              <p className="text-indigo-400 text-[10px] font-bold mt-1 uppercase tracking-[0.2em]">{SCHOOL_NAME}</p>
+              <p className="text-white font-bold text-lg leading-none">{APP_NAME}</p>
+              <p className="text-indigo-400 text-[10px] font-semibold mt-0.5 uppercase tracking-widest">ERP Platform</p>
             </div>
           </div>
 
@@ -174,13 +174,13 @@ export default function Login() {
           className="w-full max-w-md"
         >
           {/* Mobile Logo */}
-          <div className="lg:hidden flex items-center gap-4 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-white p-2 flex items-center justify-center shadow-lg border border-slate-100">
-              <img src={APP_LOGO} className="w-full h-full object-contain" alt={APP_NAME} referrerPolicy="no-referrer" />
+          <div className="lg:hidden flex items-center gap-3 mb-8">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-lg">
+              <img src={APP_LOGO} className="w-7 h-7 object-contain" alt={APP_NAME} referrerPolicy="no-referrer" />
             </div>
             <div>
-              <p className="font-bold text-xl text-slate-900 leading-none">{APP_NAME}</p>
-              <p className="text-indigo-600 text-[10px] font-bold mt-1 uppercase tracking-widest">{SCHOOL_NAME}</p>
+              <p className="font-bold text-lg text-slate-900 leading-none">{APP_NAME}</p>
+              <p className="text-indigo-600 text-[10px] font-semibold mt-0.5 uppercase tracking-widest">{SCHOOL_NAME}</p>
             </div>
           </div>
 

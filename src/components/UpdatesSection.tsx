@@ -12,12 +12,11 @@ import {
   CreditCard,
   BookOpen,
   Calendar,
-  User,
-  RefreshCw
+  User
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn, parseFirestoreTimestamp } from '../lib/utils';
+import { cn } from '../lib/utils';
 
 interface Activity {
   id: string;
@@ -140,11 +139,6 @@ export default function UpdatesSection({ user, className, maxItems = 10 }: Updat
     return 'bg-slate-50 text-slate-600';
   };
 
-  const formatDate = (timestamp: any) => {
-    if (!timestamp) return 'Just now';
-    return formatDistanceToNow(parseFirestoreTimestamp(timestamp), { addSuffix: true });
-  };
-
   if (loading) {
     return (
       <div className={cn("bg-white rounded-3xl p-6 border border-slate-100 shadow-sm animate-pulse", className)}>
@@ -171,22 +165,7 @@ export default function UpdatesSection({ user, className, maxItems = 10 }: Updat
           </div>
           <h2 className="text-lg font-bold text-slate-900">Recent Updates</h2>
         </div>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => {
-              setLoading(true);
-              setTimeout(() => setLoading(false), 500);
-            }}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition-all group"
-            title="Update Feed"
-          >
-            <motion.div whileTap={{ rotate: 180 }}>
-              <RefreshCw className="w-3.5 h-3.5" />
-            </motion.div>
-            <span className="text-xs font-semibold">Update</span>
-          </button>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded-md">Live feed</span>
-        </div>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded-md">Live feed</span>
       </div>
 
       <div className="space-y-1">
@@ -211,7 +190,7 @@ export default function UpdatesSection({ user, className, maxItems = 10 }: Updat
                     </h3>
                     <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium whitespace-nowrap">
                       <Clock className="w-3 h-3" />
-                      {formatDate(activity.timestamp)}
+                      {activity.timestamp ? formatDistanceToNow(activity.timestamp.toDate(), { addSuffix: true }) : 'Just now'}
                     </div>
                   </div>
                   <p className="text-xs text-slate-500 line-clamp-1 group-hover:line-clamp-none transition-all">

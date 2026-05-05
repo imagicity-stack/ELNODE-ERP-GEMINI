@@ -1,50 +1,18 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    
-    // Helper to get user role
-    function getUserRole() {
-      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role;
-    }
-
-    function isAnyAdmin() {
-      return request.auth != null && getUserRole() in ['super_admin', 'admin', 'office_staff'];
-    }
-
-    function isTeacher() {
-      return request.auth != null && getUserRole() == 'teacher';
-    }
-
-    // User profile photos
-    match /users/{userId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId && 
-                   request.resource.size < 5 * 1024 * 1024 && // 5MB limit
-                   request.resource.contentType.matches('image/.*');
-    }
-
-    // Lesson materials
-    match /lessons/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if (isTeacher() || isAnyAdmin()) && 
-                   request.resource.size < 20 * 1024 * 1024; // 20MB limit
-    }
-
-    // Leave documents
-    match /leaves/{userId}/{allPaths=**} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isAnyAdmin() || isTeacher());
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    // Notice attachments
-    match /notices/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if isAnyAdmin();
-    }
-
-    // Default deny for everything else
     match /{allPaths=**} {
-      allow read, write: if false;
+      // Allow authenticated users to read and write files
+      // You can further restrict this by path if needed
+      allow read, write: if request.auth != null;
     }
+    
+    // Example of more restricted rules:
+    // match /lessons/{allPaths=**} {
+    //   allow read: if request.auth != null;
+    //   allow write: if request.auth != null && 
+    //                 (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+    //                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher');
+    // }
   }
 }

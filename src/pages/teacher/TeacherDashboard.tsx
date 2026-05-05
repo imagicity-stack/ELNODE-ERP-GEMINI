@@ -218,7 +218,7 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
                         <h4 className="text-sm font-bold text-slate-900">{subjectName}</h4>
                         <div className="flex items-center gap-2 text-[10px] text-slate-500">
                           <Users className="w-3 h-3" />
-                          <span>Class {classes[period.classId] || period.classId}</span>
+                          <span>Class {className}</span>
                         </div>
                       </div>
                     </div>
@@ -330,7 +330,7 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
                   </div>
                   <h4 className="text-xs font-bold text-slate-900 line-clamp-1 mb-1">{exam.name}</h4>
                   <p className="text-[10px] text-slate-500">
-                    {subjects[exam.subjectId] || exam.subjectId} • Class {exam.classIds.map(cid => classes[cid] || cid).join(', ')}
+                    {subjects[exam.subjectId] || exam.subjectId} • Class {exam.classIds.join(', ')}
                   </p>
                   {exam.startTime && (
                     <div className="mt-2 pt-2 border-t border-slate-200/50 flex items-center gap-2 text-[9px] text-slate-400">

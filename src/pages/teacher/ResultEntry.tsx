@@ -15,13 +15,11 @@ import {
   User,
   Calculator
 } from 'lucide-react';
-import { useData } from '../../contexts/DataContext';
 import { Button, Input, Badge, Avatar } from '../../components/ui';
 import { cn } from '../../lib/utils';
 import { auth } from '../../firebase';
 
 export default function ResultEntry({ user }: { user: UserProfile }) {
-  const { classesMap: classes } = useData();
   const { examId } = useParams<{ examId: string }>();
   const navigate = useNavigate();
   
@@ -378,7 +376,7 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
                         <span className="font-mono text-sm text-slate-500">{student.admissionNumber}</span>
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-600">
-                        {classes[student.classId] || student.classId} {student.section && `- ${student.section}`}
+                        {student.classId} {student.section && `- ${student.section}`}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex justify-center">

@@ -13,7 +13,6 @@ import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -29,7 +28,6 @@ interface ParentDashboardProps {
 }
 
 export default function ParentDashboard({ user, selectedStudent }: ParentDashboardProps) {
-  const { subjectsMap: subjects } = useData();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -295,7 +293,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
               {homework.length > 0 ? homework.map((hw) => (
                 <div key={hw.id} className="p-3 bg-slate-50 rounded-xl">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold text-violet-600 uppercase">{subjects[hw.subjectId] || hw.subjectId}</span>
+                    <span className="text-[10px] font-bold text-violet-600 uppercase">{hw.subjectId}</span>
                     <span className="text-[10px] text-slate-400">{hw.dueDate}</span>
                   </div>
                   <h4 className="text-sm font-bold text-slate-900">{hw.content.substring(0, 50)}...</h4>

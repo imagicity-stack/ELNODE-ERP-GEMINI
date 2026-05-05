@@ -3,7 +3,6 @@ import { Calendar, User, MapPin, Clock } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -16,7 +15,6 @@ interface StudentTimetableProps {
 }
 
 export default function StudentTimetable({ user }: StudentTimetableProps) {
-  const { classesMap: classes } = useData();
   const [timetable, setTimetable] = useState<Timetable | null>(null);
   const [config, setConfig] = useState<TimetableConfig | null>(null);
   const [subjects, setSubjects] = useState<Record<string, {name: string, code: string}>>({});
@@ -86,7 +84,7 @@ export default function StudentTimetable({ user }: StudentTimetableProps) {
         iconColor="gradient-emerald"
         actions={
           <Badge variant="success">
-            Class {classes[user.classId || ''] || user.classId || 'N/A'} {user.section && `- ${user.section}`}
+            Class {user.classId || 'N/A'} - {user.section || 'N/A'}
           </Badge>
         }
       />

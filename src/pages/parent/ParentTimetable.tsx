@@ -3,7 +3,6 @@ import { Calendar, User, MapPin, Clock, Users } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -18,7 +17,6 @@ interface ParentTimetableProps {
 }
 
 export default function ParentTimetable({ user, selectedStudent }: ParentTimetableProps) {
-  const { classesMap: classes } = useData();
   const [timetable, setTimetable] = useState<Timetable | null>(null);
   const [config, setConfig] = useState<TimetableConfig | null>(null);
   const [subjects, setSubjects] = useState<Record<string, {name: string, code: string}>>({});
@@ -102,7 +100,7 @@ export default function ParentTimetable({ user, selectedStudent }: ParentTimetab
         iconColor="gradient-emerald"
         actions={
           <Badge variant="success">
-            Class {classes[selectedStudent.classId] || selectedStudent.classId} {selectedStudent.section && `- ${selectedStudent.section}`}
+            Class {selectedStudent.classId || 'N/A'} - {selectedStudent.section || 'N/A'}
           </Badge>
         }
       />
@@ -119,7 +117,7 @@ export default function ParentTimetable({ user, selectedStudent }: ParentTimetab
         <EmptyState 
           icon={Calendar}
           title="Timetable Not Found"
-          description={`No timetable has been uploaded for Class ${classes[selectedStudent.classId] || selectedStudent.classId}.`}
+          description={`No timetable has been uploaded for Class ${selectedStudent.classId}.`}
         />
       ) : (
         <Card padding="none" className="overflow-hidden">

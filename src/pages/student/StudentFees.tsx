@@ -1,14 +1,12 @@
 import { UserProfile, FeeRequest, FeePayment, PaymentMethod, Student, FineConfig } from '../../types';
 import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Wallet, Download, Scale, ShieldOff } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, doc, orderBy, getDoc } from 'firebase/firestore';
-import { db, auth, handleFirestoreError, OperationType } from '../../firebase';
-import { getIdToken } from 'firebase/auth';
+import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, getDoc } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
-import { useData } from '../../contexts/DataContext';
 import {
   PageHeader,
   Card,
@@ -37,7 +35,6 @@ declare global {
 }
 
 export default function StudentFees({ user }: StudentFeesProps) {
-  const { classesMap: classes } = useData();
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [student, setStudent] = useState<Student | null>(null);
@@ -90,103 +87,84 @@ export default function StudentFees({ user }: StudentFeesProps) {
   const handleDownloadReceipt = (payment: FeePayment) => {
     const request = feeRequests.find(r => r.id === payment.feeRequestId);
     if (request && student) {
-      const clsName = classes[student.classId] || student.classId;
-      generateFeeReceipt(payment, request, student, clsName);
+      generateFeeReceipt(payment, request, student);
     } else {
       alert('Could not find fee request details for this payment.');
     }
   };
 
-  const handlePayNow = async (request: FeeRequest) => {
+  const handlePayNow = (request: FeeRequest) => {
     const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
     const netAmount = request.totalAmount + currentFine - (request.waivedAmount || 0);
-    const remainingAmount = netAmount - (request.paidAmount || 0);
-
-    if (remainingAmount <= 0) {
-      alert('This fee is already fully paid.');
+    const amountInPaise = Math.round((netAmount - (request.paidAmount || 0)) * 100);
+    
+    if (amountInPaise < 100) {
+      alert('Minimum payment amount is ₹1.');
       return;
     }
 
-    setLoading(true);
-    try {
-      if (!auth.currentUser) throw new Error('Not authenticated');
-      const idToken = await getIdToken(auth.currentUser);
+    const amountPaid = amountInPaise / 100;
 
-      // 1. Create order — amount is derived server-side from the feeRequest
-      const orderResponse = await fetch('/api/payment/create-order', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ feeRequestId: request.id, currency: 'INR' }),
-      });
+    const options = {
+      key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || '',
+      amount: amountInPaise,
+      currency: 'INR',
+      name: 'School Fee Payment',
+      description: `Fees for ${request.month}`,
+      theme: {
+        color: '#EF4444',
+      },
+      handler: async function (response: any) {
+        try {
+          const payment: Omit<FeePayment, 'id'> = {
+            studentId: request.studentId,
+            classId: student?.classId || '',
+            feeRequestId: request.id,
+            feeHead: request.heads[0]?.name || 'Academic Fee',
+            amount: amountPaid,
+            date: new Date().toISOString(),
+            method: 'online',
+            transactionId: response.razorpay_payment_id,
+            receiptNumber: `REC-${Date.now()}`,
+            remarks: `Online Payment - ${request.month}`,
+          };
 
-      if (!orderResponse.ok) {
-        const err = await orderResponse.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to create order');
-      }
-      const orderData = await orderResponse.json();
+          await addDoc(collection(db, 'feePayments'), payment);
+          
+          const newPaidAmount = (request.paidAmount || 0) + amountPaid;
+          const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
+          const totalRequired = request.totalAmount + currentFine - (request.waivedAmount || 0);
+          const isFullyPaid = newPaidAmount >= totalRequired;
 
-      if (!orderData.id) {
-        throw new Error('Failed to create order');
-      }
-
-      const options = {
-        key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || '',
-        amount: orderData.amount,
-        currency: orderData.currency,
-        name: 'School Fee Payment',
-        description: `Fees for ${request.month}`,
-        order_id: orderData.id,
-        theme: { color: '#EF4444' },
-        handler: async function (response: any) {
-          try {
-            const freshToken = await getIdToken(auth.currentUser!, true);
-
-            // 2. Verify on server — server writes Firestore records via Admin SDK
-            const verifyResponse = await fetch('/api/payment/verify', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${freshToken}`,
-              },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              }),
+          await updateDoc(doc(db, 'feeRequests', request.id), { 
+            status: isFullyPaid ? 'paid' : 'partially_paid',
+            paidAmount: newPaidAmount,
+            fineAmount: currentFine,
+            updatedAt: new Date().toISOString()
+          });
+          
+          if (isFullyPaid) {
+            await updateDoc(doc(db, 'students', request.studentId), {
+              feeStatus: 'paid'
             });
-
-            const verifyData = await verifyResponse.json();
-
-            if (!verifyData.success) {
-              throw new Error('Payment verification failed');
-            }
-
-            logActivity(
-              user,
-              'Paid Fees Online',
-              'Students',
-              `Paid ₹${(verifyData.amountPaid ?? remainingAmount).toLocaleString()} via Razorpay`
-            );
-            showToast('Payment Successful! Transaction ID: ' + verifyData.transactionId, 'success');
-            fetchData();
-          } catch (err) {
-            console.error('Payment error:', err);
-            showToast('Error recording payment. Please contact support with your transaction ID.', 'error');
           }
-        },
-      };
 
-      const rzp = new window.Razorpay(options);
-      rzp.open();
-    } catch (err: any) {
-      console.error('Payment initiation error:', err);
-      showToast('Error: ' + err.message, 'error');
-    } finally {
-      setLoading(false);
-    }
+          logActivity(user, 'Paid Fees Online', 'Students', `Paid ₹${amountPaid.toLocaleString()} for ${payment.feeHead} via Razorpay`);
+          showToast('Payment Successful! Transaction ID: ' + response.razorpay_payment_id, 'success');
+          fetchData();
+        } catch (err) {
+          console.error('Payment error:', err);
+          showToast('Error recording payment. Please contact support.', 'error');
+        }
+      },
+      prefill: {
+        name: user.name,
+        email: user.email,
+      },
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.open();
   };
 
   const outstandingAmount = feeRequests

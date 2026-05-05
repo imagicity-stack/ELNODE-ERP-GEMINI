@@ -34,7 +34,6 @@ import { getActivityLogs } from '../../services/activityService';
 import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { parseFirestoreTimestamp } from '../../lib/utils';
 
 const SECTIONS: ActivitySection[] = [
   'Super Admin', 'Accounts', 'Parents', 'Students', 'Academic', 'Teachers', 'Exam', 'Staff'
@@ -78,7 +77,7 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
 
     filteredLogs.forEach(log => {
       const logData = [
-        format(parseFirestoreTimestamp(log.timestamp), 'dd/MM/yyyy HH:mm'),
+        format(new Date(log.timestamp), 'dd/MM/yyyy HH:mm'),
         `${log.userName} (${log.userRole})`,
         log.section,
         log.action,
@@ -172,7 +171,7 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
                 <Td className="whitespace-nowrap">
                   <div className="flex flex-col">
                     <span className="text-sm font-bold text-slate-900">
-                      {format(parseFirestoreTimestamp(log.timestamp), 'MMM dd, h:mm a')}
+                      {format(new Date(log.timestamp), 'MMM dd, h:mm a')}
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono sm:hidden">
                       {log.section} · {log.action}

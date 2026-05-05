@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, LessonLog, Student, Class, Subject } from '../../types';
-import DOMPurify from 'dompurify';
 import { 
   BookOpen, 
   Calendar as CalendarIcon, 
@@ -156,17 +155,15 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
                 <div className="space-y-3 flex-1">
                   <div className="flex items-start gap-2">
                     <div className="w-1 h-1 rounded-full bg-blue-500 mt-2 shrink-0"></div>
-                    <div className="text-sm text-slate-600 line-clamp-2">
-                      <span className="font-bold">CW:</span> 
-                      <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(log.classwork || 'No classwork noted') }} />
-                    </div>
+                    <p className="text-sm text-slate-600 line-clamp-2">
+                      <span className="font-bold">CW:</span> {log.classwork || 'No classwork noted'}
+                    </p>
                   </div>
                   <div className="flex items-start gap-2">
                     <div className="w-1 h-1 rounded-full bg-emerald-500 mt-2 shrink-0"></div>
-                    <div className="text-sm text-slate-600 line-clamp-2">
-                      <span className="font-bold">HW:</span>
-                      <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(log.homework || 'No homework assigned') }} />
-                    </div>
+                    <p className="text-sm text-slate-600 line-clamp-2">
+                      <span className="font-bold">HW:</span> {log.homework || 'No homework assigned'}
+                    </p>
                   </div>
                 </div>
 
@@ -215,10 +212,9 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
                   </div>
                   Classwork
                 </div>
-                <div 
-                  className="bg-white border border-slate-100 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed prose prose-slate prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedLog.classwork || 'No details provided.') }}
-                />
+                <div className="bg-white border border-slate-100 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                  {selectedLog.classwork || 'No details provided.'}
+                </div>
                 {selectedLog.classworkFileUrl && (
                   <Button 
                     variant="secondary" 
@@ -239,10 +235,9 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
                   </div>
                   Homework
                 </div>
-                <div 
-                  className="bg-white border border-slate-100 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed prose prose-slate prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedLog.homework || 'No homework assigned.') }}
-                />
+                <div className="bg-white border border-slate-100 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                  {selectedLog.homework || 'No homework assigned.'}
+                </div>
                 {selectedLog.homeworkFileUrl && (
                   <Button 
                     variant="secondary" 

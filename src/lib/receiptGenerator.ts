@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { FeePayment, FeeRequest, Student } from '../types';
 
-export const generateFeeReceipt = (payment: FeePayment, request: FeeRequest, student: Student, className?: string) => {
+export const generateFeeReceipt = (payment: FeePayment, request: FeeRequest, student: Student) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
 
@@ -30,7 +30,7 @@ export const generateFeeReceipt = (payment: FeePayment, request: FeeRequest, stu
   doc.setFontSize(10);
   doc.text(`Name: ${student.name}`, 20, 82);
   doc.text(`School No: ${student.schoolNumber}`, 20, 89);
-  doc.text(`Class: ${className || student.classId} ${student.section ? `- ${student.section}` : ''}`, 20, 96);
+  doc.text(`Class: ${student.classId} - ${student.section}`, 20, 96);
 
   // Fee Details Table
   const tableData = request.heads.map(head => [

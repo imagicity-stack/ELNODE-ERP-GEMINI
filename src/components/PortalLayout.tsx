@@ -32,14 +32,12 @@ import {
   TrendingUp,
   Shield,
   ShieldCheck,
-  RefreshCw,
   History as HistoryIcon,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserRole, UserProfile } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Button } from './ui';
 import { requestNotificationPermission, startNotificationListeners } from '../services/notificationService';
 import { useToast } from './Toast';
 import { usePermissions } from '../hooks/usePermissions';
@@ -125,7 +123,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   // Overview first for all roles
-  { label: 'Dashboard', icon: LayoutDashboard, path: '', roles: ['super_admin', 'accounts', 'teacher', 'student', 'parent', 'principal', 'office_staff'], section: 'Overview' },
+  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['super_admin', 'accounts', 'teacher', 'student', 'parent', 'principal', 'office_staff'], section: 'Overview', moduleId: 'dashboard' },
 
   // Admin People
   { label: 'Students', icon: Users, path: '/students', roles: ['super_admin', 'principal', 'office_staff'], section: 'People', moduleId: 'students' },
@@ -282,31 +280,28 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
   const SidebarContent = () => (
     <div className="h-full flex flex-col">
       {/* Logo Header */}
-      <div className={cn('flex flex-col items-center p-6 border-b border-white/[0.06]')}>
-        <Link to={getPortalPath(role)} className={cn('flex items-center gap-3 transition-transform hover:scale-[1.02]', collapsed && 'lg:justify-center')}>
-          <div className={cn('w-12 h-12 rounded-xl bg-white/10 p-1.5 flex items-center justify-center shadow-lg shrink-0', collapsed && 'w-10 h-10')}>
-            <img src={APP_LOGO} className="w-full h-full object-contain" alt={APP_NAME} referrerPolicy="no-referrer" />
-          </div>
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.div
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }}
-                className="overflow-hidden"
-              >
-                <p className="text-white font-bold text-base leading-tight whitespace-nowrap">{APP_NAME}</p>
-                <p className={cn('text-[10px] font-semibold mt-0.5 whitespace-nowrap uppercase tracking-wider', config.accentText)}>{SCHOOL_NAME}</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </Link>
+      <div className={cn('flex items-center gap-3 p-5 border-b border-white/[0.06]', collapsed && 'lg:justify-center')}>
+        <div className={cn(`w-9 h-9 rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center shadow-lg shrink-0`)}>
+          <img src={APP_LOGO} className="w-6 h-6 object-contain" alt={APP_NAME} referrerPolicy="no-referrer" />
+        </div>
+        <AnimatePresence>
+          {(!collapsed) && (
+            <motion.div
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }}
+              className="overflow-hidden"
+            >
+              <p className="text-white font-bold text-sm leading-none whitespace-nowrap">{APP_NAME}</p>
+              <p className={cn('text-[10px] font-semibold mt-0.5 whitespace-nowrap', config.accentText)}>{SCHOOL_NAME}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Mobile close */}
-        {mobileOpen && (
-          <button onClick={() => setMobileOpen(false)} className="absolute right-4 top-6 p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 lg:hidden">
-            <X className="w-4 h-4" />
-          </button>
-        )}
+        <button onClick={() => setMobileOpen(false)} className="ml-auto p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 lg:hidden">
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Role Badge */}
@@ -453,24 +448,14 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* Breadcrumb / Page Title or Mobile Logo */}
-            <div className="flex items-center gap-3">
-              <div className="lg:hidden flex items-center gap-2">
-                <img src={APP_LOGO} className="w-8 h-8 object-contain" alt={APP_NAME} />
-                <span className="font-bold text-slate-900 text-sm hidden sm:inline">{APP_NAME}</span>
-              </div>
-              
-              <div className="h-4 w-px bg-slate-200 mx-2 hidden lg:block" />
-              
-              {/* Search */}
-              <div className="relative hidden xl:block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
-                />
-              </div>
+            {/* Search */}
+            <div className="relative hidden md:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search..."
+                className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
+              />
             </div>
           </div>
 
@@ -509,18 +494,6 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
             </button>
 
             <div className="h-7 w-px bg-slate-100 mx-1" />
-
-            <Button 
-              variant="secondary" 
-              size="xs" 
-              icon={RefreshCw}
-              className="bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hidden sm:flex"
-              onClick={() => window.location.reload()}
-            >
-              Update
-            </Button>
-
-            <div className="h-7 w-px bg-slate-100 mx-1 hidden sm:block" />
 
             {/* User info */}
             <div className="flex items-center gap-3">
