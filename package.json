@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "start": "node server.ts",
     "cap:sync": "npm run build && npx cap sync",
     "cap:open": "npx cap open android"
   },
@@ -19,6 +20,7 @@
     "@capacitor/live-updates": "^0.5.0",
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@types/helmet": "^0.0.48",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
@@ -30,6 +32,7 @@
     "express-rate-limit": "^8.5.0",
     "firebase": "^12.11.0",
     "firebase-admin": "^13.8.0",
+    "helmet": "^8.1.0",
     "jsdom": "^29.1.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",

@@ -22,7 +22,7 @@ const app = initializeApp(firebaseConfigImport);
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   experimentalForceLongPolling: true, // This helps in environments where WebSockets/gRPC might be blocked
-}, firebaseConfig.firestoreDatabaseId);
+}, firebaseConfig.firestoreDatabaseId || "(default)");
 
 export const storage = getStorage(app);
 

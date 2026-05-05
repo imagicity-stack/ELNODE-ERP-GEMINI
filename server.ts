@@ -5,58 +5,105 @@ import cors from "cors";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import * as admin from "firebase-admin";
+import { initializeApp, cert, applicationDefault, App, getApp, getApps } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import fs from "fs";
 
 dotenv.config();
+
+// ── Load Firebase Config ──────────────────────────────────────────────────────
+const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+let firebaseAppletConfig: any = {};
+if (fs.existsSync(configPath)) {
+  try {
+    firebaseAppletConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } catch (e) {
+    console.warn("[server] Could not parse firebase-applet-config.json:", e);
+  }
+}
 
 // ── Startup environment guard ─────────────────────────────────────────────────
 const REQUIRED_ENV = ["VITE_RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET"];
 const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
 if (missing.length) {
-  console.error(`[server] FATAL: missing required environment variables: ${missing.join(", ")}`);
-  process.exit(1);
+  console.warn(`[server] WARNING: missing environment variables for payments: ${missing.join(", ")}. Payment features will be disabled.`);
+  // We don't process.exit(1) here anymore to allow the app to boot and show the UI
 }
 
 // ── Firebase Admin ────────────────────────────────────────────────────────────
-let adminApp: admin.app.App;
+const projectId = process.env.FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId || process.env.VITE_FIREBASE_PROJECT_ID;
+const databaseId = process.env.FIREBASE_DATABASE_ID || firebaseAppletConfig.firestoreDatabaseId || process.env.VITE_FIREBASE_DATABASE_ID || "(default)";
+
+let adminApp: App;
 try {
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (serviceAccountJson) {
-    const serviceAccount = JSON.parse(serviceAccountJson) as admin.ServiceAccount;
-    adminApp = admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      projectId: process.env.FIREBASE_PROJECT_ID,
-    });
+  if (getApps().length === 0) {
+    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (serviceAccountJson) {
+      const serviceAccount = JSON.parse(serviceAccountJson);
+      adminApp = initializeApp({
+        credential: cert(serviceAccount),
+        projectId: projectId,
+      });
+    } else {
+      // Application Default Credentials (works on Google Cloud Run automatically)
+      adminApp = initializeApp({
+        credential: applicationDefault(),
+        projectId: projectId,
+      });
+    }
   } else {
-    // Application Default Credentials (works on Google Cloud Run automatically)
-    adminApp = admin.initializeApp({
-      credential: admin.credential.applicationDefault(),
-      projectId: process.env.FIREBASE_PROJECT_ID,
-    });
+    adminApp = getApp();
   }
 } catch (e) {
   console.error("[server] FATAL: Firebase Admin SDK initialization failed:", e);
   process.exit(1);
 }
 
-const FIRESTORE_DB_ID = process.env.FIREBASE_DATABASE_ID || "(default)";
-const adminDb = admin.firestore(adminApp);
+const adminDb = getFirestore(adminApp);
 // Use non-default database if configured
-if (FIRESTORE_DB_ID !== "(default)") {
+if (databaseId && databaseId !== "(default)") {
   // @ts-ignore — setDatabaseId is available but not always in typings
-  adminDb.settings({ databaseId: FIRESTORE_DB_ID });
+  adminDb.settings({ databaseId: databaseId });
 }
 
 // ── Razorpay ──────────────────────────────────────────────────────────────────
-const razorpay = new Razorpay({
-  key_id: process.env.VITE_RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-});
+let razorpay: Razorpay | null = null;
+if (process.env.VITE_RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+  try {
+    razorpay = new Razorpay({
+      key_id: process.env.VITE_RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+  } catch (e) {
+    console.error("[server] Failed to initialize Razorpay:", e);
+  }
+}
 
 // ── Express app ───────────────────────────────────────────────────────────────
 const app = express();
 const PORT = 3000;
+
+// Trust Proxy — REQUIRED for rate limiting to work behind Cloud Run/Nginx
+app.set("trust proxy", 1);
+
+// Security Middleware (Helmet)
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable CSP in dev/preview as it can block Vite assets
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
+// Global Rate Limiting
+const globalLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." },
+});
+app.use(globalLimiter);
 
 // CORS — allow only the configured app origin (or same-origin in production)
 const allowedOrigin = process.env.APP_URL
@@ -87,7 +134,7 @@ async function requireAuth(req: AuthedRequest, res: Response, next: NextFunction
   }
   const token = header.slice(7);
   try {
-    const decoded = await admin.auth(adminApp).verifyIdToken(token);
+    const decoded = await getAuth(adminApp).verifyIdToken(token);
     req.firebaseUid = decoded.uid;
     req.firebaseEmail = decoded.email;
     next();
@@ -185,6 +232,11 @@ app.post(
         return;
       }
 
+      if (!razorpay) {
+        res.status(503).json({ error: "Payment service unavailable" });
+        return;
+      }
+
       const order = await razorpay.orders.create({
         amount: amountInPaise,
         currency: (typeof currency === "string" && /^[A-Z]{3}$/.test(currency)) ? currency : "INR",
@@ -197,7 +249,7 @@ app.post(
         expectedAmountPaise: amountInPaise,
         studentId: feeRequest.studentId,
         userId: req.firebaseUid,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
         expiresAt: Date.now() + 30 * 60 * 1000, // 30-minute window
       });
 
@@ -261,6 +313,11 @@ app.post(
         return;
       }
 
+      if (!razorpay) {
+        res.status(503).json({ error: "Payment service unavailable" });
+        return;
+      }
+
       // 3. Fetch the actual payment from Razorpay to confirm amount paid
       const paymentDetails = await razorpay.payments.fetch(razorpay_payment_id) as any;
       const actualAmountPaise: number = paymentDetails.amount;
@@ -304,7 +361,7 @@ app.post(
         transactionId: razorpay_payment_id,
         receiptNumber,
         remarks: `Online Payment - ${feeRequest.month ?? ""}`,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       });
 
       // Update feeRequest

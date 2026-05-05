@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, parseFirestoreTimestamp } from '../lib/utils';
 
 interface Activity {
   id: string;
@@ -139,6 +139,11 @@ export default function UpdatesSection({ user, className, maxItems = 10 }: Updat
     return 'bg-slate-50 text-slate-600';
   };
 
+  const formatDate = (timestamp: any) => {
+    if (!timestamp) return 'Just now';
+    return formatDistanceToNow(parseFirestoreTimestamp(timestamp), { addSuffix: true });
+  };
+
   if (loading) {
     return (
       <div className={cn("bg-white rounded-3xl p-6 border border-slate-100 shadow-sm animate-pulse", className)}>
@@ -190,7 +195,7 @@ export default function UpdatesSection({ user, className, maxItems = 10 }: Updat
                     </h3>
                     <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium whitespace-nowrap">
                       <Clock className="w-3 h-3" />
-                      {activity.timestamp ? formatDistanceToNow(activity.timestamp.toDate(), { addSuffix: true }) : 'Just now'}
+                      {formatDate(activity.timestamp)}
                     </div>
                   </div>
                   <p className="text-xs text-slate-500 line-clamp-1 group-hover:line-clamp-none transition-all">

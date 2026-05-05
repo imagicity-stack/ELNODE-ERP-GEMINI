@@ -61,6 +61,10 @@ service cloud.firestore {
     function isParent() { return hasRole(['parent']); }
     function isAccountant() { return hasRole(['accounts']); }
     function isPrincipal() { return hasRole(['principal']); }
+    
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '');
+    }
 
     function isLinkedToStudent(studentId) {
       return isSignedIn() && 
@@ -74,6 +78,17 @@ service cloud.firestore {
     // Entity Validations (The Blueprints)
     // ===============================================================
     
+    function isValidUserProfile(data) {
+      return data.uid == request.auth.uid &&
+             data.email is string &&
+             data.name is string && data.name.size() <= 100 &&
+             // Only allow these roles to be set via client during creation.
+             // Higher roles must be assigned by an admin.
+             data.role in ['student', 'parent'] &&
+             (data.get('phone', '') == '' || data.phone.size() <= 15) &&
+             (data.get('address', '') == '' || data.address.size() <= 500);
+    }
+
     function isValidNotice(data) {
       return data.title is string && data.title.size() <= 200 &&
              data.content is string && data.content.size() <= 5000 &&
@@ -93,13 +108,26 @@ service cloud.firestore {
 
     function isValidLeave(data) {
       return data.studentId is string && data.studentId.size() <= 128 &&
-             data.parentId is string && data.parentId.size() <= 128 &&
+             data.parentId == request.auth.uid && // Ensure parentId matches authenticated user
              data.studentName is string && data.studentName.size() <= 100 &&
              data.classId is string && data.classId.size() <= 20 &&
              data.leaveType in ["planned", "medical", "emergency", "half_day", "regularization"] &&
-             data.status in ["submitted", "pending", "approved", "rejected", "document_required", "regularized", "unregularized", "cancelled"] &&
+             data.status == "submitted" && // Enforce initial status
              data.startDate is string && data.endDate is string &&
              data.totalDays is number;
+    }
+
+    function isValidAttendance(data) {
+      return data.studentId is string &&
+             data.status in ["present", "absent", "late"] &&
+             data.date is string && // YYYY-MM-DD
+             data.type in ["student", "staff"];
+    }
+
+    function isValidStudyMaterial(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.fileUrl is string && data.fileUrl.size() <= 1000 &&
+             data.teacherId == request.auth.uid;
     }
 
     // ===============================================================
@@ -110,7 +138,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
       allow list: if isAnyAdmin();
-      allow create: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
+      allow create: if isSignedIn() && (
+        (request.auth.uid == userId && isValidUserProfile(incoming())) || 
+        isAnyAdmin()
+      );
       allow update: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin()) && (
         // Prevent role escalation by non-admins
         (isSuperAdmin()) ||
@@ -120,7 +151,12 @@ service cloud.firestore {
 
     // Notices
     match /notices/{noticeId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (
+        isAnyAdmin() ||
+        request.auth.uid == resource.data.authorId ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in resource.data.targetRoles ||
+        resource.data.targetRoles.size() == 0
+      );
       allow create: if isAnyAdmin() && isValidNotice(incoming());
       allow update: if isAnyAdmin() && isValidNotice(incoming());
       allow delete: if isAnyAdmin();
@@ -148,8 +184,15 @@ service cloud.firestore {
     }
 
     // Teachers & Staff
-    match /teachers/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
-    match /staff/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
+    match /teachers/{id} { 
+      // Strictly restrict private teacher details (like salary structure) to admins/accountants
+      allow read: if isSignedIn() && (isAnyAdmin() || isAccountant() || request.auth.uid == id); 
+      allow write: if isAnyAdmin(); 
+    }
+    match /staff/{id} { 
+      allow read: if isSignedIn() && (isAnyAdmin() || isAccountant() || request.auth.uid == id); 
+      allow write: if isAnyAdmin() && (getUserRole() == 'super_admin'); 
+    }
 
     // Fees & Payments
     match /fees/{feeId} {
@@ -194,12 +237,13 @@ service cloud.firestore {
 
     // Salaries & Expenses
     match /salaries/{id} { 
-      allow read: if isAnyAdmin() || isAccountant(); 
-      allow write: if isAdmin(); 
+      // User can read their own salary, or admins/accountants can read all
+      allow read: if isAnyAdmin() || isAccountant() || (isSignedIn() && resource.data.employeeId == request.auth.uid); 
+      allow write: if isAnyAdmin() && (getUserRole() in ['super_admin', 'accounts']);
     }
     match /expenses/{id} { 
       allow read: if isAnyAdmin() || isAccountant(); 
-      allow write: if isAdmin() || isAccountant(); 
+      allow write: if isAnyAdmin() && (getUserRole() in ['super_admin', 'accounts']);
     }
 
     // Role Permissions
@@ -221,14 +265,15 @@ service cloud.firestore {
     // Study Materials
     match /studyMaterials/{id} {
       allow read: if isSignedIn();
-      allow create: if isAnyAdmin() || isTeacher();
+      allow create: if (isAnyAdmin() || isTeacher()) && isValidStudyMaterial(incoming());
       allow update, delete: if isAnyAdmin() || (isTeacher() && existing().teacherId == request.auth.uid);
     }
     
     // Attendance
     match /attendance/{id} {
       allow read: if isSignedIn();
-      allow create, update: if isAnyAdmin() || isTeacher();
+      allow create: if (isAnyAdmin() || isTeacher()) && isValidAttendance(incoming());
+      allow update: if (isAnyAdmin() || isTeacher()) && isValidAttendance(incoming());
       allow delete: if isAnyAdmin();
     }
 
@@ -237,12 +282,23 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         isAnyAdmin() || isTeacher() || resource.data.parentId == request.auth.uid || isLinkedToStudent(resource.data.studentId)
       );
-      allow create: if isSignedIn() && (isLinkedToStudent(incoming().studentId) || isAnyAdmin()) && isValidLeave(incoming());
+      allow create: if isSignedIn() && isLinkedToStudent(incoming().studentId) && isValidLeave(incoming());
       allow update: if isSignedIn() && (
-        (isAnyAdmin() && incoming().diff(existing()).affectedKeys().hasAny(['status', 'adminRemarks', 'updatedAt'])) ||
+        (isAnyAdmin() && incoming().diff(existing()).affectedKeys().hasAny(['status', 'adminRemarks', 'processedBy', 'processedAt', 'updatedAt', 'attendanceConnectionStatus'])) ||
         (existing().parentId == request.auth.uid && incoming().status == 'cancelled' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
       );
-      allow delete: if isAnyAdmin();
+      allow delete: if isAnyAdmin() || (isSignedIn() && resource.data.parentId == request.auth.uid && resource.data.status == 'submitted');
+    }
+
+    // Activity Logs
+    match /activityLogs/{logId} {
+      allow read: if isSignedIn() && (
+        isAnyAdmin() || 
+        resource.data.userId == request.auth.uid || 
+        (resource.data.get('metadata', null) != null && isLinkedToStudent(resource.data.metadata.get('studentId', '')))
+      );
+      allow create: if isSignedIn(); // Any user can log their own activity
+      allow update, delete: if false;
     }
   }
 }
