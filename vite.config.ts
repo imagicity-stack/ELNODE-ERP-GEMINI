@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: 'prompt',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg', 'logo.png'],
         workbox: {
           maximumFileSizeToCacheInBytes: 5000000,
           navigateFallback: 'index.html',

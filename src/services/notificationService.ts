@@ -91,6 +91,8 @@ export function startNotificationListeners(
         );
       }
     });
+  }, (err) => {
+    console.warn('Notice notification listener failed:', err.message);
   });
 
   // Listen for fee requests (if student)
@@ -121,10 +123,12 @@ export function startNotificationListeners(
           );
         }
       });
+    }, (err) => {
+      console.warn('Fee notification listener failed:', err.message);
     });
   }
 
-  // Listen for homework (if student)
+  // Listen for homework (if student or parent)
   let unsubscribeHomework = () => {};
   if (role === 'student' || role === 'parent') {
     const homeworkQuery = query(
@@ -151,14 +155,14 @@ export function startNotificationListeners(
           );
         }
       });
+    }, (err) => {
+      console.warn('Homework notification listener failed:', err.message);
     });
   }
 
   // Listen for lesson logs (diary updates)
   let unsubscribeLessonLogs = () => {};
   if (role === 'student' || role === 'parent') {
-    // For simplicity in this demo, we'll listen for any new log and if we had the classId we'd filter.
-    // In a real app, we'd pass the classId here.
     const lessonLogsQuery = query(
       collection(db, 'lessonLogs'),
       orderBy('updatedAt', 'desc'),
@@ -183,6 +187,8 @@ export function startNotificationListeners(
           );
         }
       });
+    }, (err) => {
+      console.warn('Lesson log notification listener failed:', err.message);
     });
   }
 

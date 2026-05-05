@@ -1,4 +1,5 @@
-import express, { Request, Response, NextFunction } from "express";
+import express from "express";
+console.log("[server] Starting server with fixed imports...");
 import path from "path";
 import cors from "cors";
 import Razorpay from "razorpay";
@@ -6,10 +7,14 @@ import crypto from "crypto";
 import dotenv from "dotenv";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { initializeApp, cert, applicationDefault, App, getApp, getApps } from "firebase-admin/app";
+import { initializeApp, cert, applicationDefault, getApp, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import fs from "fs";
+
+type Request = express.Request;
+type Response = express.Response;
+type NextFunction = express.NextFunction;
 
 dotenv.config();
 
@@ -36,7 +41,7 @@ if (missing.length) {
 const projectId = process.env.FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId || process.env.VITE_FIREBASE_PROJECT_ID;
 const databaseId = process.env.FIREBASE_DATABASE_ID || firebaseAppletConfig.firestoreDatabaseId || process.env.VITE_FIREBASE_DATABASE_ID;
 
-let adminApp: App;
+let adminApp: any;
 try {
   if (getApps().length === 0) {
     const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
