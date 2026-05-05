@@ -1,5 +1,4 @@
 import express from "express";
-console.log("[server] Starting server with fixed imports...");
 import path from "path";
 import cors from "cors";
 import Razorpay from "razorpay";

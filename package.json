@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "build": "vite build && npx esbuild server.ts --platform=node --target=node22 --format=esm --packages=external --outfile=dist/server.js",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "start": "node server.ts",
+    "start": "node dist/server.js",
     "cap:sync": "npm run build && npx cap sync",
     "cap:open": "npx cap open android"
   },
