@@ -1,8 +1,9 @@
 import { UserProfile, FeeRequest, FeePayment, PaymentMethod, Student, FineConfig } from '../../types';
 import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Wallet, Download, Scale, ShieldOff } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, getDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { collection, getDocs, query, where, doc, orderBy, getDoc } from 'firebase/firestore';
+import { db, auth, handleFirestoreError, OperationType } from '../../firebase';
+import { getIdToken } from 'firebase/auth';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { useToast } from '../../components/Toast';
@@ -96,25 +97,34 @@ export default function StudentFees({ user }: StudentFeesProps) {
   const handlePayNow = async (request: FeeRequest) => {
     const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
     const netAmount = request.totalAmount + currentFine - (request.waivedAmount || 0);
-    const amountInPaise = Math.round((netAmount - (request.paidAmount || 0)) * 100);
-    
-    if (amountInPaise < 100) {
-      alert('Minimum payment amount is ₹1.');
+    const remainingAmount = netAmount - (request.paidAmount || 0);
+
+    if (remainingAmount <= 0) {
+      alert('This fee is already fully paid.');
       return;
     }
 
-    const amountPaid = amountInPaise / 100;
-
     setLoading(true);
     try {
+      if (!auth.currentUser) throw new Error('Not authenticated');
+      const idToken = await getIdToken(auth.currentUser);
+
+      // 1. Create order — amount is derived server-side from the feeRequest
       const orderResponse = await fetch('/api/payment/create-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amountInPaise, currency: 'INR' })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ feeRequestId: request.id, currency: 'INR' }),
       });
-      
+
+      if (!orderResponse.ok) {
+        const err = await orderResponse.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create order');
+      }
       const orderData = await orderResponse.json();
-      
+
       if (!orderData.id) {
         throw new Error('Failed to create order');
       }
@@ -126,19 +136,23 @@ export default function StudentFees({ user }: StudentFeesProps) {
         name: 'School Fee Payment',
         description: `Fees for ${request.month}`,
         order_id: orderData.id,
-        theme: {
-          color: '#EF4444',
-        },
+        theme: { color: '#EF4444' },
         handler: async function (response: any) {
           try {
+            const freshToken = await getIdToken(auth.currentUser!, true);
+
+            // 2. Verify on server — server writes Firestore records via Admin SDK
             const verifyResponse = await fetch('/api/payment/verify', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${freshToken}`,
+              },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature
-              })
+                razorpay_signature: response.razorpay_signature,
+              }),
             });
 
             const verifyData = await verifyResponse.json();
@@ -147,45 +161,17 @@ export default function StudentFees({ user }: StudentFeesProps) {
               throw new Error('Payment verification failed');
             }
 
-            const payment: Omit<FeePayment, 'id'> = {
-              studentId: request.studentId,
-              classId: student?.classId || '',
-              feeRequestId: request.id,
-              feeHead: request.heads[0]?.name || 'Academic Fee',
-              amount: amountPaid,
-              date: new Date().toISOString(),
-              method: 'online',
-              transactionId: response.razorpay_payment_id,
-              receiptNumber: `REC-${Date.now()}`,
-              remarks: `Online Payment - ${request.month}`,
-            };
-
-            await addDoc(collection(db, 'feePayments'), payment);
-            
-            const newPaidAmount = (request.paidAmount || 0) + amountPaid;
-            const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
-            const totalRequired = request.totalAmount + currentFine - (request.waivedAmount || 0);
-            const isFullyPaid = newPaidAmount >= totalRequired;
-
-            await updateDoc(doc(db, 'feeRequests', request.id), { 
-              status: isFullyPaid ? 'paid' : 'partially_paid',
-              paidAmount: newPaidAmount,
-              fineAmount: currentFine,
-              updatedAt: new Date().toISOString()
-            });
-            
-            if (isFullyPaid) {
-              await updateDoc(doc(db, 'students', request.studentId), {
-                feeStatus: 'paid'
-              });
-            }
-
-            logActivity(user, 'Paid Fees Online', 'Students', `Paid ₹${amountPaid.toLocaleString()} for ${payment.feeHead} via Razorpay`);
-            showToast('Payment Successful! Transaction ID: ' + response.razorpay_payment_id, 'success');
+            logActivity(
+              user,
+              'Paid Fees Online',
+              'Students',
+              `Paid ₹${(verifyData.amountPaid ?? remainingAmount).toLocaleString()} via Razorpay`
+            );
+            showToast('Payment Successful! Transaction ID: ' + verifyData.transactionId, 'success');
             fetchData();
           } catch (err) {
             console.error('Payment error:', err);
-            showToast('Error recording payment. Please contact support.', 'error');
+            showToast('Error recording payment. Please contact support with your transaction ID.', 'error');
           }
         },
       };
