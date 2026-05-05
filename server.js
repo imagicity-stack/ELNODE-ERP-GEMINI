@@ -13,7 +13,7 @@ async function startServer() {
   app.use(express.json());
 
   // API routes go here
-  app.get('/api/health', (_req, res) => {
+  app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
@@ -28,7 +28,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
+    app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
     console.log('Production static serving mode enabled');
