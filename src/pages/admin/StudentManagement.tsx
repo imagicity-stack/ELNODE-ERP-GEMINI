@@ -29,6 +29,7 @@ import {
   FormField, Input, Select, Textarea, Table, Thead, Th, Tbody, Tr, Td,
   EmptyState, Avatar,
 } from '../../components/ui';
+import { useToast } from '../../components/Toast';
 
 export default function StudentManagement({ user }: { user: UserProfile }) {
   const [students, setStudents] = useState<Student[]>([]);
@@ -45,6 +46,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('students');
+  const { showToast } = useToast();
 
   // Form State
   const [formData, setFormData] = useState({
@@ -277,9 +279,9 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     } catch (err: any) {
       console.error(err);
       if (err.code === 'auth/operation-not-allowed') {
-        alert('Firebase Error: Email/Password sign-in is not enabled in your Firebase Console. Please go to Authentication > Sign-in method and enable Email/Password.');
+        showToast('Email/Password sign-in is not enabled. Enable it in Firebase Console → Authentication → Sign-in method.', 'error');
       } else {
-        alert('Error creating student: ' + (err.message || 'Unknown error'));
+        showToast('Error creating student: ' + (err.message || 'Unknown error'), 'error');
       }
     } finally {
       setLoading(false);
@@ -482,7 +484,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       fetchStudents();
     } catch (error) {
       console.error("Error deleting student data:", error);
-      alert("An error occurred while deleting student data.");
+      showToast('An error occurred while deleting student data.', 'error');
     } finally {
       setLoading(false);
     }
@@ -515,7 +517,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       setFormData(prev => ({ ...prev, photoURL: url }));
     } catch (err) {
       console.error('Error uploading photo:', err);
-      alert('Failed to upload photo');
+      showToast('Failed to upload photo', 'error');
     } finally {
       setLoading(false);
     }

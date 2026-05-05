@@ -89,7 +89,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
     if (request && student) {
       generateFeeReceipt(payment, request, student);
     } else {
-      alert('Could not find fee request details for this payment.');
+      showToast('Could not find fee request details for this payment.', 'error');
     }
   };
 
@@ -99,7 +99,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
     const amountInPaise = Math.round((netAmount - (request.paidAmount || 0)) * 100);
     
     if (amountInPaise < 100) {
-      alert('Minimum payment amount is ₹1.');
+      showToast('Minimum payment amount is ₹1.', 'error');
       return;
     }
 

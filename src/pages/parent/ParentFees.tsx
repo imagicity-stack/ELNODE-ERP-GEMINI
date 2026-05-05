@@ -76,27 +76,27 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
     if (request && selectedStudent) {
       generateFeeReceipt(payment, request, selectedStudent);
     } else {
-      alert('Could not find fee request details for this payment.');
+      showToast('Could not find fee request details for this payment.', 'error');
     }
   };
 
   const handlePayNow = (request: FeeRequest) => {
     if (!window.Razorpay) {
-      alert('Payment gateway is loading. Please try again in a few seconds.');
+      showToast('Payment gateway is loading. Please try again in a few seconds.', 'error');
       return;
     }
 
     const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
     const remainingAmount = request.totalAmount + currentFine - (request.waivedAmount || 0) - (request.paidAmount || 0);
     if (remainingAmount <= 0) {
-      alert('This fee request is already fully paid.');
+      showToast('This fee request is already fully paid.', 'info');
       return;
     }
 
     const amountInPaise = Math.round(remainingAmount * 100);
     
     if (amountInPaise < 100) {
-      alert('Minimum payment amount is ₹1.');
+      showToast('Minimum payment amount is ₹1.', 'error');
       return;
     }
 

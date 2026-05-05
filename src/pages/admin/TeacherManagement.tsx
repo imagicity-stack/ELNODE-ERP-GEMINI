@@ -20,6 +20,7 @@ import {
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useToast } from '../../components/Toast';
 import { PageHeader, Button, IconButton, Modal, ConfirmModal, SearchInput, FormField, Input, Select, EmptyState, Badge, Avatar } from '../../components/ui';
 
 export default function TeacherManagement({ user }: { user: UserProfile }) {
@@ -37,6 +38,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('teachers');
+  const { showToast } = useToast();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -169,7 +171,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
       resetForm();
     } catch (err: any) {
       console.error(err);
-      alert('Error saving teacher: ' + (err.message || 'Unknown error'));
+      showToast('Error saving teacher: ' + (err.message || 'Unknown error'), 'error');
     } finally {
       setLoading(false);
     }
@@ -250,7 +252,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
       setFormData(prev => ({ ...prev, photoURL: url }));
     } catch (err) {
       console.error('Error uploading photo:', err);
-      alert('Failed to upload photo');
+      showToast('Failed to upload photo', 'error');
     } finally {
       setLoading(false);
     }

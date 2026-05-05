@@ -195,9 +195,11 @@ export default function ExamManagement({ user }: ExamManagementProps) {
   };
 
   const generateReportCard = (exam: Exam) => {
-    // This would ideally generate for all students in the class
-    // For now, let's just show a placeholder or logic to trigger individual ones
-    alert("Report cards can be downloaded from individual student/parent portals. Use the 'Enter Results' to manage scores.");
+    if (exam.status !== 'published') {
+      showToast('Publish the exam results first before generating report cards.', 'error');
+      return;
+    }
+    showToast('Report cards are available on individual student and parent portals once results are published.', 'info');
   };
 
   const filteredExams = exams.filter(exam =>
