@@ -149,7 +149,14 @@ service cloud.firestore {
     // Homework
     match /homework/{homeworkId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && (isAnyAdmin() || isTeacher());
+      allow create, delete: if isSignedIn() && (isAnyAdmin() || isTeacher());
+      // Teachers/admins can update anything; students may only append to submissions array
+      allow update: if isSignedIn() && (
+        isAnyAdmin() || isTeacher() || (
+          isStudent() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['submissions'])
+        )
+      );
     }
 
     // Events
@@ -199,9 +206,10 @@ service cloud.firestore {
       allow delete: if isAdmin() || isAccountant();
     }
 
-    // Activity logs — only admins should audit logs; clients still write their own entries
+    // Activity logs — admins see all; students/parents/teachers can query their own feed
     match /activityLogs/{id} {
-      allow read: if isAnyAdmin();
+      allow get: if isAnyAdmin();
+      allow list: if isAnyAdmin() || isTeacher() || isParent() || isStudent();
       allow create: if isSignedIn();
     }
 
