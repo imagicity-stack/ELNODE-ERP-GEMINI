@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  getRedirectResult,
-  linkWithCredential,
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  signInWithPopup,
-  signInWithRedirect,
+  signInWithCredential,
   GoogleAuthProvider,
 } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -68,113 +65,78 @@ export default function Login() {
     }
   };
 
-  const createGoogleProvider = () => {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    return provider;
-  };
+  const GOOGLE_CLIENT_ID = '58420941278-vrsvc2k53trpjjab5esnk4r780kpe8b2.apps.googleusercontent.com';
 
   const getGoogleSignInErrorMessage = (err: any) => {
-    if (err.code === 'auth/operation-not-allowed') {
-      return 'Google sign-in is not enabled in the Firebase Console. Please enable it under Auth > Sign-in method.';
-    }
-    if (err.code === 'auth/unauthorized-domain') {
-      return `Domain not authorized. Please add "${window.location.hostname}" to the "Authorized domains" list in your Firebase Console (under Authentication > Settings).`;
-    }
-    if (err.code === 'auth/account-exists-with-different-credential') {
-      return 'This email already has a password account. Enter that staff email and password here, then click Continue with Google again to link Google sign-in.';
-    }
-    if (err.code === 'auth/popup-blocked') {
-      return 'The Google popup was blocked. Redirecting to Google sign-in instead...';
-    }
-    if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.code === 'auth/redirect-cancelled-by-user') {
-      return 'Google sign-in was cancelled. Please try again.';
-    }
-    if (err.code === 'auth/redirect-operation-pending') {
-      return 'A Google sign-in is already in progress. Please finish it before trying again.';
-    }
+    if (err.code === 'auth/operation-not-allowed') return 'Google sign-in is not enabled. Please enable it in the Firebase Console under Auth > Sign-in method.';
+    if (err.code === 'auth/unauthorized-domain') return `Domain not authorized. Add "${window.location.hostname}" to Authorized Domains in Firebase Console > Authentication > Settings.`;
+    if (err.code === 'auth/account-exists-with-different-credential') return 'An account already exists with this email using a different sign-in method.';
+    if (err.code === 'auth/invalid-credential') return 'Google sign-in token was invalid. Please try again.';
     return err.message || 'Google sign-in failed. Please try again.';
-  };
-
-  const linkGoogleToPasswordAccount = async (err: any) => {
-    const pendingCredential = GoogleAuthProvider.credentialFromError(err);
-    const email = (err.customData?.email || identifier).trim().toLowerCase();
-
-    if (!pendingCredential || !email || !password) {
-      return false;
-    }
-
-    const credential = await signInWithEmailAndPassword(auth, email, password);
-    await linkWithCredential(credential.user, pendingCredential);
-    return true;
   };
 
   useEffect(() => {
     let isMounted = true;
 
-    // Show any deferred error from App.tsx (e.g., Google account not linked to a profile)
     const pendingError = sessionStorage.getItem('auth_no_profile_error');
     if (pendingError) {
       setError(pendingError);
       sessionStorage.removeItem('auth_no_profile_error');
     }
 
-    // Reset the loading button if Firebase signs the user out (e.g., after no-profile detection)
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      if (!firebaseUser && isMounted) {
-        setLoading(false);
-      }
+      if (!firebaseUser && isMounted) setLoading(false);
     });
 
-    getRedirectResult(auth).catch((err: any) => {
-      console.error('Google sign-in redirect error:', err);
-      if (isMounted) {
-        setError(getGoogleSignInErrorMessage(err));
-      }
-    });
+    // Load Google Identity Services script
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    document.head.appendChild(script);
 
     return () => {
       isMounted = false;
       unsubscribeAuth();
+      if (document.head.contains(script)) document.head.removeChild(script);
     };
   }, []);
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = () => {
     setLoading(true);
     setError('');
-    try {
-      await signInWithPopup(auth, createGoogleProvider());
-    } catch (err: any) {
-      console.error('Google sign-in popup error:', err);
 
-      if (err.code === 'auth/account-exists-with-different-credential') {
-        try {
-          const linked = await linkGoogleToPasswordAccount(err);
-          if (linked) return;
-        } catch (linkErr: any) {
-          console.error('Google account link error:', linkErr);
-          setError(linkErr.message || 'Could not link Google sign-in to this staff account. Please check the email/password and try again.');
-          setLoading(false);
-          return;
-        }
-      }
-
-      if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
-        try {
-          setError(getGoogleSignInErrorMessage(err));
-          await signInWithRedirect(auth, createGoogleProvider());
-          return;
-        } catch (redirectErr: any) {
-          console.error('Google sign-in redirect start error:', redirectErr);
-          setError(getGoogleSignInErrorMessage(redirectErr));
-          setLoading(false);
-          return;
-        }
-      }
-
-      setError(getGoogleSignInErrorMessage(err));
+    const google = (window as any).google;
+    if (!google?.accounts?.id) {
+      setError('Google Sign-In is still loading. Please wait a moment and try again.');
       setLoading(false);
+      return;
     }
+
+    google.accounts.id.cancel();
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: async (response: { credential: string }) => {
+        try {
+          const credential = GoogleAuthProvider.credential(response.credential);
+          await signInWithCredential(auth, credential);
+          // App.tsx onAuthStateChanged handles navigation from here
+        } catch (err: any) {
+          console.error('Google sign-in error:', err);
+          setError(getGoogleSignInErrorMessage(err));
+          setLoading(false);
+        }
+      },
+      cancel_on_tap_outside: true,
+    });
+
+    google.accounts.id.prompt((notification: any) => {
+      if (notification.isNotDisplayed()) {
+        setError('Google Sign-In could not open. Please allow pop-ups and third-party cookies for this site, then try again.');
+        setLoading(false);
+      } else if (notification.isDismissedMoment() && notification.getDismissedReason() !== 'credential_returned') {
+        setLoading(false);
+      }
+    });
   };
 
   return (
