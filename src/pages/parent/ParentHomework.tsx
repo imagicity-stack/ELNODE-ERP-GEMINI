@@ -1,5 +1,5 @@
 import { UserProfile, Student, Homework } from '../../types';
-import { CheckSquare, Filter } from 'lucide-react';
+import { CheckSquare, Filter, CheckCircle2, Clock } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
@@ -46,15 +46,21 @@ export default function ParentHomework({ user, selectedStudent }: ParentHomework
 
   if (!selectedStudent) return null;
 
+  const isSubmitted = (hw: Homework) =>
+    hw.submissions?.some(s => s.studentId === selectedStudent.id);
+
+  const submittedCount = homework.filter(isSubmitted).length;
+  const pendingCount = homework.length - submittedCount;
+
   const filteredHomework = homework.filter(hw => {
-    const matchesSearch = hw.subjectId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch =
+      hw.subjectId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       hw.content.toLowerCase().includes(searchTerm.toLowerCase());
-    // Since we don't have a submission status in the Homework object itself (it's usually in a separate collection),
-    // we'll just show all for now or filter by due date.
+    const submitted = isSubmitted(hw);
+    if (statusFilter === 'submitted') return matchesSearch && submitted;
+    if (statusFilter === 'pending') return matchesSearch && !submitted;
     return matchesSearch;
   });
-
-  const pendingCount = homework.length; // Simplified for now
 
   return (
     <div className="space-y-8">
@@ -64,9 +70,15 @@ export default function ParentHomework({ user, selectedStudent }: ParentHomework
         icon={CheckSquare}
         iconColor="gradient-violet"
         actions={
-          <div className="px-4 py-2 bg-violet-50 text-violet-600 rounded-xl text-sm font-bold flex items-center gap-2">
-            <CheckSquare className="w-4 h-4" />
-            {pendingCount} Active
+          <div className="flex gap-2">
+            <div className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-sm font-bold flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4" />
+              {submittedCount} Submitted
+            </div>
+            <div className="px-3 py-1.5 bg-amber-50 text-amber-600 rounded-xl text-sm font-bold flex items-center gap-1.5">
+              <Clock className="w-4 h-4" />
+              {pendingCount} Pending
+            </div>
           </div>
         }
       />
@@ -82,7 +94,8 @@ export default function ParentHomework({ user, selectedStudent }: ParentHomework
             <div className="space-y-2">
               {[
                 { name: 'All Assignments', count: homework.length, color: 'violet', id: 'all' },
-                { name: 'Active', count: homework.length, color: 'amber', id: 'pending' },
+                { name: 'Pending', count: pendingCount, color: 'amber', id: 'pending' },
+                { name: 'Submitted', count: submittedCount, color: 'emerald', id: 'submitted' },
               ].map((filter) => (
                 <button
                   key={filter.id}
@@ -96,8 +109,9 @@ export default function ParentHomework({ user, selectedStudent }: ParentHomework
                     <div className={cn(
                       "w-2 h-2 rounded-full",
                       filter.color === 'violet' && "bg-violet-600",
-                      filter.color === 'amber' && "bg-amber-600",
-                    )}></div>
+                      filter.color === 'amber' && "bg-amber-500",
+                      filter.color === 'emerald' && "bg-emerald-500",
+                    )} />
                     <span className={cn(
                       "text-sm font-bold transition-all",
                       statusFilter === filter.id ? "text-violet-600" : "text-slate-700"
@@ -121,25 +135,39 @@ export default function ParentHomework({ user, selectedStudent }: ParentHomework
           </Card>
 
           <div className="space-y-4">
-            {filteredHomework.map((hw) => (
-              <Card key={hw.id} hover>
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-xl gradient-violet flex items-center justify-center font-bold text-sm text-white">
-                      {hw.subjectId.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-slate-900">{hw.subjectId} Assignment</h3>
-                        <Badge variant="warning">Active</Badge>
+            {filteredHomework.map((hw) => {
+              const submitted = isSubmitted(hw);
+              const submission = hw.submissions?.find(s => s.studentId === selectedStudent.id);
+              return (
+                <Card key={hw.id} hover>
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-xl gradient-violet flex items-center justify-center font-bold text-sm text-white">
+                        {hw.subjectId.charAt(0)}
                       </div>
-                      <p className="text-xs text-slate-400 font-medium mb-3">{hw.subjectId} • Due {hw.dueDate}</p>
-                      <p className="text-sm text-slate-600 leading-relaxed">{hw.content}</p>
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-bold text-slate-900">{hw.subjectId} Assignment</h3>
+                          <Badge variant={submitted ? 'success' : 'warning'}>
+                            {submitted ? 'Submitted' : 'Pending'}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-slate-400 font-medium mb-2">Due {hw.dueDate}</p>
+                        <p className="text-sm text-slate-600 leading-relaxed">{hw.content}</p>
+                        {submitted && submission && (
+                          <div className="mt-3 p-2.5 bg-emerald-50 rounded-lg border border-emerald-100">
+                            <p className="text-xs font-bold text-emerald-700 mb-1">
+                              Submitted on {new Date(submission.submittedAt).toLocaleDateString()}
+                            </p>
+                            <p className="text-xs text-emerald-600 line-clamp-2">{submission.content}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
             {filteredHomework.length === 0 && (
               <EmptyState
                 icon={CheckSquare}

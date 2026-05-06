@@ -72,6 +72,8 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
     }
   };
 
+  const sanitize = (text: string) => text.replace(/<[^>]*>/g, '').trim();
+
   const handleCreateNotice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) return;
@@ -79,6 +81,8 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
     try {
       await addDoc(collection(db, 'notices'), {
         ...formData,
+        title: sanitize(formData.title),
+        content: sanitize(formData.content),
         authorId: user.uid,
         authorName: user.name,
         createdAt: new Date().toISOString(),

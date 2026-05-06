@@ -1,7 +1,7 @@
 import { UserProfile, FeeRequest, FeePayment, PaymentMethod, Student, FineConfig } from '../../types';
 import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Wallet, Download, Scale, ShieldOff } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, orderBy, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
@@ -89,78 +89,76 @@ export default function StudentFees({ user }: StudentFeesProps) {
     if (request && student) {
       generateFeeReceipt(payment, request, student);
     } else {
-      alert('Could not find fee request details for this payment.');
+      showToast('Could not find fee request details for this payment.', 'error');
     }
   };
 
-  const handlePayNow = (request: FeeRequest) => {
+  const handlePayNow = async (request: FeeRequest) => {
     const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
-    const netAmount = request.totalAmount + currentFine - (request.waivedAmount || 0);
-    const amountInPaise = Math.round((netAmount - (request.paidAmount || 0)) * 100);
-    
+    const remainingAmount = request.totalAmount + currentFine - (request.waivedAmount || 0) - (request.paidAmount || 0);
+    const amountInPaise = Math.round(remainingAmount * 100);
+
     if (amountInPaise < 100) {
-      alert('Minimum payment amount is ₹1.');
+      showToast('Minimum payment amount is ₹1.', 'error');
       return;
     }
 
-    const amountPaid = amountInPaise / 100;
+    // Create order server-side so amount is fixed and cannot be tampered with
+    let orderId: string;
+    try {
+      const orderRes = await fetch('/api/razorpay/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amountInPaise, feeRequestId: request.id, studentId: request.studentId }),
+      });
+      if (!orderRes.ok) throw new Error('Order creation failed');
+      const { orderId: id } = await orderRes.json();
+      orderId = id;
+    } catch {
+      showToast('Could not initiate payment. Please try again.', 'error');
+      return;
+    }
 
     const options = {
       key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || '',
-      amount: amountInPaise,
+      order_id: orderId,
       currency: 'INR',
       name: 'School Fee Payment',
       description: `Fees for ${request.month}`,
-      theme: {
-        color: '#EF4444',
-      },
+      theme: { color: '#EF4444' },
       handler: async function (response: any) {
         try {
-          const payment: Omit<FeePayment, 'id'> = {
-            studentId: request.studentId,
-            classId: student?.classId || '',
-            feeRequestId: request.id,
-            feeHead: request.heads[0]?.name || 'Academic Fee',
-            amount: amountPaid,
-            date: new Date().toISOString(),
-            method: 'online',
-            transactionId: response.razorpay_payment_id,
-            receiptNumber: `REC-${Date.now()}`,
-            remarks: `Online Payment - ${request.month}`,
-          };
-
-          await addDoc(collection(db, 'feePayments'), payment);
-          
-          const newPaidAmount = (request.paidAmount || 0) + amountPaid;
-          const currentFine = fineConfig ? calculateFine(request, fineConfig) : 0;
-          const totalRequired = request.totalAmount + currentFine - (request.waivedAmount || 0);
-          const isFullyPaid = newPaidAmount >= totalRequired;
-
-          await updateDoc(doc(db, 'feeRequests', request.id), { 
-            status: isFullyPaid ? 'paid' : 'partially_paid',
-            paidAmount: newPaidAmount,
-            fineAmount: currentFine,
-            updatedAt: new Date().toISOString()
+          const verifyRes = await fetch('/api/razorpay/verify-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              feeRequestId: request.id,
+              studentId: request.studentId,
+              classId: student?.classId || '',
+              amount: remainingAmount,
+              feeHead: request.heads[0]?.name || 'Academic Fee',
+              month: request.month,
+            }),
           });
-          
-          if (isFullyPaid) {
-            await updateDoc(doc(db, 'students', request.studentId), {
-              feeStatus: 'paid'
-            });
+
+          if (!verifyRes.ok) {
+            const err = await verifyRes.json();
+            showToast(err.error || 'Payment verification failed. Contact support.', 'error');
+            return;
           }
 
-          logActivity(user, 'Paid Fees Online', 'Students', `Paid ₹${amountPaid.toLocaleString()} for ${payment.feeHead} via Razorpay`);
-          showToast('Payment Successful! Transaction ID: ' + response.razorpay_payment_id, 'success');
+          const { receiptNumber } = await verifyRes.json();
+          logActivity(user, 'Paid Fees Online', 'Students', `Paid ₹${remainingAmount.toLocaleString()} for ${request.heads[0]?.name || 'Academic Fee'} via Razorpay`);
+          showToast(`Payment successful! Receipt: ${receiptNumber}`, 'success');
           fetchData();
-        } catch (err) {
-          console.error('Payment error:', err);
-          showToast('Error recording payment. Please contact support.', 'error');
+        } catch {
+          showToast('Payment was processed but could not be recorded. Please contact support.', 'error');
         }
       },
-      prefill: {
-        name: user.name,
-        email: user.email,
-      },
+      prefill: { name: user.name, email: user.email },
     };
 
     const rzp = new window.Razorpay(options);

@@ -466,7 +466,7 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
             <button 
               onClick={async () => {
                 if (Notification.permission === 'denied') {
-                  alert('Notification permission is denied. Please enable notifications in your browser settings to receive updates.');
+                  showToast('Notifications are blocked. Please enable them in your browser settings.', 'error');
                   return;
                 }
                 const granted = await requestNotificationPermission();
