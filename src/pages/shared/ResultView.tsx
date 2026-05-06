@@ -9,8 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion } from 'motion/react';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
 import {
   PageHeader,
   Card,
@@ -59,56 +58,85 @@ export default function ResultView({ student }: ResultViewProps) {
     }
   };
 
-  const generatePDF = (result: ExamResult, exam: Exam) => {
-    const doc = new jsPDF();
+  const generatePDF = async (result: ExamResult, exam: Exam) => {
+    const { doc, contentY, pageWidth } = await createPdf(
+      'Academic Progress Report',
+      `${exam.name} · ${exam.term}`,
+    );
 
-    // Header
-    doc.setFontSize(22);
-    doc.setTextColor(30, 58, 138);
-    doc.text('ELDEN HEIGHTS ACADEMY', 105, 20, { align: 'center' });
+    let y = contentY + 4;
 
-    doc.setFontSize(12);
-    doc.setTextColor(100);
-    doc.text('Academic Progress Report', 105, 28, { align: 'center' });
+    y = drawInfoBox(
+      doc,
+      [
+        { label: 'Student', value: student.name },
+        { label: 'Admission No', value: student.admissionNumber || '-' },
+        { label: 'Class', value: `${student.classId} – ${student.section}` },
+        { label: 'Date', value: new Date().toLocaleDateString('en-IN') },
+      ],
+      y,
+      pageWidth,
+      2,
+    );
 
-    // Student Info
-    doc.setDrawColor(200);
-    doc.line(20, 35, 190, 35);
-
-    doc.setFontSize(10);
-    doc.setTextColor(0);
-    doc.text(`Student Name: ${student.name}`, 20, 45);
-    doc.text(`Class: ${student.classId} - ${student.section}`, 20, 52);
-    doc.text(`Admission No: ${student.admissionNumber}`, 20, 59);
-    doc.text(`Exam: ${exam.name} (${exam.term})`, 120, 45);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, 52);
+    y += 6;
 
     const tableData = result.subjectResults.map((res: any) => {
-      const subject = subjects.find(s => s.id === res.subjectId);
+      const subject = subjects.find((s) => s.id === res.subjectId);
+      const pct = res.maxMarks > 0 ? ((res.marksObtained / res.maxMarks) * 100).toFixed(1) : '0.0';
       return [
         subject?.name || 'Unknown',
         res.maxMarks,
         res.marksObtained,
+        `${pct}%`,
         res.grade,
-        res.marksObtained >= 40 ? 'Pass' : 'Fail'
+        res.marksObtained >= 40 ? 'Pass' : 'Fail',
       ];
     });
 
-    autoTable(doc, {
-      startY: 70,
-      head: [['Subject', 'Max Marks', 'Marks Obtained', 'Grade', 'Status']],
+    (doc as any).autoTable({
+      startY: y,
+      head: [['Subject', 'Max Marks', 'Obtained', '%', 'Grade', 'Status']],
       body: tableData,
-      theme: 'striped',
-      headStyles: { fillColor: [79, 70, 229] },
+      ...TABLE_STYLES,
+      columnStyles: {
+        5: {
+          fontStyle: 'bold',
+          cellCallback: (cell: any, data: any) => {
+            cell.styles.textColor = data.row.raw[5] === 'Pass' ? [5, 150, 105] : [220, 38, 38];
+          },
+        },
+      },
+      margin: { left: 12, right: 12 },
     });
 
-    const finalY = (doc as any).lastAutoTable.finalY + 15;
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total Marks: ${result.totalMarks} / ${result.subjectResults.length * 100}`, 20, finalY);
-    doc.text(`Percentage: ${result.percentage.toFixed(2)}%`, 20, finalY + 10);
-    doc.text(`Overall Grade: ${result.overallGrade}`, 120, finalY);
+    const finalY: number = (doc as any).lastAutoTable.finalY + 8;
 
+    // Summary box
+    doc.setFillColor(209, 250, 229);
+    doc.roundedRect(12, finalY, pageWidth - 24, 22, 2, 2, 'F');
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(5, 150, 105);
+    doc.text(`Overall Grade: ${result.overallGrade}`, 20, finalY + 8);
+    doc.text(`Percentage: ${result.percentage.toFixed(2)}%`, 20, finalY + 16);
+
+    doc.setTextColor(15, 23, 42);
+    doc.text(
+      `Total: ${result.totalMarks} / ${result.subjectResults.reduce((s: number, r: any) => s + r.maxMarks, 0)}`,
+      pageWidth - 20,
+      finalY + 8,
+      { align: 'right' },
+    );
+    doc.text(
+      result.percentage >= 40 ? 'RESULT: PASS' : 'RESULT: FAIL',
+      pageWidth - 20,
+      finalY + 16,
+      { align: 'right' },
+    );
+
+    addFooter(doc);
     doc.save(`${student.name}_${exam.name}_Report.pdf`);
   };
 

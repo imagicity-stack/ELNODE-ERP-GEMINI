@@ -33,6 +33,7 @@ import { Notice, UserProfile } from '../../types';
 import { Link } from 'react-router-dom';
 import { StatCard, Card, Badge, Button, Avatar, PageHeader } from '../../components/ui';
 import UpdatesSection from '../../components/UpdatesSection';
+import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
 
 const GENDER_COLORS = ['#6366f1', '#ec4899'];
 
@@ -111,6 +112,61 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     { label: 'Fee Collection', value: `₹${counts.feeCollection.toLocaleString()}`, icon: CreditCard, gradient: 'gradient-emerald' },
   ];
 
+  const downloadReport = async () => {
+    const today = new Date().toLocaleDateString('en-IN');
+    const { doc, contentY, pageWidth } = await createPdf(
+      'Admin Dashboard Report',
+      `Generated on ${today}`,
+    );
+
+    let y = contentY + 4;
+
+    y = drawInfoBox(
+      doc,
+      [
+        { label: 'Total Students', value: counts.students.toString() },
+        { label: 'Total Teachers', value: counts.teachers.toString() },
+        { label: 'Active Classes', value: counts.classes.toString() },
+        { label: 'Fee Collection', value: `₹${counts.feeCollection.toLocaleString('en-IN')}` },
+        { label: 'Pending Leaves', value: pendingLeaves.toString() },
+        { label: 'Report Date', value: today },
+      ],
+      y,
+      pageWidth,
+      2,
+    );
+
+    y += 6;
+
+    if (recentAdmissions.length > 0) {
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(5, 150, 105);
+      doc.text('RECENT ADMISSIONS', 12, y);
+      y += 3;
+
+      const admissionRows = recentAdmissions.map((s: any) => [
+        s.name || '-',
+        s.classId || '-',
+        s.section || '-',
+        s.admissionNumber || '-',
+        s.feeStatus?.toUpperCase() || '-',
+      ]);
+
+      (doc as any).autoTable({
+        startY: y,
+        head: [['Name', 'Class', 'Section', 'Admission No', 'Fee Status']],
+        body: admissionRows,
+        ...TABLE_STYLES,
+        styles: { fontSize: 8.5, cellPadding: 4 },
+        margin: { left: 12, right: 12 },
+      });
+    }
+
+    addFooter(doc);
+    doc.save(`admin_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   const noticePriorityVariant = (p: string) => p === 'high' ? 'error' : p === 'medium' ? 'warning' : 'info';
 
   return (
@@ -124,7 +180,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="secondary" size="sm" icon={TrendingUp}>Download Report</Button>
+          <Button variant="secondary" size="sm" icon={TrendingUp} onClick={downloadReport}>Download Report</Button>
           <Link to="/superadmin/admissions">
             <Button size="sm" icon={UserPlus}>New Admission</Button>
           </Link>

@@ -33,8 +33,8 @@ export function showLocalNotification(title: string, options?: NotificationOptio
     // PWAs can show notifications via service worker or direct Notification API
     // Direct API works if the tab is active or in background (depending on browser)
     const notification = new Notification(title, {
-      icon: '/icons/icon-192x192.png',
-      badge: '/icons/icon-192x192.png',
+      icon: '/logo high res tp-01.png',
+      badge: '/logo high res tp-01.png',
       ...options
     });
 

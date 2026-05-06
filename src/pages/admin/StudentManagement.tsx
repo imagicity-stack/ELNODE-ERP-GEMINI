@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { createUserWithEmailAndPassword, getAuth, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { initializeApp, getApp } from 'firebase/app';
@@ -7,8 +7,7 @@ import { db, auth, storage, firebaseConfig, handleFirestoreError, OperationType 
 import { Student, UserProfile, Class, House } from '../../types';
 import { logActivity } from '../../services/activityService';
 import { SCHOOL_DOMAIN } from '../../constants';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
 import {
   Plus,
   Edit2,
@@ -317,103 +316,111 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   };
 
   const generateStudentPDF = async (student: Student) => {
-    const doc = new jsPDF() as any;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    
-    // Header
-    doc.setFontSize(20);
-    doc.setTextColor(37, 99, 235); // Blue-600
-    doc.text("ELDEN HEIGHTS SCHOOL", pageWidth / 2, 20, { align: 'center' });
-    
-    doc.setFontSize(14);
-    doc.setTextColor(107, 114, 128); // Gray-500
-    doc.text("Complete Student Record", pageWidth / 2, 28, { align: 'center' });
-    
-    // Basic Info
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    doc.text("BASIC INFORMATION", 20, 45);
-    doc.line(20, 47, 190, 47);
-    
-    const basicInfo = [
-      ["Name", student.name],
-      ["Admission / School No.", student.admissionNumber],
-      ["Class & Section", `${student.classId} - ${student.section}`],
-      ["House", student.houseId || "N/A"],
-      ["Fee Status", student.feeStatus.toUpperCase()]
-    ];
-    
-    autoTable(doc, {
-      startY: 50,
-      head: [['Field', 'Value']],
-      body: basicInfo,
-      theme: 'striped',
-      headStyles: { fillColor: [37, 99, 235] }
-    });
-    
-    // Parent Info
-    const finalY = (doc as any).lastAutoTable.finalY;
-    doc.text("PARENT INFORMATION", 20, finalY + 15);
-    doc.line(20, finalY + 17, 190, finalY + 17);
-    
-    const parentInfo = [
-      ["Father's Name", student.parentDetails?.fatherName || "N/A"],
-      ["Mother's Name", student.parentDetails?.motherName || "N/A"],
-      ["Phone Number", student.parentDetails?.phone || "N/A"],
-      ["Email Address", student.parentDetails?.email || "N/A"]
-    ];
-    
-    autoTable(doc, {
-      startY: finalY + 20,
-      head: [['Field', 'Value']],
-      body: parentInfo,
-      theme: 'striped',
-      headStyles: { fillColor: [37, 99, 235] }
-    });
-    
-    // Additional Details
-    const finalY2 = (doc as any).lastAutoTable.finalY;
-    doc.text("ADDITIONAL DETAILS", 20, finalY2 + 15);
-    doc.line(20, finalY2 + 17, 190, finalY2 + 17);
-    
-    const additionalInfo = [
-      ["Transport", student.transportDetails || "None"],
-      ["Medical Notes", student.medicalNotes || "None"],
-      ["Academic History", student.academicHistory || "None"]
-    ];
-    
-    autoTable(doc, {
-      startY: finalY2 + 20,
-      head: [['Field', 'Value']],
-      body: additionalInfo,
-      theme: 'striped',
-      headStyles: { fillColor: [37, 99, 235] }
-    });
+    const { doc, contentY, pageWidth } = await createPdf(
+      'Complete Student Record',
+      `Generated on ${new Date().toLocaleDateString('en-IN')}`,
+    );
 
-    // Fetch related data (Fees, Attendance, etc.)
-    // Note: This is a simplified version. In a real app, you'd fetch all collections.
-    const feeQuery = query(collection(db, 'fees'), where('studentId', '==', student.id));
-    const feeDocs = await getDocs(feeQuery);
-    if (!feeDocs.empty) {
-      const finalY3 = (doc as any).lastAutoTable.finalY;
-      doc.text("FEE HISTORY", 20, finalY3 + 15);
-      doc.line(20, finalY3 + 17, 190, finalY3 + 17);
-      
-        const feeData = feeDocs.docs.map(d => {
-          const data = d.data();
-          return [data.id || d.id, data.status.toUpperCase(), `$${(data.structure?.reduce((acc: number, curr: any) => acc + (curr.amount || 0), 0) || 0).toLocaleString()}`];
-        });
-      
-      autoTable(doc, {
-        startY: finalY3 + 20,
-        head: [['Receipt ID', 'Status', 'Total Amount']],
-        body: feeData,
-        theme: 'striped',
-        headStyles: { fillColor: [37, 99, 235] }
+    let y = contentY + 4;
+
+    // Basic info
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(5, 150, 105);
+    doc.text('BASIC INFORMATION', 12, y);
+    y += 3;
+
+    y = drawInfoBox(
+      doc,
+      [
+        { label: 'Name', value: student.name },
+        { label: 'Admission No', value: student.admissionNumber || '-' },
+        { label: 'School No', value: student.schoolNumber || '-' },
+        { label: 'Class & Section', value: `${student.classId} – ${student.section}` },
+        { label: 'House', value: student.houseId || 'N/A' },
+        { label: 'Fee Status', value: student.feeStatus.toUpperCase() },
+      ],
+      y,
+      pageWidth,
+      2,
+    );
+
+    y += 6;
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(5, 150, 105);
+    doc.text('PARENT INFORMATION', 12, y);
+    y += 3;
+
+    y = drawInfoBox(
+      doc,
+      [
+        { label: "Father's Name", value: student.parentDetails?.fatherName || 'N/A' },
+        { label: "Mother's Name", value: student.parentDetails?.motherName || 'N/A' },
+        { label: 'Phone', value: student.parentDetails?.phone || 'N/A' },
+        { label: 'Email', value: student.parentDetails?.email || 'N/A' },
+      ],
+      y,
+      pageWidth,
+      2,
+    );
+
+    y += 6;
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(5, 150, 105);
+    doc.text('ADDITIONAL DETAILS', 12, y);
+    y += 3;
+
+    y = drawInfoBox(
+      doc,
+      [
+        { label: 'Transport', value: student.transportDetails || 'None' },
+        { label: 'Medical Notes', value: student.medicalNotes || 'None' },
+        { label: 'Academic History', value: student.academicHistory || 'None' },
+        { label: 'Gender', value: student.gender || 'N/A' },
+      ],
+      y,
+      pageWidth,
+      2,
+    );
+
+    y += 6;
+
+    // Recent fee payments
+    const paymentsSnap = await getDocs(
+      query(collection(db, 'feePayments'), where('studentId', '==', student.id), orderBy('date', 'desc')),
+    );
+
+    if (!paymentsSnap.empty) {
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(5, 150, 105);
+      doc.text('PAYMENT HISTORY', 12, y);
+      y += 3;
+
+      const paymentData = paymentsSnap.docs.slice(0, 10).map((d) => {
+        const p = d.data();
+        return [
+          p.receiptNumber || '-',
+          p.date || '-',
+          `₹${(p.amount || 0).toLocaleString('en-IN')}`,
+          (p.method || 'N/A').replace('_', ' ').toUpperCase(),
+          p.feeHead || '-',
+        ];
+      });
+
+      (doc as any).autoTable({
+        startY: y,
+        head: [['Receipt No', 'Date', 'Amount', 'Method', 'Fee Head']],
+        body: paymentData,
+        ...TABLE_STYLES,
+        margin: { left: 12, right: 12 },
       });
     }
 
-    doc.save(`student_record_${student.schoolNumber}.pdf`);
+    addFooter(doc);
+    doc.save(`student_record_${student.schoolNumber || student.admissionNumber}.pdf`);
   };
 
   const performDelete = async (options: {

@@ -13,6 +13,7 @@ import {
 import { UserProfile, Expense, FeePayment, Fee, Student, FeeRequest, Class } from '../../types';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -103,6 +104,63 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
 
   const netProfit = totalCollection - expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
+  const exportReport = async () => {
+    const today = new Date().toLocaleDateString('en-IN');
+    const { doc, contentY, pageWidth } = await createPdf(
+      'Financial Overview Report',
+      `Generated on ${today}`,
+    );
+
+    let y = contentY + 4;
+
+    y = drawInfoBox(
+      doc,
+      [
+        { label: 'Total Collection', value: `₹${totalCollection.toLocaleString('en-IN')}` },
+        { label: 'Pending Fees', value: `₹${totalPending.toLocaleString('en-IN')}` },
+        { label: 'Monthly Expenses', value: `₹${monthlyExpenses.toLocaleString('en-IN')}` },
+        { label: 'Net Profit', value: `₹${netProfit.toLocaleString('en-IN')}` },
+        { label: 'Total Students', value: students.length.toString() },
+        { label: 'Total Payments', value: payments.length.toString() },
+      ],
+      y,
+      pageWidth,
+      2,
+    );
+
+    y += 6;
+
+    // Recent payments table
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(5, 150, 105);
+    doc.text('RECENT FEE PAYMENTS', 12, y);
+    y += 3;
+
+    const paymentRows = payments.slice(0, 20).map((p) => {
+      const student = students.find((s) => s.id === p.studentId);
+      return [
+        p.receiptNumber || '-',
+        p.date,
+        student?.name || p.studentId,
+        `₹${(p.amount || 0).toLocaleString('en-IN')}`,
+        (p.method || '').replace('_', ' ').toUpperCase(),
+      ];
+    });
+
+    (doc as any).autoTable({
+      startY: y,
+      head: [['Receipt No', 'Date', 'Student', 'Amount', 'Method']],
+      body: paymentRows,
+      ...TABLE_STYLES,
+      styles: { fontSize: 8, cellPadding: 3 },
+      margin: { left: 12, right: 12 },
+    });
+
+    addFooter(doc);
+    doc.save(`financial_overview_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   // Prepare chart data (last 7 days)
   const last7Days = [...Array(7)].map((_, i) => {
     const d = new Date();
@@ -133,7 +191,7 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
         icon={Wallet}
         iconColor="gradient-amber"
         actions={
-          <Button variant="secondary" icon={Download}>
+          <Button variant="secondary" icon={Download} onClick={exportReport}>
             Export Report
           </Button>
         }
