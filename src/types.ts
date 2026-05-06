@@ -49,6 +49,7 @@ export interface Student {
   medicalNotes?: string;
   academicHistory?: string;
   houseId?: string;
+  gender?: string;
   feeStatus: 'paid' | 'pending' | 'overdue';
   photoURL?: string;
 }

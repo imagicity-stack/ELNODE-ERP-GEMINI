@@ -21,6 +21,18 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
 import { DataProvider } from './contexts/DataContext';
 
+const normalizeUserRole = (role: string): UserProfile['role'] => {
+  if (['admin', 'staff', 'security', 'transport', 'office_staff'].includes(role)) {
+    return 'office_staff';
+  }
+  return role as UserProfile['role'];
+};
+
+const normalizeUserProfile = (profile: UserProfile): UserProfile => ({
+  ...profile,
+  role: normalizeUserRole(profile.role),
+});
+
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,7 +70,7 @@ export default function App() {
           }
           
           if (userDoc && userDoc.exists()) {
-            const existingUser = userDoc.data() as UserProfile;
+            const existingUser = normalizeUserProfile(userDoc.data() as UserProfile);
             let updatedUser = { ...existingUser };
             let needsUpdate = false;
 
@@ -112,7 +124,7 @@ export default function App() {
                   );
                   const querySnapshot = await getDocs(q);
                   if (!querySnapshot.empty) {
-                    return querySnapshot.docs[0].data() as UserProfile;
+                    return normalizeUserProfile(querySnapshot.docs[0].data() as UserProfile);
                   }
                 }
                 return null;

@@ -52,7 +52,11 @@ service cloud.firestore {
     // Users collection
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
-      allow list: if isAnyAdmin();
+      allow list: if isAnyAdmin() || (
+        isSignedIn() &&
+        request.query.limit <= 1 &&
+        resource.data.email == request.auth.token.email
+      );
       allow create: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
 
       // Users can update their own profile but CANNOT change role, studentId, or studentIds.
