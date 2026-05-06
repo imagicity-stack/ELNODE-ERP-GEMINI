@@ -190,7 +190,12 @@ export default function UpdatesSection({ user, className, maxItems = 10 }: Updat
                     </h3>
                     <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium whitespace-nowrap">
                       <Clock className="w-3 h-3" />
-                      {activity.timestamp ? formatDistanceToNow(activity.timestamp.toDate(), { addSuffix: true }) : 'Just now'}
+                      {activity.timestamp ? formatDistanceToNow(
+                        typeof activity.timestamp.toDate === 'function'
+                          ? activity.timestamp.toDate()
+                          : new Date(activity.timestamp),
+                        { addSuffix: true }
+                      ) : 'Just now'}
                     </div>
                   </div>
                   <p className="text-xs text-slate-500 line-clamp-1 group-hover:line-clamp-none transition-all">
