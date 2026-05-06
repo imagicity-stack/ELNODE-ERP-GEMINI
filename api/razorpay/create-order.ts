@@ -1,0 +1,50 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const { amountInPaise, feeRequestId, studentId } = req.body;
+
+  if (!amountInPaise || typeof amountInPaise !== 'number' || amountInPaise < 100) {
+    return res.status(400).json({ error: 'Invalid amount' });
+  }
+  if (!feeRequestId || !studentId) {
+    return res.status(400).json({ error: 'Missing feeRequestId or studentId' });
+  }
+
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) {
+    return res.status(500).json({ error: 'Payment gateway not configured' });
+  }
+
+  try {
+    const response = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64'),
+      },
+      body: JSON.stringify({
+        amount: amountInPaise,
+        currency: 'INR',
+        receipt: `rcpt_${feeRequestId}`.slice(0, 40),
+        notes: { feeRequestId, studentId },
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      console.error('Razorpay order creation failed:', err);
+      return res.status(502).json({ error: 'Failed to create payment order' });
+    }
+
+    const order = await response.json();
+    return res.status(200).json({ orderId: order.id });
+  } catch (err) {
+    console.error('create-order error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
