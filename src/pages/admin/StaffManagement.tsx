@@ -154,8 +154,9 @@ export default function StaffManagement({ user }: { user: any }) {
           uid: staffUid,
           email: formData.email,
           name: formData.name,
-          // Fixed role logic: default to a safer 'staff' role if not principal/accounts/admin
-          role: ['principal', 'accounts', 'admin'].includes(formData.role) ? formData.role : 'staff',
+          // Portal roles are intentionally limited; keep the staff job type in the
+          // staff document and map non-portal staff roles to the staff portal.
+          role: ['principal', 'accounts'].includes(formData.role) ? formData.role : 'office_staff',
           staffId: staffRef?.id,
           createdAt: new Date().toISOString(),
         });
