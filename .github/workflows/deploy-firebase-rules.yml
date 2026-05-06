@@ -1,4 +1,4 @@
-name: Deploy Firebase Rules
+name: Deploy Firebase
 
 on:
   push:
@@ -6,6 +6,8 @@ on:
     paths:
       - firestore.rules
       - storage.rules
+      - public/**
+      - firebase.json
 
 jobs:
   deploy:
@@ -13,9 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy Firestore & Storage rules
+      - name: Deploy Firestore rules, Storage rules & Hosting
         uses: w9jds/firebase-action@master
         with:
-          args: deploy --only firestore:rules,storage --project el-node-erp
+          args: deploy --only firestore:rules,storage,hosting --project el-node-erp
         env:
           GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
