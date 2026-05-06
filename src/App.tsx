@@ -5,7 +5,7 @@
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, where, collection, limit, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { UserProfile } from './types';
@@ -133,7 +133,7 @@ export default function App() {
               const existingUser = await findExistingUser();
               
               if (existingUser) {
-                
+
                 // Create a new user doc with current UID to ensure rules work
                 const newUser: UserProfile = {
                   ...existingUser,
@@ -158,7 +158,7 @@ export default function App() {
                     newUser.studentIds = [studentDocs.docs[0].id];
                   }
                 }
-                
+
                 try {
                   await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
                   setUser(newUser);
@@ -167,6 +167,18 @@ export default function App() {
                   setUser(existingUser);
                 }
               } else {
+                // Google-authenticated user has no linked school profile.
+                // Sign out to prevent a stuck-authenticated-but-null loop.
+                const isProviderAuth = firebaseUser.providerData?.some(
+                  (p: any) => p.providerId !== 'password'
+                );
+                if (isProviderAuth) {
+                  sessionStorage.setItem(
+                    'auth_no_profile_error',
+                    `Your Google account (${firebaseUser.email}) is not linked to a school profile. Please contact the administrator or sign in with your school email and password.`
+                  );
+                  try { await signOut(auth); } catch (_) {}
+                }
                 setUser(null);
               }
             } else {

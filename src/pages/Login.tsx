@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   getRedirectResult,
   linkWithCredential,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
@@ -111,6 +112,20 @@ export default function Login() {
   useEffect(() => {
     let isMounted = true;
 
+    // Show any deferred error from App.tsx (e.g., Google account not linked to a profile)
+    const pendingError = sessionStorage.getItem('auth_no_profile_error');
+    if (pendingError) {
+      setError(pendingError);
+      sessionStorage.removeItem('auth_no_profile_error');
+    }
+
+    // Reset the loading button if Firebase signs the user out (e.g., after no-profile detection)
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (!firebaseUser && isMounted) {
+        setLoading(false);
+      }
+    });
+
     getRedirectResult(auth).catch((err: any) => {
       console.error('Google sign-in redirect error:', err);
       if (isMounted) {
@@ -120,6 +135,7 @@ export default function Login() {
 
     return () => {
       isMounted = false;
+      unsubscribeAuth();
     };
   }, []);
 
