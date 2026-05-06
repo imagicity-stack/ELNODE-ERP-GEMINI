@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { useEffect, useState } from 'react';
+import { getRedirectResult, signInWithEmailAndPassword, signInWithRedirect, GoogleAuthProvider } from 'firebase/auth';
 import { auth } from '../firebase';
 import { useNavigate } from 'react-router-dom';
 import { SCHOOL_NAME, APP_NAME, SCHOOL_DOMAIN, LEGACY_DOMAIN, APP_LOGO } from '../constants';
@@ -63,28 +63,46 @@ export default function Login() {
     }
   };
 
+  const getGoogleSignInErrorMessage = (err: any) => {
+    if (err.code === 'auth/operation-not-allowed') {
+      return 'Google sign-in is not enabled in the Firebase Console. Please enable it under Auth > Sign-in method.';
+    }
+    if (err.code === 'auth/unauthorized-domain') {
+      return `Domain not authorized. Please add "${window.location.hostname}" to the "Authorized domains" list in your Firebase Console (under Authentication > Settings).`;
+    }
+    if (err.code === 'auth/redirect-cancelled-by-user') {
+      return 'Google sign-in was cancelled. Please try again.';
+    }
+    if (err.code === 'auth/redirect-operation-pending') {
+      return 'A Google sign-in is already in progress. Please finish it before trying again.';
+    }
+    return err.message || 'Google sign-in failed. Please try again.';
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getRedirectResult(auth).catch((err: any) => {
+      console.error('Google sign-in redirect error:', err);
+      if (isMounted) {
+        setError(getGoogleSignInErrorMessage(err));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError('');
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      await signInWithRedirect(auth, provider);
     } catch (err: any) {
-      console.error('Google sign-in error:', err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError('Sign-in popup was closed. Please try again.');
-      } else if (err.code === 'auth/operation-not-allowed') {
-        setError('Google sign-in is not enabled in the Firebase Console. Please enable it under Auth > Sign-in method.');
-      } else if (err.code === 'auth/unauthorized-domain') {
-        setError(
-          `Domain not authorized. Please add "${window.location.hostname}" to the "Authorized domains" list in your Firebase Console (under Authentication > Settings).`
-        );
-      } else if (err.code === 'auth/popup-blocked') {
-        setError('The sign-in popup was blocked by your browser. Please allow popups for this site.');
-      } else {
-        setError(err.message || 'Google sign-in failed. Please try again.');
-      }
-    } finally {
+      console.error('Google sign-in redirect start error:', err);
+      setError(getGoogleSignInErrorMessage(err));
       setLoading(false);
     }
   };
