@@ -1,5 +1,5 @@
 {
-  "name": "EL-NODE",
+  "name": "EL-NODE – The Elden Heights School",
   "short_name": "EL-NODE",
   "description": "Elden Heights School ERP System",
   "start_url": "/",
@@ -8,17 +8,12 @@
   "theme_color": "#059669",
   "icons": [
     {
-      "src": "/pwa-192x192.png",
-      "sizes": "192x192",
+      "src": "/logo high res tp-01.png",
+      "sizes": "any",
       "type": "image/png"
     },
     {
-      "src": "/pwa-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    },
-    {
-      "src": "/pwa-512x512.png",
+      "src": "/logo high res tp-01.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

@@ -5,6 +5,7 @@ import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, set
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
+import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import {
@@ -117,6 +118,42 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       setSearchTerm(searchParam);
     }
   }, []);
+
+  const exportCollectionReport = async () => {
+    const total = payments.reduce((s, p) => s + (p.amount || 0), 0);
+    const today = new Date().toLocaleDateString('en-IN');
+    const { doc, contentY } = await createPdf('Fee Collection Report', `As of ${today}`);
+
+    const rows = payments.map((p) => {
+      const student = students.find((s) => s.id === p.studentId);
+      return [
+        p.receiptNumber || '-',
+        p.date,
+        student?.name || p.studentId,
+        student?.classId ? `${student.classId}-${student.section}` : '-',
+        p.feeHead || '-',
+        (p.method || '').replace('_', ' ').toUpperCase(),
+        `₹${(p.amount || 0).toLocaleString('en-IN')}`,
+      ];
+    });
+
+    (doc as any).autoTable({
+      startY: contentY + 2,
+      head: [['Receipt', 'Date', 'Student', 'Class', 'Fee Head', 'Method', 'Amount']],
+      body: rows,
+      foot: [[
+        { content: `Total: ${payments.length} payments`, colSpan: 6, styles: { fontStyle: 'bold', halign: 'right' } },
+        { content: `₹${total.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold', textColor: [5, 150, 105] } },
+      ]],
+      ...TABLE_STYLES,
+      footStyles: { fillColor: [209, 250, 229], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 9 },
+      styles: { fontSize: 8, cellPadding: 3 },
+      margin: { left: 12, right: 12 },
+    });
+
+    addFooter(doc);
+    doc.save(`fee_collection_${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
 
   const handleDownloadReceipt = (payment: FeePayment) => {
     const request = feeRequests.find(r => r.id === payment.feeRequestId);
@@ -433,7 +470,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         icon={IndianRupee}
         iconColor="gradient-amber"
         actions={
-          <Button variant="primary" icon={Download}>
+          <Button variant="primary" icon={Download} onClick={exportCollectionReport}>
             Export Collection Report
           </Button>
         }

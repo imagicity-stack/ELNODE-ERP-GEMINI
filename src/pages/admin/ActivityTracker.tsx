@@ -32,8 +32,7 @@ import {
 import { ActivityLog, ActivitySection, UserProfile } from '../../types';
 import { getActivityLogs } from '../../services/activityService';
 import { format } from 'date-fns';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
 
 const SECTIONS: ActivitySection[] = [
   'Super Admin', 'Accounts', 'Parents', 'Students', 'Academic', 'Teachers', 'Exam', 'Staff'
@@ -70,37 +69,38 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
   const paginatedLogs = filteredLogs.slice((page - 1) * itemsPerPage, page * itemsPerPage);
   const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
 
-  const exportPDF = () => {
-    const doc = new jsPDF();
-    const tableColumn = ["Date", "User", "Section", "Action", "Details"];
-    const tableRows: any[] = [];
+  const exportPDF = async () => {
+    const section = selectedSection === 'all' ? 'All Sections' : selectedSection;
+    const { doc, contentY, pageWidth } = await createPdf(
+      'Activity Tracker Report',
+      `Section: ${section} · ${format(new Date(), 'dd MMM yyyy HH:mm')}`,
+    );
 
-    filteredLogs.forEach(log => {
-      const logData = [
-        format(new Date(log.timestamp), 'dd/MM/yyyy HH:mm'),
-        `${log.userName} (${log.userRole})`,
-        log.section,
-        log.action,
-        log.details
-      ];
-      tableRows.push(logData);
-    });
+    const tableRows = filteredLogs.map((log) => [
+      format(new Date(log.timestamp), 'dd/MM/yy HH:mm'),
+      `${log.userName}\n(${log.userRole})`,
+      log.section,
+      log.action,
+      log.details,
+    ]);
 
-    doc.setFontSize(18);
-    doc.text("Activity Tracker Report", 14, 15);
-    doc.setFontSize(11);
-    doc.text(`Section: ${selectedSection === 'all' ? 'All Sections' : selectedSection}`, 14, 22);
-    doc.text(`Generated on: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 28);
-
-    autoTable(doc, {
-      head: [tableColumn],
+    (doc as any).autoTable({
+      startY: contentY + 2,
+      head: [['Date', 'User', 'Section', 'Action', 'Details']],
       body: tableRows,
-      startY: 35,
-      theme: 'grid',
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [79, 70, 229] }
+      ...TABLE_STYLES,
+      styles: { fontSize: 7.5, cellPadding: 3 },
+      columnStyles: {
+        0: { cellWidth: 22 },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 22 },
+        3: { cellWidth: 35 },
+        4: { cellWidth: 'auto' },
+      },
+      margin: { left: 12, right: 12 },
     });
 
+    addFooter(doc);
     doc.save(`activity_report_${selectedSection}_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
