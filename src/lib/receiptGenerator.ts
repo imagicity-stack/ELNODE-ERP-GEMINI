@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { FeePayment, FeeRequest, Student } from '../types';
 
 const NAVY: [number, number, number] = [26, 45, 80];
@@ -187,26 +188,26 @@ export const generateFeeReceipt = async (
     (head.finalAmount ?? head.amount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
   ]);
 
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: y,
     head: [['S.NO.', 'PARTICULARS', 'PERIOD', 'AMOUNT (INR)']],
     body: tableRows,
     foot: [
-      [{ content: '', colSpan: 2, styles: { fillColor: WHITE, lineWidth: 0 } },
-       { content: 'Sub Total',              styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT, textColor: DARK } },
-       { content: `Rs. ${subTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,  styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT, textColor: DARK } }],
-      [{ content: '', colSpan: 2, styles: { fillColor: WHITE, lineWidth: 0 } },
-       { content: 'Discount / Concession',  styles: { halign: 'right', fillColor: WHITE, textColor: SLATE } },
-       { content: `Rs. ${discount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,  styles: { halign: 'right', fillColor: WHITE, textColor: SLATE } }],
-      [{ content: '', colSpan: 2, styles: { fillColor: WHITE, lineWidth: 0 } },
-       { content: 'Late Fee',               styles: { halign: 'right', fillColor: WHITE, textColor: SLATE } },
-       { content: `Rs. ${lateFee.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,   styles: { halign: 'right', fillColor: WHITE, textColor: SLATE } }],
-      [{ content: 'GRAND TOTAL', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right', fillColor: NAVY, textColor: WHITE, fontSize: 10 } },
-       { content: `Rs. ${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, styles: { fontStyle: 'bold', halign: 'right', fillColor: NAVY, textColor: WHITE, fontSize: 10 } }],
+      [{ content: '', colSpan: 2, styles: { fillColor: WHITE as any, lineWidth: 0 } },
+       { content: 'Sub Total',              styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } },
+       { content: `Rs. ${subTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,  styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } }],
+      [{ content: '', colSpan: 2, styles: { fillColor: WHITE as any, lineWidth: 0 } },
+       { content: 'Discount / Concession',  styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } },
+       { content: `Rs. ${discount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,  styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } }],
+      [{ content: '', colSpan: 2, styles: { fillColor: WHITE as any, lineWidth: 0 } },
+       { content: 'Late Fee',               styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } },
+       { content: `Rs. ${lateFee.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,   styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } }],
+      [{ content: 'GRAND TOTAL', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right', fillColor: NAVY as any, textColor: WHITE as any, fontSize: 10 } },
+       { content: `Rs. ${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, styles: { fontStyle: 'bold', halign: 'right', fillColor: NAVY as any, textColor: WHITE as any, fontSize: 10 } }],
     ],
-    headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold', fontSize: 8.5, cellPadding: 3.5 },
+    headStyles: { fillColor: NAVY as any, textColor: WHITE as any, fontStyle: 'bold', fontSize: 8.5, cellPadding: 3.5 },
     bodyStyles: { fontSize: 9, cellPadding: 3 },
-    alternateRowStyles: { fillColor: LIGHT },
+    alternateRowStyles: { fillColor: LIGHT as any },
     footStyles: { fontSize: 9, cellPadding: 3 },
     columnStyles: {
       0: { halign: 'center', cellWidth: 16 },
@@ -214,7 +215,7 @@ export const generateFeeReceipt = async (
       3: { halign: 'right',  cellWidth: 40, fontStyle: 'bold' },
     },
     theme: 'grid',
-    tableLineColor: [200, 210, 225],
+    tableLineColor: [200, 210, 225] as any,
     tableLineWidth: 0.15,
     margin: { left: ML, right: MR },
   });
