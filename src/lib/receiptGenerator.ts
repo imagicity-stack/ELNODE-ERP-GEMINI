@@ -150,7 +150,7 @@ export const generateFeeReceipt = async (
 
   y += 5;
   doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(...SLATE);
-  doc.text(`ACADEMIC SESSION ${request.academicYear || '2026-27'}`, PW / 2, y, { align: 'center' });
+  doc.text('ACADEMIC SESSION 2026-27', PW / 2, y, { align: 'center' });
   y += 6;
 
   // ── RECEIPT META — 3 boxes ───────────────────────────────────────────────────
@@ -186,7 +186,7 @@ export const generateFeeReceipt = async (
   const studentRows: [string, string, string, string][] = [
     ['Student Name',    student.name,                                     'Admission No.',  student.admissionNumber || student.schoolNumber || '-'],
     ['Class & Section', `${className} - ${student.section}`,             "Father's Name",  student.parentDetails?.fatherName || '-'],
-    ['Contact No.',     student.parentDetails?.phone || '-',              'Academic Year',  request.academicYear || '2026-27'],
+    ['Contact No.',     student.parentDetails?.phone || '-',              'Academic Year',  '2026-27'],
     ['House',           houseName,                                        "Mother's Name",  student.parentDetails?.motherName || '-'],
   ];
 
