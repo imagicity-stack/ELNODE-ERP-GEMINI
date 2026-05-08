@@ -1,5 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { FeePayment, FeeRequest, Student } from '../types';
 
 const NAVY: [number, number, number] = [26, 45, 80];
@@ -10,7 +12,6 @@ const LIGHT: [number, number, number] = [245, 248, 252];
 const SLATE: [number, number, number] = [100, 116, 139];
 const GREEN: [number, number, number] = [5, 150, 105];
 
-// ── Number to Indian words ────────────────────────────────────────────────────
 function toWords(n: number): string {
   const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine',
     'Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
@@ -34,18 +35,46 @@ function toWords(n: number): string {
   return out + ' Only';
 }
 
+// Compress logo via canvas — resize to ≤150px and encode as JPEG to keep PDF size small
 async function fetchLogo(): Promise<string | null> {
   try {
     const res = await fetch('/logo high res tp-01.png');
     if (!res.ok) return null;
     const blob = await res.blob();
+    const imgURL = URL.createObjectURL(blob);
     return new Promise(resolve => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror  = () => resolve(null);
-      reader.readAsDataURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const maxSize = 150;
+        const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(imgURL);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = () => { URL.revokeObjectURL(imgURL); resolve(null); };
+      img.src = imgURL;
     });
   } catch { return null; }
+}
+
+async function fetchClassName(classId: string): Promise<string> {
+  try {
+    const snap = await getDoc(doc(db, 'classes', classId));
+    if (snap.exists()) return (snap.data().name as string) || classId;
+  } catch { /* fallback */ }
+  return classId;
+}
+
+async function fetchHouseName(houseId?: string): Promise<string> {
+  if (!houseId) return '-';
+  try {
+    const snap = await getDoc(doc(db, 'houses', houseId));
+    if (snap.exists()) return (snap.data().name as string) || '-';
+  } catch { /* fallback */ }
+  return '-';
 }
 
 export const generateFeeReceipt = async (
@@ -53,36 +82,38 @@ export const generateFeeReceipt = async (
   request: FeeRequest,
   student: Student,
 ): Promise<void> => {
+  const [logo, className, houseName] = await Promise.all([
+    fetchLogo(),
+    fetchClassName(student.classId),
+    fetchHouseName(student.houseId),
+  ]);
+
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = doc.internal.pageSize.width;
   const PH = doc.internal.pageSize.height;
-  const ML = 12, MR = 12; // margins
-  const CW = PW - ML - MR; // content width
-  const logo = await fetchLogo();
+  const ML = 12, MR = 12;
+  const CW = PW - ML - MR;
 
   // ── HEADER ──────────────────────────────────────────────────────────────────
-  // Double top rule
   doc.setDrawColor(...NAVY);
   doc.setLineWidth(0.8); doc.line(ML, 8, PW - MR, 8);
   doc.setLineWidth(0.2); doc.line(ML, 10, PW - MR, 10);
 
   // Logo (top-left)
   if (logo) {
-    try { doc.addImage(logo, 'PNG', ML, 13, 22, 22); } catch { /* skip */ }
+    try { doc.addImage(logo, 'JPEG', ML, 13, 22, 22); } catch { /* skip */ }
   } else {
-    // fallback EH initials box
     doc.setFillColor(...NAVY);
     doc.roundedRect(ML, 13, 22, 22, 2, 2, 'F');
     doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(...WHITE);
     doc.text('EH', ML + 11, 26, { align: 'center' });
   }
 
-  // "FEE RECEIPT" badge (top-right)
-  doc.setDrawColor(...NAVY); doc.setLineWidth(0.5);
-  doc.rect(PW - MR - 28, 13, 28, 16);
-  doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY);
-  doc.text('FEE',     PW - MR - 14, 21, { align: 'center' });
-  doc.text('RECEIPT', PW - MR - 14, 26, { align: 'center' });
+  // "FEE RECEIPT" label top-right — no border box
+  doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY);
+  doc.text('FEE RECEIPT', PW - MR, 19, { align: 'right' });
+  doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(...SLATE);
+  doc.text('OFFICIAL DOCUMENT', PW - MR, 24, { align: 'right' });
 
   // School name
   doc.setFontSize(17); doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY);
@@ -90,12 +121,12 @@ export const generateFeeReceipt = async (
 
   // Tagline
   doc.setFontSize(8); doc.setFont('helvetica', 'italic'); doc.setTextColor(...GOLD);
-  doc.text('WHERE LEGACY MEETS TOMORROW', PW / 2, 25, { align: 'center' });
+  doc.text('Towards Eternal Glory', PW / 2, 25, { align: 'center' });
 
   // Address
-  doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(...SLATE);
+  doc.setFontSize(6.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(...SLATE);
   doc.text(
-    'Hazaribagh, Jharkhand · 825301 · India   ·   +91 XXXXX XXXXX   ·   accounts@eldenheights.in   ·   www.eldenheights.in',
+    'Hazaribagh, Jharkhand · 825301   ·   +91 9431904333 / 9288483677   ·   contact@eldenheights.org   ·   eldenheights.org',
     PW / 2, 31, { align: 'center' },
   );
 
@@ -111,7 +142,7 @@ export const generateFeeReceipt = async (
   const titleX = PW / 2;
 
   doc.setDrawColor(...NAVY); doc.setLineWidth(0.4);
-  doc.line(ML, y + 0.5,     titleX - titleW / 2 - 4, y + 0.5);
+  doc.line(ML, y + 0.5, titleX - titleW / 2 - 4, y + 0.5);
   doc.line(titleX + titleW / 2 + 4, y + 0.5, PW - MR, y + 0.5);
 
   doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(...DARK);
@@ -119,8 +150,7 @@ export const generateFeeReceipt = async (
 
   y += 5;
   doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(...SLATE);
-  doc.text(`ACADEMIC SESSION ${request.academicYear || new Date().getFullYear() + '-' + (new Date().getFullYear() + 1).toString().slice(2)}`, PW / 2, y, { align: 'center' });
-
+  doc.text(`ACADEMIC SESSION ${request.academicYear || '2026-27'}`, PW / 2, y, { align: 'center' });
   y += 6;
 
   // ── RECEIPT META — 3 boxes ───────────────────────────────────────────────────
@@ -154,9 +184,10 @@ export const generateFeeReceipt = async (
 
   const half = CW / 2;
   const studentRows: [string, string, string, string][] = [
-    ['Student Name',   student.name,                                     'Admission No.',  student.admissionNumber || student.schoolNumber || '-'],
-    ['Class & Section', `Class ${student.classId} - ${student.section}`, "Father's Name",  student.parentDetails?.fatherName || '-'],
-    ['Contact No.',    student.parentDetails?.phone || '-',               'Academic Year',  request.academicYear || '-'],
+    ['Student Name',    student.name,                                     'Admission No.',  student.admissionNumber || student.schoolNumber || '-'],
+    ['Class & Section', `${className} - ${student.section}`,             "Father's Name",  student.parentDetails?.fatherName || '-'],
+    ['Contact No.',     student.parentDetails?.phone || '-',              'Academic Year',  request.academicYear || '2026-27'],
+    ['House',           houseName,                                        "Mother's Name",  student.parentDetails?.motherName || '-'],
   ];
 
   studentRows.forEach(([l1, v1, l2, v2]) => {
@@ -164,12 +195,11 @@ export const generateFeeReceipt = async (
     doc.text(l1, ML + 2, y);
     doc.setFont('helvetica', 'bold'); doc.setTextColor(...DARK);
     doc.text(v1, ML + 38, y);
-
     doc.setFont('helvetica', 'normal'); doc.setTextColor(...SLATE);
     doc.text(l2, ML + half + 2, y);
     doc.setFont('helvetica', 'bold'); doc.setTextColor(...DARK);
     doc.text(v2, ML + half + 38, y);
-    y += 7;
+    y += 6.5;
   });
   y += 2;
 
@@ -194,13 +224,13 @@ export const generateFeeReceipt = async (
     body: tableRows,
     foot: [
       [{ content: '', colSpan: 2, styles: { fillColor: WHITE as any, lineWidth: 0 } },
-       { content: 'Sub Total',              styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } },
+       { content: 'Sub Total',             styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } },
        { content: `Rs. ${subTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,  styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } }],
       [{ content: '', colSpan: 2, styles: { fillColor: WHITE as any, lineWidth: 0 } },
-       { content: 'Discount / Concession',  styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } },
+       { content: 'Discount / Concession', styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } },
        { content: `Rs. ${discount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,  styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } }],
       [{ content: '', colSpan: 2, styles: { fillColor: WHITE as any, lineWidth: 0 } },
-       { content: 'Late Fee',               styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } },
+       { content: 'Late Fee',              styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } },
        { content: `Rs. ${lateFee.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,   styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } }],
       [{ content: 'GRAND TOTAL', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right', fillColor: NAVY as any, textColor: WHITE as any, fontSize: 10 } },
        { content: `Rs. ${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, styles: { fontStyle: 'bold', halign: 'right', fillColor: NAVY as any, textColor: WHITE as any, fontSize: 10 } }],
@@ -236,7 +266,7 @@ export const generateFeeReceipt = async (
 
   const payRows: [string, string, boolean?][] = [
     ['Payment Mode',   payment.method.toUpperCase().replace(/_/g, ' / ')],
-    ['Transaction ID', payment.transactionId || payment.referenceNumber || 'N/A'],
+    ['Transaction ID', payment.transactionId || (payment as any).referenceNumber || 'N/A'],
     ['Status',         'PAID & VERIFIED', true],
     ['Received By',    'Accounts Department'],
   ];
@@ -253,11 +283,9 @@ export const generateFeeReceipt = async (
   const sigX = PW - MR - 60, sigY = payStartY - 3, sigH = 32;
   doc.setDrawColor(...SLATE); doc.setLineWidth(0.3);
   doc.rect(sigX, sigY, 60, sigH);
-  doc.setLineWidth(0.3);
   doc.line(sigX, sigY + sigH - 10, sigX + 60, sigY + sigH - 10);
   doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...DARK);
-  doc.text('AUTHORISED', sigX + 30, sigY + 14, { align: 'center' });
-  doc.text('SIGNATORY',  sigX + 30, sigY + 20, { align: 'center' });
+  doc.text('AUTHORISED SIGNATORY', sigX + 30, sigY + 16, { align: 'center' });
   doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(...SLATE);
   doc.text('Accounts & Finance Office', sigX + 30, sigY + 27, { align: 'center' });
 
@@ -265,7 +293,7 @@ export const generateFeeReceipt = async (
 
   // ── IMPORTANT NOTES ──────────────────────────────────────────────────────────
   doc.setDrawColor(...SLATE); doc.setLineWidth(0.25);
-  const noteText = 'This receipt is computer-generated and valid without a physical signature when accompanied by the official school seal. Please retain this receipt for the entire academic session for reference and tax purposes. Fees once paid are non-refundable except as per the school\'s official refund policy. For any discrepancy, kindly contact the Accounts Office within 7 working days of receipt issuance.';
+  const noteText = "This receipt is computer-generated and valid without a physical signature. Please retain this receipt for the entire academic session. Fees once paid are non-refundable except as per the school's official refund policy. For any discrepancy, contact the Accounts Office within 7 working days at accounts@eldenheights.org.";
   const noteLines = doc.splitTextToSize(noteText, CW - 8);
   const noteH = noteLines.length * 4.2 + 12;
   doc.rect(ML, y, CW, noteH);
@@ -276,18 +304,22 @@ export const generateFeeReceipt = async (
   y += noteH + 4;
 
   // ── FOOTER ───────────────────────────────────────────────────────────────────
-  const footY = PH - 10;
-  doc.setDrawColor(...NAVY); doc.setLineWidth(0.2); doc.line(ML, footY - 4, PW - MR, footY - 4);
-  doc.setLineWidth(0.6); doc.line(ML, footY - 2, PW - MR, footY - 2);
+  const footY = PH - 14;
+  doc.setDrawColor(...NAVY); doc.setLineWidth(0.2); doc.line(ML, footY - 2, PW - MR, footY - 2);
+  doc.setLineWidth(0.6); doc.line(ML, footY, PW - MR, footY);
 
   doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY);
-  doc.text('EHS  ·  THE ELDEN HEIGHTS SCHOOL', ML, footY + 2);
+  doc.text('EHS  ·  THE ELDEN HEIGHTS SCHOOL', ML, footY + 4);
 
   doc.setFont('helvetica', 'italic'); doc.setTextColor(...GOLD);
-  doc.text('Thank you for being part of our legacy', PW / 2, footY + 2, { align: 'center' });
+  doc.text('Thank you for being part of our legacy', PW / 2, footY + 4, { align: 'center' });
 
   doc.setFont('helvetica', 'normal'); doc.setTextColor(...SLATE);
-  doc.text('Page 1 of 1  ·  System Generated', PW - MR, footY + 2, { align: 'right' });
+  doc.text('Page 1 of 1  ·  System Generated', PW - MR, footY + 4, { align: 'right' });
+
+  // Trust line
+  doc.setFontSize(6.5); doc.setFont('helvetica', 'italic'); doc.setTextColor(...SLATE);
+  doc.text('A unit of Bhagwati Educational And Charitable Trust', PW / 2, footY + 9, { align: 'center' });
 
   doc.save(`Receipt_${payment.receiptNumber}.pdf`);
 };
