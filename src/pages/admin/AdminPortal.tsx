@@ -32,6 +32,7 @@ import FeeCollection from '../accounts/FeeCollection';
 import PaymentHistory from '../accounts/PaymentHistory';
 import PaymentAnalytics from '../accounts/PaymentAnalytics';
 import ProfileSettings from '../shared/ProfileSettings';
+import SchoolSettings from './SchoolSettings';
 
 export default function AdminPortal({ user }: { user: UserProfile }) {
   return (
@@ -61,6 +62,7 @@ export default function AdminPortal({ user }: { user: UserProfile }) {
         <Route path="/payroll-settings" element={<PayrollSettings user={user} />} />
         <Route path="/fine-settings" element={<FineSettings user={user} />} />
         <Route path="/permissions" element={<RolePermissionsManager user={user} />} />
+        <Route path="/school-settings" element={<SchoolSettings user={user} />} />
         <Route path="/diary" element={<LessonLogs user={user} />} />
         <Route path="/activity-logs" element={<ActivityTracker user={user} />} />
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />

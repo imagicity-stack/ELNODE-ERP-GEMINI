@@ -33,6 +33,7 @@ import {
   Shield,
   ShieldCheck,
   History as HistoryIcon,
+  Settings2,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
@@ -158,6 +159,7 @@ const navItems: NavItem[] = [
   { label: 'Reports', icon: TrendingUp, path: '/reports', roles: ['super_admin', 'accounts'], section: 'Finance' },
 
   // Super Admin Only Settings
+  { label: 'School Settings', icon: Settings2, path: '/school-settings', roles: ['super_admin'], section: 'Settings' },
   { label: 'Role Permissions', icon: ShieldCheck, path: '/permissions', roles: ['super_admin'], section: 'Settings' },
 
   // Teacher specific (already mostly covered by Overview)

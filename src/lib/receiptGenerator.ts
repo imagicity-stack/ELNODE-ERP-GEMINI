@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FeePayment, FeeRequest, Student } from '../types';
+import { getSchoolSettings } from '../services/settingsService';
 
 const NAVY: [number, number, number] = [26, 45, 80];
 const GOLD: [number, number, number] = [180, 145, 45];
@@ -82,11 +83,13 @@ export const generateFeeReceipt = async (
   request: FeeRequest,
   student: Student,
 ): Promise<void> => {
-  const [logo, className, houseName] = await Promise.all([
+  const [logo, className, houseName, schoolSettings] = await Promise.all([
     fetchLogo(),
     fetchClassName(student.classId),
     fetchHouseName(student.houseId),
+    getSchoolSettings(),
   ]);
+  const academicYear = schoolSettings.academicYear || '2026-27';
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = doc.internal.pageSize.width;
@@ -150,7 +153,7 @@ export const generateFeeReceipt = async (
 
   y += 5;
   doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(...SLATE);
-  doc.text(`ACADEMIC SESSION ${request.academicYear || '2026-27'}`, PW / 2, y, { align: 'center' });
+  doc.text(`ACADEMIC SESSION ${academicYear}`, PW / 2, y, { align: 'center' });
   y += 6;
 
   // ── RECEIPT META — 3 boxes ───────────────────────────────────────────────────
@@ -186,7 +189,7 @@ export const generateFeeReceipt = async (
   const studentRows: [string, string, string, string][] = [
     ['Student Name',    student.name,                                     'Admission No.',  student.admissionNumber || student.schoolNumber || '-'],
     ['Class & Section', `${className} - ${student.section}`,             "Father's Name",  student.parentDetails?.fatherName || '-'],
-    ['Contact No.',     student.parentDetails?.phone || '-',              'Academic Year',  request.academicYear || '2026-27'],
+    ['Contact No.',     student.parentDetails?.phone || '-',              'Academic Year',  academicYear],
     ['House',           houseName,                                        "Mother's Name",  student.parentDetails?.motherName || '-'],
   ];
 
