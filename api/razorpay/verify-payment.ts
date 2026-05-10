@@ -6,8 +6,13 @@ import { sendWatiTemplate } from '../_wati';
 
 function getDb() {
   if (!getApps().length) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
-    initializeApp({ credential: cert(serviceAccount) });
+    let serviceAccount: object;
+    try {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
+    } catch {
+      throw new Error('FIREBASE_SERVICE_ACCOUNT env var is not valid JSON');
+    }
+    initializeApp({ credential: cert(serviceAccount as any) });
   }
   const dbId = process.env.FIRESTORE_DATABASE_ID ?? 'ai-studio-cb22793f-2766-4225-bb0a-411c4a36f1b5';
   return getFirestore(dbId);
@@ -39,11 +44,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (expectedSig !== razorpay_signature)
     return res.status(400).json({ error: 'Payment signature verification failed' });
 
+  let step = 'init';
   try {
+    step = 'getDb';
     const db = getDb();
     const now = new Date().toISOString();
     const receiptNumber = `REC-${Date.now()}`;
 
+    step = 'fetchFeeRequest';
     const feeRequestRef = db.collection('feeRequests').doc(feeRequestId);
     const feeRequestSnap = await feeRequestRef.get();
     if (!feeRequestSnap.exists) return res.status(404).json({ error: 'Fee request not found' });
@@ -52,6 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (feeRequest.studentId !== studentId)
       return res.status(403).json({ error: 'Fee request does not belong to this student' });
 
+    step = 'recordPayment';
     const paymentRef = await db.collection('feePayments').add({
       studentId, classId: classId || '', feeRequestId,
       feeHead: feeHead || 'Academic Fee', amount,
@@ -62,17 +71,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       verifiedAt: now,
     });
 
+    step = 'updateFeeRequest';
     const newPaidAmount = (feeRequest.paidAmount || 0) + amount;
     const totalRequired = feeRequest.totalAmount - (feeRequest.waivedAmount || 0);
     const newStatus = newPaidAmount >= totalRequired ? 'paid' : 'partially_paid';
-
     await feeRequestRef.update({ paidAmount: newPaidAmount, status: newStatus, updatedAt: now });
 
     if (newStatus === 'paid') {
+      step = 'updateStudentFeeStatus';
       await db.collection('students').doc(studentId).update({ feeStatus: 'paid', updatedAt: now });
     }
 
-    // ── Auto WhatsApp: payment_confirmed (fire-and-forget, non-fatal) ──────────
+    // Auto WhatsApp: fire-and-forget, never blocks payment success
     try {
       const studentSnap = await db.collection('students').doc(studentId).get();
       if (studentSnap.exists) {
@@ -82,10 +92,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           let classSection = student.classId || '';
           try {
             const classSnap = await db.collection('classes').doc(student.classId).get();
-            if (classSnap.exists) {
+            if (classSnap.exists)
               classSection = `${classSnap.data()!.name} - ${student.section || ''}`.trim();
-            }
-          } catch { /* class fetch is best-effort */ }
+          } catch { /* best-effort */ }
 
           await sendWatiTemplate(phone, 'payment_confirmed', [
             student.parentDetails?.fatherName || 'Parent',
@@ -103,11 +112,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     return res.status(200).json({ success: true, receiptNumber, paymentId: paymentRef.id });
-  } catch (err) {
-    console.error('verify-payment Firestore error:', err);
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    console.error(`[verify-payment] FAILED at step="${step}":`, msg);
     return res.status(500).json({
       error: 'Payment was verified but could not be recorded. Contact support.',
       transactionId: razorpay_payment_id,
+      _step: step,
+      _detail: msg,
     });
   }
 }
