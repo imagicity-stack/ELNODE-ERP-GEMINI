@@ -6,7 +6,10 @@ import {
   UserCircle,
   FileText,
   Users,
-  DollarSign as DollarIcon
+  DollarSign as DollarIcon,
+  Calendar,
+  BookOpen,
+  ChevronRight,
 } from 'lucide-react';
 import { UserProfile, Student, Notice, FeeRequest, Attendance, Homework, ExamResult } from '../../types';
 import { Link } from 'react-router-dom';
@@ -112,8 +115,125 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
   const presentDays = attendance.filter(a => a.status === 'present').length;
   const attendancePercentage = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : '--';
 
+  const pendingFeesCount = feeRequests.filter(f => f.status !== 'paid').length;
+  const unreadNoticesCount = notices.length;
+
+  const mobileTiles = [
+    {
+      to: '/parent/fees',
+      label: 'Fees',
+      icon: CreditCard,
+      hint: pendingFees > 0 ? `₹${pendingFees.toLocaleString('en-IN')} due` : 'All paid',
+      urgent: pendingFees > 0,
+      bg: 'from-violet-500 to-violet-700',
+    },
+    {
+      to: '/parent/attendance',
+      label: 'Attendance',
+      icon: ClipboardCheck,
+      hint: totalDays > 0 ? `${attendancePercentage}% present` : 'No data',
+      bg: 'from-emerald-500 to-emerald-700',
+    },
+    {
+      to: '/parent/exams',
+      label: 'Results',
+      icon: FileText,
+      hint: examResults.length > 0 ? `${examResults.length} exams` : 'No results',
+      bg: 'from-indigo-500 to-indigo-700',
+    },
+    {
+      to: '/parent/diary',
+      label: 'Homework',
+      icon: CheckSquare,
+      hint: homework.length > 0 ? `${homework.length} active` : 'None pending',
+      bg: 'from-amber-500 to-amber-700',
+    },
+    {
+      to: '/parent/timetable',
+      label: 'Timetable',
+      icon: Calendar,
+      hint: 'Class schedule',
+      bg: 'from-sky-500 to-sky-700',
+    },
+    {
+      to: '/parent/notices',
+      label: 'Notices',
+      icon: Bell,
+      hint: unreadNoticesCount > 0 ? `${unreadNoticesCount} updates` : 'No new',
+      bg: 'from-rose-500 to-rose-700',
+    },
+  ];
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile Simplified UI ───────────────────────────────────────────── */}
+      <div className="md:hidden space-y-5 -mx-4 -mt-4">
+        {/* Greeting card */}
+        <div className="bg-gradient-to-br from-violet-600 to-indigo-700 px-5 pt-6 pb-8 text-white rounded-b-3xl shadow-lg">
+          <p className="text-xs font-medium text-violet-100 uppercase tracking-widest">Welcome</p>
+          <h1 className="text-2xl font-bold mt-1">{selectedStudent.name}</h1>
+          <p className="text-xs text-violet-100 mt-1">School No. {selectedStudent.schoolNumber}</p>
+
+          {pendingFees > 0 && (
+            <Link
+              to="/parent/fees"
+              className="mt-5 flex items-center justify-between bg-white/15 backdrop-blur-sm border border-white/20 rounded-2xl px-4 py-3 active:bg-white/25 transition-all"
+            >
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-violet-100">Pay Now</p>
+                <p className="text-lg font-bold leading-tight">₹{pendingFees.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-white text-violet-700 rounded-full px-3 py-1.5 text-xs font-bold flex items-center gap-1">
+                Pay <ChevronRight className="w-3.5 h-3.5" />
+              </div>
+            </Link>
+          )}
+        </div>
+
+        {/* Big action tiles — 2 columns */}
+        <div className="grid grid-cols-2 gap-3 px-4">
+          {mobileTiles.map(({ to, label, icon: Icon, hint, urgent, bg }) => (
+            <Link
+              key={to}
+              to={to}
+              className={`relative bg-gradient-to-br ${bg} rounded-2xl p-4 text-white shadow-md active:scale-95 transition-transform min-h-[110px] flex flex-col justify-between`}
+            >
+              <Icon className="w-7 h-7" strokeWidth={2.25} />
+              <div>
+                <p className="text-base font-bold leading-tight">{label}</p>
+                <p className="text-[11px] text-white/80 mt-0.5">{hint}</p>
+              </div>
+              {urgent && (
+                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-yellow-300 rounded-full animate-pulse" />
+              )}
+            </Link>
+          ))}
+        </div>
+
+        {/* Recent notices preview */}
+        {notices.length > 0 && (
+          <div className="px-4 pb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Bell className="w-4 h-4 text-violet-600" />
+                Latest Notices
+              </h3>
+              <Link to="/parent/notices" className="text-xs text-violet-600 font-bold">See all</Link>
+            </div>
+            <div className="space-y-2">
+              {notices.slice(0, 2).map((notice) => (
+                <div key={notice.id} className="bg-white border border-slate-100 rounded-xl p-3">
+                  <p className="text-sm font-bold text-slate-900 line-clamp-1">{notice.title}</p>
+                  <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{notice.content}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Parent Dashboard"
         subtitle={`Monitoring progress for ${selectedStudent.name}`}
@@ -309,6 +429,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
           </Card>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
