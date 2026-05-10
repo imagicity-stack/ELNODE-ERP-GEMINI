@@ -336,7 +336,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         { label: 'Name', value: student.name },
         { label: 'Admission No', value: student.admissionNumber || '-' },
         { label: 'School No', value: student.schoolNumber || '-' },
-        { label: 'Class & Section', value: `${student.classId} – ${student.section}` },
+        { label: 'Class & Section', value: `${getClassName(student.classId)} – ${student.section}` },
         { label: 'House', value: student.houseId || 'N/A' },
         { label: 'Fee Status', value: student.feeStatus.toUpperCase() },
       ],
@@ -587,7 +587,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                     <div>
                       <span className="font-semibold text-slate-900 block">{student.name}</span>
                       <span className="text-[10px] text-slate-400 sm:hidden">{student.admissionNumber}</span>
-                      <span className="text-[10px] text-slate-400 md:hidden block">Class {student.classId}</span>
+                      <span className="text-[10px] text-slate-400 md:hidden block">{getClassName(student.classId)}</span>
                     </div>
                   </div>
                 </Td>
