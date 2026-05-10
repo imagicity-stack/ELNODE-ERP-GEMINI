@@ -1,5 +1,5 @@
 import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure, PaymentMethod, FeeHead, FineConfig } from '../../types';
-import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale } from 'lucide-react';
+import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale, MessageSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
@@ -162,6 +162,39 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       generateFeeReceipt(payment, request, student);
     } else {
       showToast('Could not find fee request or student details for this payment.', 'error');
+    }
+  };
+
+  const handleSendWhatsApp = async (payment: FeePayment) => {
+    const student = students.find(s => s.id === payment.studentId);
+    const cls = classes.find(c => c.id === student?.classId);
+    if (!student?.parentDetails?.phone) {
+      showToast('No phone number on record for this student', 'error');
+      return;
+    }
+    const classSection = `${cls?.name || student.classId} - ${student.section}`;
+    try {
+      const res = await fetch('/api/whatsapp/send-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: student.parentDetails.phone,
+          templateName: 'payment_confirmed',
+          parameters: [
+            student.parentDetails.fatherName || 'Parent',
+            `₹${payment.amount.toLocaleString('en-IN')}`,
+            student.name,
+            classSection,
+            payment.receiptNumber,
+            new Date(payment.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }),
+            payment.method.replace(/_/g, ' '),
+          ],
+        }),
+      });
+      if (!res.ok) throw new Error();
+      showToast('WhatsApp receipt sent!', 'success');
+    } catch {
+      showToast('Failed to send WhatsApp message', 'error');
     }
   };
 
@@ -708,6 +741,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                           icon={Download}
                           onClick={() => handleDownloadReceipt(tx)}
                           variant="ghost"
+                          title="Download receipt"
+                        />
+                        <IconButton
+                          icon={MessageSquare}
+                          onClick={() => handleSendWhatsApp(tx)}
+                          variant="ghost"
+                          title="Send WhatsApp receipt"
                         />
                         {user.role === 'super_admin' && (
                           <IconButton
