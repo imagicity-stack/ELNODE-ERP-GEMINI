@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { sendWatiTemplate } from '../_wati';
 
 function getDb() {
   if (!getApps().length) {
@@ -20,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     feeRequestId, studentId, classId, amount, feeHead, month,
   } = req.body;
 
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature)
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
     return res.status(400).json({ error: 'Missing payment fields' });
   if (!feeRequestId || !studentId || typeof amount !== 'number' || amount <= 0)
     return res.status(400).json({ error: 'Missing or invalid payment metadata' });
@@ -31,8 +32,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!process.env.FIREBASE_SERVICE_ACCOUNT)
     return res.status(500).json({ error: 'Firebase not configured' });
 
-  // Verify Razorpay HMAC signature
-  const expected = crypto.createHmac('sha256', keySecret)
+  const expectedSig = crypto
+    .createHmac('sha256', keySecret)
     .update(`${razorpay_order_id}|${razorpay_payment_id}`)
     .digest('hex');
   if (expected !== razorpay_signature)
@@ -61,19 +62,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       verifiedAt: now,
     });
 
-    const newPaid = (feeRequest.paidAmount || 0) + amount;
-    const total = feeRequest.totalAmount - (feeRequest.waivedAmount || 0);
-    const newStatus = newPaid >= total ? 'paid' : 'partially_paid';
+    const newPaidAmount = (feeRequest.paidAmount || 0) + amount;
+    const totalRequired = feeRequest.totalAmount - (feeRequest.waivedAmount || 0);
+    const newStatus = newPaidAmount >= totalRequired ? 'paid' : 'partially_paid';
 
-    await feeRequestRef.update({ paidAmount: newPaid, status: newStatus, updatedAt: now });
+    await feeRequestRef.update({ paidAmount: newPaidAmount, status: newStatus, updatedAt: now });
 
     if (newStatus === 'paid') {
       await db.collection('students').doc(studentId).update({ feeStatus: 'paid', updatedAt: now });
     }
 
+    // ── Auto WhatsApp: payment_confirmed (fire-and-forget, non-fatal) ──────────
+    try {
+      const studentSnap = await db.collection('students').doc(studentId).get();
+      if (studentSnap.exists) {
+        const student = studentSnap.data()!;
+        const phone = student.parentDetails?.phone;
+        if (phone) {
+          let classSection = student.classId || '';
+          try {
+            const classSnap = await db.collection('classes').doc(student.classId).get();
+            if (classSnap.exists) {
+              classSection = `${classSnap.data()!.name} - ${student.section || ''}`.trim();
+            }
+          } catch { /* class fetch is best-effort */ }
+
+          await sendWatiTemplate(phone, 'payment_confirmed', [
+            student.parentDetails?.fatherName || 'Parent',
+            `₹${amount.toLocaleString('en-IN')}`,
+            student.name,
+            classSection,
+            receiptNumber,
+            now.split('T')[0],
+            'Online',
+          ]);
+        }
+      }
+    } catch (waErr) {
+      console.error('[verify-payment] WhatsApp send failed (non-fatal):', waErr);
+    }
+
     return res.status(200).json({ success: true, receiptNumber, paymentId: paymentRef.id });
   } catch (err) {
-    console.error('[verify-payment] error:', err instanceof Error ? err.message : err);
+    console.error('verify-payment Firestore error:', err);
     return res.status(500).json({
       error: 'Payment was verified but could not be recorded. Contact support.',
       transactionId: razorpay_payment_id,

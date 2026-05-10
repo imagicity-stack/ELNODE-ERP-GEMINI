@@ -34,6 +34,7 @@ import {
   ShieldCheck,
   History as HistoryIcon,
   Settings2,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
@@ -160,6 +161,7 @@ const navItems: NavItem[] = [
 
   // Super Admin Only Settings
   { label: 'School Settings', icon: Settings2, path: '/school-settings', roles: ['super_admin'], section: 'Settings' },
+  { label: 'WhatsApp Notify', icon: MessageSquare, path: '/whatsapp', roles: ['super_admin', 'accounts'], section: 'Settings' },
   { label: 'Role Permissions', icon: ShieldCheck, path: '/permissions', roles: ['super_admin'], section: 'Settings' },
 
   // Teacher specific (already mostly covered by Overview)

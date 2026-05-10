@@ -225,6 +225,7 @@ service cloud.firestore {
     match /payroll-config/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin(); }
     match /fine-config/{id} { allow read: if isAdmin() || isAccountant() || isParent() || isStudent(); allow write: if isAdmin(); }
     match /settings/{id} { allow read: if request.auth != null; allow write: if isAdmin(); }
+    match /whatsappLogs/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
     match /feeStructures/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
     match /feeHeads/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
 
