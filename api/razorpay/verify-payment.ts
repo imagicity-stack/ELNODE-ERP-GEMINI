@@ -21,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     feeRequestId, studentId, classId, amount, feeHead, month,
   } = req.body;
 
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature)
     return res.status(400).json({ error: 'Missing payment fields' });
   if (!feeRequestId || !studentId || typeof amount !== 'number' || amount <= 0)
     return res.status(400).json({ error: 'Missing or invalid payment metadata' });
@@ -36,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .createHmac('sha256', keySecret)
     .update(`${razorpay_order_id}|${razorpay_payment_id}`)
     .digest('hex');
-  if (expected !== razorpay_signature)
+  if (expectedSig !== razorpay_signature)
     return res.status(400).json({ error: 'Payment signature verification failed' });
 
   try {
