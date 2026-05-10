@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  signInWithCredential,
+  signInWithPopup,
   GoogleAuthProvider,
 } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -65,13 +65,13 @@ export default function Login() {
     }
   };
 
-  const GOOGLE_CLIENT_ID = '58420941278-vrsvc2k53trpjjab5esnk4r780kpe8b2.apps.googleusercontent.com';
-
   const getGoogleSignInErrorMessage = (err: any) => {
     if (err.code === 'auth/operation-not-allowed') return 'Google sign-in is not enabled. Please enable it in the Firebase Console under Auth > Sign-in method.';
     if (err.code === 'auth/unauthorized-domain') return `Domain not authorized. Add "${window.location.hostname}" to Authorized Domains in Firebase Console > Authentication > Settings.`;
     if (err.code === 'auth/account-exists-with-different-credential') return 'An account already exists with this email using a different sign-in method.';
     if (err.code === 'auth/invalid-credential') return 'Google sign-in token was invalid. Please try again.';
+    if (err.code === 'auth/popup-blocked') return 'Google sign-in pop-up was blocked. Please allow pop-ups for this site and try again.';
+    if (err.code === 'auth/popup-closed-by-user') return 'Google sign-in was closed before it completed. Please try again.';
     return err.message || 'Google sign-in failed. Please try again.';
   };
 
@@ -88,55 +88,26 @@ export default function Login() {
       if (!firebaseUser && isMounted) setLoading(false);
     });
 
-    // Load Google Identity Services script
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    document.head.appendChild(script);
-
     return () => {
       isMounted = false;
       unsubscribeAuth();
-      if (document.head.contains(script)) document.head.removeChild(script);
     };
   }, []);
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
     setLoading(true);
     setError('');
 
-    const google = (window as any).google;
-    if (!google?.accounts?.id) {
-      setError('Google Sign-In is still loading. Please wait a moment and try again.');
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithPopup(auth, provider);
+      // App.tsx onAuthStateChanged handles navigation from here
+    } catch (err: any) {
+      console.error('Google sign-in error:', err);
+      setError(getGoogleSignInErrorMessage(err));
       setLoading(false);
-      return;
     }
-
-    google.accounts.id.cancel();
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: async (response: { credential: string }) => {
-        try {
-          const credential = GoogleAuthProvider.credential(response.credential);
-          await signInWithCredential(auth, credential);
-          // App.tsx onAuthStateChanged handles navigation from here
-        } catch (err: any) {
-          console.error('Google sign-in error:', err);
-          setError(getGoogleSignInErrorMessage(err));
-          setLoading(false);
-        }
-      },
-      cancel_on_tap_outside: true,
-    });
-
-    google.accounts.id.prompt((notification: any) => {
-      if (notification.isNotDisplayed()) {
-        setError('Google Sign-In could not open. Please allow pop-ups and third-party cookies for this site, then try again.');
-        setLoading(false);
-      } else if (notification.isDismissedMoment() && notification.getDismissedReason() !== 'credential_returned') {
-        setLoading(false);
-      }
-    });
   };
 
   return (

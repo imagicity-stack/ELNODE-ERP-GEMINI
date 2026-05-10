@@ -16,7 +16,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  console.log('[create-order] env check — KEY_ID present:', !!keyId, '| KEY_SECRET present:', !!keySecret);
+
   if (!keyId || !keySecret) {
+    console.error('[create-order] Missing RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET env vars');
     return res.status(500).json({ error: 'Payment gateway not configured' });
   }
 
@@ -37,14 +41,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!response.ok) {
       const err = await response.json();
-      console.error('Razorpay order creation failed:', err);
-      return res.status(502).json({ error: 'Failed to create payment order' });
+      console.error('[create-order] Razorpay API error:', JSON.stringify(err));
+      return res.status(502).json({ error: 'Failed to create payment order', detail: err?.error?.description });
     }
 
     const order = await response.json();
     return res.status(200).json({ orderId: order.id });
   } catch (err) {
-    console.error('create-order error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('[create-order] Unexpected error:', err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: 'Internal server error', detail: err instanceof Error ? err.message : 'Unknown' });
   }
 }
