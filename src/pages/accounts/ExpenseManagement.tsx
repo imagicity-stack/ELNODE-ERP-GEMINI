@@ -1,5 +1,6 @@
 import { UserProfile, Expense } from '../../types';
-import { Plus, Download, Receipt, Wallet, TrendingDown, Edit2 } from 'lucide-react';
+import { generateExpenseAcknowledgement } from '../../lib/expenseReceipt';
+import { Plus, Download, Receipt, Wallet, TrendingDown, Edit2, FileText, FileDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy } from 'firebase/firestore';
@@ -41,6 +42,7 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [mobileCategoryFilter, setMobileCategoryFilter] = useState<string>('all');
+  const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     category: 'utilities',
@@ -166,6 +168,35 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
     }
   };
 
+  const handleDownloadReceipt = async (exp: Expense) => {
+    setDownloadingReceiptId(exp.id);
+    try { await generateExpenseAcknowledgement(exp); } catch { /* ignore */ }
+    setDownloadingReceiptId(null);
+  };
+
+  const handleDownloadCSV = () => {
+    const headers = ['Date', 'Category', 'Biller', 'Description', 'Mode', 'Status', 'Amount', 'Phone', 'Address'];
+    const rows = filteredExpenses.map(e => [
+      e.date,
+      e.category,
+      `"${(e.biller || '').replace(/"/g, '""')}"`,
+      `"${(e.description || '').replace(/"/g, '""')}"`,
+      (e.paymentMode || '').replace(/_/g, ' '),
+      e.status,
+      e.amount,
+      e.phone || '',
+      `"${(e.address || '').replace(/"/g, '""')}"`,
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `expenses_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const filteredExpenses = expenses.filter(e =>
     e.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
     e.biller.toLowerCase().includes(searchTerm.toLowerCase())
@@ -206,8 +237,17 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
           </div>
         </div>
 
-        <div className="px-4 pt-4 pb-2">
-          <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search category or biller..." />
+        <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+          <div className="flex-1">
+            <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search category or biller..." />
+          </div>
+          <button
+            onClick={handleDownloadCSV}
+            className="p-2.5 bg-white rounded-xl border border-slate-200 text-slate-600 active:scale-90 transition-transform shrink-0"
+            aria-label="Export CSV"
+          >
+            <FileDown className="w-4 h-4" />
+          </button>
         </div>
 
         <div className="px-4 overflow-x-auto flex gap-2 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
@@ -251,6 +291,14 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
                       </div>
                       <div className="flex items-center gap-1">
                         <button
+                          onClick={() => handleDownloadReceipt(exp)}
+                          disabled={downloadingReceiptId === exp.id}
+                          className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 active:scale-90 transition-transform disabled:opacity-50"
+                          aria-label="Download acknowledgement"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => handleEdit(exp)}
                           className="p-1.5 rounded-lg bg-slate-50 text-slate-600 active:scale-90 transition-transform"
                           aria-label="Edit"
@@ -290,16 +338,18 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
         icon={TrendingDown}
         iconColor="gradient-amber"
         actions={
-          <Button
-            variant="danger"
-            icon={Plus}
-            onClick={() => {
-              resetForm();
-              setIsModalOpen(true);
-            }}
-          >
-            Add Expense
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" icon={FileDown} onClick={handleDownloadCSV}>
+              Export CSV
+            </Button>
+            <Button
+              variant="danger"
+              icon={Plus}
+              onClick={() => { resetForm(); setIsModalOpen(true); }}
+            >
+              Add Expense
+            </Button>
+          </div>
         }
       />
 
@@ -354,6 +404,12 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
                   </Td>
                   <Td className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <IconButton
+                        icon={FileText}
+                        variant="ghost"
+                        onClick={() => handleDownloadReceipt(exp)}
+                        title="Download acknowledgement receipt"
+                      />
                       <IconButton icon={Edit2} variant="ghost" onClick={() => handleEdit(exp)} />
                       <IconButton icon={Trash2} variant="danger" onClick={() => handleDelete(exp.id)} />
                     </div>
