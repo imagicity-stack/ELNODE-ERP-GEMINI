@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useData } from '../../contexts/DataContext';
 import { collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { UserProfile, Exam, Student, ExamResult, GradingScale, Subject } from '../../types';
@@ -34,6 +35,7 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  const { classesMap } = useData();
   const { isReadOnly } = usePermissions(user?.role || 'student');
   const readOnly = isReadOnly('exams');
 
@@ -376,7 +378,7 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
                         <span className="font-mono text-sm text-slate-500">{student.admissionNumber}</span>
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-600">
-                        {student.classId} {student.section && `- ${student.section}`}
+                        {classesMap[student.classId] || student.classId} {student.section && `- ${student.section}`}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex justify-center">

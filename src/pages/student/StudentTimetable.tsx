@@ -1,4 +1,5 @@
 import { UserProfile, Timetable, TimetableConfig } from '../../types';
+import { useData } from '../../contexts/DataContext';
 import { Calendar, User, MapPin, Clock } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
@@ -15,6 +16,7 @@ interface StudentTimetableProps {
 }
 
 export default function StudentTimetable({ user }: StudentTimetableProps) {
+  const { classesMap } = useData();
   const [timetable, setTimetable] = useState<Timetable | null>(null);
   const [config, setConfig] = useState<TimetableConfig | null>(null);
   const [subjects, setSubjects] = useState<Record<string, {name: string, code: string}>>({});
@@ -84,7 +86,7 @@ export default function StudentTimetable({ user }: StudentTimetableProps) {
         iconColor="gradient-emerald"
         actions={
           <Badge variant="success">
-            Class {user.classId || 'N/A'} - {user.section || 'N/A'}
+            {classesMap[user.classId] || user.classId || 'N/A'} - {user.section || 'N/A'}
           </Badge>
         }
       />

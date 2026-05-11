@@ -45,8 +45,10 @@ import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePermissions } from '../../hooks/usePermissions';
 import { logActivity } from '../../services/activityService';
+import { useData } from '../../contexts/DataContext';
 
 export default function LeaveManagement({ user }: { user: UserProfile }) {
+  const { classesMap } = useData();
   const [leaves, setLeaves] = useState<StudentLeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<LeaveStatus | 'all'>('all');
@@ -305,7 +307,7 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
                         </div>
                         <div>
                           <p className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{leave.studentName}</p>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Class {leave.classId} {leave.section}</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{classesMap[leave.classId] || leave.classId} {leave.section}</p>
                         </div>
                       </div>
                     </td>

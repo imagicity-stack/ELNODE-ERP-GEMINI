@@ -24,12 +24,14 @@ import {
   EmptyState,
 } from '../../components/ui';
 import UpdatesSection from '../../components/UpdatesSection';
+import { useData } from '../../contexts/DataContext';
 
 interface StudentDashboardProps {
   user: UserProfile;
 }
 
 export default function StudentDashboard({ user }: StudentDashboardProps) {
+  const { classesMap } = useData();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -103,7 +105,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
         actions={
           <div className="text-right hidden sm:block">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Current Class</p>
-            <p className="text-sm font-bold text-emerald-600">Class {user.classId || 'N/A'} - {user.section || 'N/A'}</p>
+            <p className="text-sm font-bold text-emerald-600">{classesMap[user.classId] || user.classId || 'N/A'} - {user.section || 'N/A'}</p>
           </div>
         }
       />

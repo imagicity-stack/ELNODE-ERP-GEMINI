@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useData } from '../../contexts/DataContext';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { Exam, ExamResult, Student, Subject } from '../../types';
@@ -24,6 +25,7 @@ interface ResultViewProps {
 }
 
 export default function ResultView({ student }: ResultViewProps) {
+  const { classesMap } = useData();
   const [results, setResults] = useState<ExamResult[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -71,7 +73,7 @@ export default function ResultView({ student }: ResultViewProps) {
       [
         { label: 'Student', value: student.name },
         { label: 'Admission No', value: student.admissionNumber || '-' },
-        { label: 'Class', value: `${student.classId} – ${student.section}` },
+        { label: 'Class', value: `${classesMap[student.classId] || student.classId} – ${student.section}` },
         { label: 'Date', value: new Date().toLocaleDateString('en-IN') },
       ],
       y,
