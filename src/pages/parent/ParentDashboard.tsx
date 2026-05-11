@@ -450,7 +450,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
         onClose={() => setAiOpen(false)}
         label="Parent AI"
         greeting={`Hello! I can see ${selectedStudent.name}'s attendance, fees, homework, and exam results. What would you like to know?`}
-        contextBuilder={() => buildParentContext(selectedStudent.id, selectedStudent.name)}
+        contextBuilder={() => buildParentContext(selectedStudent.id, selectedStudent.name, selectedStudent.classId)}
         placeholder="Ask about fees, attendance, results…"
         suggestedPrompts={[
           `What is ${selectedStudent.name}'s attendance percentage?`,

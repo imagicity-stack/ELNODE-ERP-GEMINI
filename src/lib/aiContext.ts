@@ -330,15 +330,10 @@ export async function buildStudentContext(studentId: string, classId: string) {
 
 // ─── Parent context ────────────────────────────────────────────────────────────
 
-export async function buildParentContext(studentId: string, studentName?: string) {
+export async function buildParentContext(studentId: string, studentName?: string, classId: string = '') {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-
-  // First get the student's classId
-  const studentSnap = await getDocs(query(collection(db, 'students'), where('__name__', '==', studentId)));
-  const studentData = studentSnap.docs[0]?.data() as any;
-  const classId = studentData?.classId || '';
 
   const [attSnap, feeSnap, hwSnap, resultSnap, noticeSnap] = await Promise.all([
     getDocs(query(collection(db, 'attendance'), where('studentId', '==', studentId))),
@@ -370,7 +365,7 @@ export async function buildParentContext(studentId: string, studentName?: string
     role: 'parent',
     generatedAt: now.toISOString(),
     studentId,
-    studentName: studentName || studentData?.name || 'your child',
+    studentName: studentName || 'your child',
     classId,
     summary: {
       attendancePct,

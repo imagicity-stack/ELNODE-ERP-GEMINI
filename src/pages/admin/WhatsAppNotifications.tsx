@@ -309,27 +309,27 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
         <PageHeader
           title="WhatsApp Notifications"
           subtitle="Send fee reminders and notices to parents via WhatsApp"
-          icon={<MessageSquare className="w-5 h-5" />}
+          icon={MessageSquare}
         />
 
         <div className="grid grid-cols-3 gap-4">
           <StatCard
             label="Pending Fees"
             value={pendingCount}
-            icon={<Clock className="w-4 h-4" />}
-            color="amber"
+            icon={Clock}
+            gradient="bg-gradient-to-br from-amber-500 to-amber-600"
           />
           <StatCard
             label="Overdue"
             value={overdueCount}
-            icon={<AlertCircle className="w-4 h-4" />}
-            color="rose"
+            icon={AlertCircle}
+            gradient="bg-gradient-to-br from-rose-500 to-rose-600"
           />
           <StatCard
             label="No Phone on Record"
             value={noPhoneCount}
-            icon={<Phone className="w-4 h-4" />}
-            color="slate"
+            icon={Phone}
+            gradient="bg-gradient-to-br from-slate-500 to-slate-600"
           />
         </div>
 
@@ -364,11 +364,12 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
               <Select
                 value={classFilter}
                 onChange={e => setClassFilter(e.target.value)}
-                options={[
-                  { value: 'all', label: 'All Classes' },
-                  ...classes.map(c => ({ value: c.id, label: c.name })),
-                ]}
-              />
+              >
+                <option value="all">All Classes</option>
+                {classes.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </Select>
             </FormField>
           </div>
 
