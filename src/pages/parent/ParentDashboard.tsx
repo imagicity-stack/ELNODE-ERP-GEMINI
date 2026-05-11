@@ -10,6 +10,7 @@ import {
   Calendar,
   BookOpen,
   ChevronRight,
+  Sparkles,
 } from 'lucide-react';
 import { UserProfile, Student, Notice, FeeRequest, Attendance, Homework, ExamResult } from '../../types';
 import { Link } from 'react-router-dom';
@@ -24,6 +25,8 @@ import {
   EmptyState,
 } from '../../components/ui';
 import UpdatesSection from '../../components/UpdatesSection';
+import AIInsightsPanel from '../../components/AIInsightsPanel';
+import { buildParentContext } from '../../lib/aiContext';
 
 interface ParentDashboardProps {
   user: UserProfile;
@@ -37,6 +40,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
   const [homework, setHomework] = useState<Homework[]>([]);
   const [examResults, setExamResults] = useState<ExamResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -430,6 +434,50 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
         </div>
       </div>
       </div>
+
+      {/* AI Insights floating button */}
+      <button
+        onClick={() => setAiOpen(true)}
+        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white px-4 py-3 rounded-2xl shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 active:scale-95 transition-all text-sm font-bold"
+        aria-label="Open AI Insights"
+      >
+        <Sparkles className="w-4 h-4" />
+        <span className="hidden sm:inline">Ask AI</span>
+      </button>
+
+      <AIInsightsPanel
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        label="Parent AI"
+        greeting={`Hello! I can see ${selectedStudent.name}'s attendance, fees, homework, and exam results. What would you like to know?`}
+        contextBuilder={() => buildParentContext(selectedStudent.id, selectedStudent.name)}
+        placeholder="Ask about fees, attendance, results…"
+        suggestedPrompts={[
+          `What is ${selectedStudent.name}'s attendance percentage?`,
+          'Are there any pending fee payments?',
+          'How did my child perform in recent exams?',
+          'What homework is due this week?',
+          'Is there anything urgent I should be aware of?',
+        ]}
+        summaryRenderer={(ctx) => ctx?.summary ? (
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className={`rounded-lg p-2 ${ctx.summary.attendancePct >= 75 ? 'bg-emerald-50' : 'bg-rose-50'}`}>
+              <p className={`text-[9px] font-bold uppercase ${ctx.summary.attendancePct >= 75 ? 'text-emerald-700' : 'text-rose-700'}`}>Attendance</p>
+              <p className={`text-xs font-black mt-0.5 ${ctx.summary.attendancePct >= 75 ? 'text-emerald-800' : 'text-rose-800'}`}>{ctx.summary.attendancePct}%</p>
+            </div>
+            <div className={`rounded-lg p-2 ${ctx.summary.pendingFeeAmount > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+              <p className={`text-[9px] font-bold uppercase ${ctx.summary.pendingFeeAmount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>Fees Due</p>
+              <p className={`text-xs font-black mt-0.5 ${ctx.summary.pendingFeeAmount > 0 ? 'text-amber-800' : 'text-emerald-800'}`}>
+                {ctx.summary.pendingFeeAmount > 0 ? `₹${(ctx.summary.pendingFeeAmount / 1000 | 0)}k` : 'Clear'}
+              </p>
+            </div>
+            <div className="bg-blue-50 rounded-lg p-2">
+              <p className="text-[9px] text-blue-700 font-bold uppercase">Avg Score</p>
+              <p className="text-xs font-black text-blue-800 mt-0.5">{ctx.summary.avgExamScore != null ? `${ctx.summary.avgExamScore}%` : '--'}</p>
+            </div>
+          </div>
+        ) : null}
+      />
     </>
   );
 }
