@@ -255,8 +255,120 @@ export default function TimetableManagement({ user }: { user: UserProfile }) {
     }));
   };
 
+  // Mobile state for selected day
+  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const [mobileDay, setMobileDay] = useState<string>(todayName);
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Timetable</h1>
+          <p className="text-xs text-indigo-100 mt-0.5">{classes.length} classes · {config?.slots.length || 0} periods/day</p>
+          <select
+            value={selectedClassId}
+            onChange={(e) => setSelectedClassId(e.target.value)}
+            className="mt-3 w-full px-4 py-2.5 rounded-xl bg-white/15 backdrop-blur border border-white/20 text-sm text-white focus:outline-none"
+          >
+            <option value="" className="text-slate-900">Select a Class</option>
+            {classes.map(c => (
+              <option key={c.id} value={c.id} className="text-slate-900">Class {c.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {selectedClassId && config && (
+          <div className="px-4 pt-3 overflow-x-auto flex gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {config.days.map(d => (
+              <button
+                key={d}
+                onClick={() => setMobileDay(d)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform ${
+                  mobileDay === d ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
+                }${d === todayName ? ' relative' : ''}`}
+              >
+                {d.slice(0, 3)}
+                {d === todayName && <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="px-4 pt-4 space-y-2">
+          {!selectedClassId ? (
+            <div className="py-12 text-center">
+              <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">Select a class</p>
+              <p className="text-xs text-slate-500 mt-1">Choose a class above to view its timetable</p>
+            </div>
+          ) : !config ? (
+            <p className="text-center py-12 text-sm text-slate-500">Loading config...</p>
+          ) : (
+            (() => {
+              const tt = timetables.find(t => t.classId === selectedClassId);
+              const daySchedule = tt?.schedule.find(s => s.day === mobileDay);
+              return config.slots.map(slot => {
+                const period = daySchedule?.periods.find(p => p.slotId === slot.id);
+                if (slot.type === 'break' || slot.type === 'lunch') {
+                  return (
+                    <div key={slot.id} className="bg-slate-100 rounded-xl px-3 py-2 flex items-center justify-between text-xs text-slate-600">
+                      <span className="font-bold capitalize">{slot.label}</span>
+                      <span>{slot.startTime} - {slot.endTime}</span>
+                    </div>
+                  );
+                }
+                const subject = subjects.find(s => s.id === period?.subjectId);
+                const teacher = teachers.find(t => t.id === period?.teacherId);
+                return (
+                  <button
+                    key={slot.id}
+                    onClick={() => {
+                      if (readOnly) return;
+                      setFormData({ day: mobileDay, slotId: slot.id, subjectId: period?.subjectId || '', teacherId: period?.teacherId || '', room: period?.room || '' });
+                      setIsModalOpen(true);
+                    }}
+                    className="w-full bg-white rounded-2xl shadow-sm border border-slate-100 p-3 text-left active:scale-[0.98] transition-transform"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 text-center">
+                        <p className="text-[9px] font-bold text-indigo-600 uppercase">{slot.label.replace(/[^0-9]/g, '') || 'P'}</p>
+                        <p className="text-[9px] text-slate-500">{slot.startTime.replace(/\s.*$/, '')}</p>
+                      </div>
+                      <div className="flex-1 min-w-0 border-l border-slate-100 pl-3">
+                        {period?.subjectId ? (
+                          <>
+                            <p className="text-sm font-bold text-slate-900 truncate">{subject?.name || 'Subject'}</p>
+                            <p className="text-[11px] text-slate-500 truncate">{teacher?.name || 'Teacher'}{period.room ? ` · ${period.room}` : ''}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-slate-400 italic">Free · tap to assign</p>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              });
+            })()
+          )}
+        </div>
+
+        {!readOnly && selectedClassId && (
+          <button
+            onClick={() => {
+              setFormData({ ...formData, day: config?.days[0] || '', slotId: config?.slots[0]?.id || '' });
+              setIsModalOpen(true);
+            }}
+            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          >
+            <Plus className="w-6 h-6" strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Timetable Management"
         subtitle="Schedule classes, assigned teachers and subjects for each grade."
@@ -419,6 +531,7 @@ export default function TimetableManagement({ user }: { user: UserProfile }) {
           </div>
         </Card>
       )}
+      </div>
 
       {/* Schedule Settings Modal */}
       <Modal
@@ -582,6 +695,6 @@ export default function TimetableManagement({ user }: { user: UserProfile }) {
           </FormField>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }

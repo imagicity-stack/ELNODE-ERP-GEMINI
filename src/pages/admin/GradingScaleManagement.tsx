@@ -111,104 +111,170 @@ export default function GradingScaleManagement({ user }: { user: UserProfile }) 
     setFormData({ ...formData, ranges: newRanges });
   };
 
-  return (
-    <div className="space-y-8">
-      <PageHeader
-        title="Grading Scales"
-        subtitle="Define and manage grading systems for different examinations."
-        icon={Settings}
-        iconColor="gradient-amber"
-        actions={
-          !readOnly && (
-            <Button
-              icon={Plus}
-              onClick={() => {
-                setEditingScale(null);
-                setFormData({
-                  name: '',
-                  ranges: [
-                    { grade: 'A+', min: 90, max: 100, point: 4.0, description: 'Excellent' },
-                    { grade: 'A', min: 80, max: 89, point: 3.7, description: 'Very Good' },
-                    { grade: 'B', min: 70, max: 79, point: 3.0, description: 'Good' },
-                    { grade: 'C', min: 60, max: 69, point: 2.0, description: 'Satisfactory' },
-                    { grade: 'D', min: 50, max: 59, point: 1.0, description: 'Pass' },
-                    { grade: 'F', min: 0, max: 49, point: 0.0, description: 'Fail' },
-                  ]
-                });
-                setIsModalOpen(true);
-              }}
-            >
-              Create New Scale
-            </Button>
-          )
-        }
-      />
+  const openCreate = () => {
+    setEditingScale(null);
+    setFormData({
+      name: '',
+      ranges: [
+        { grade: 'A+', min: 90, max: 100, point: 4.0, description: 'Excellent' },
+        { grade: 'A', min: 80, max: 89, point: 3.7, description: 'Very Good' },
+        { grade: 'B', min: 70, max: 79, point: 3.0, description: 'Good' },
+        { grade: 'C', min: 60, max: 69, point: 2.0, description: 'Satisfactory' },
+        { grade: 'D', min: 50, max: 59, point: 1.0, description: 'Pass' },
+        { grade: 'F', min: 0, max: 49, point: 0.0, description: 'Fail' },
+      ]
+    });
+    setIsModalOpen(true);
+  };
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {scales.map((scale) => (
-          <Card key={scale.id} padding="none">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 rounded-t-2xl">
-              <h3 className="font-bold text-slate-900">{scale.name}</h3>
-              {!readOnly && (
-                <div className="flex items-center gap-1">
-                  <IconButton
-                    icon={Edit2}
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingScale(scale);
-                      setFormData({ name: scale.name, ranges: scale.ranges });
-                      setIsModalOpen(true);
-                    }}
-                  />
-                  <IconButton
-                    icon={Trash2}
-                    variant="danger"
-                    size="sm"
-                    onClick={() => handleDelete(scale.id)}
-                  />
+  return (
+    <>
+      {/* Mobile UI */}
+      <div className="md:hidden -mx-4 -mt-4">
+        <div className="bg-gradient-to-br from-amber-500 to-orange-600 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-amber-100">Admin Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Grading Scales</h1>
+          <p className="text-xs text-amber-100 mt-0.5">{scales.length} scale{scales.length !== 1 ? 's' : ''} defined</p>
+        </div>
+
+        {!readOnly && (
+          <div className="px-4 pt-3 pb-3 bg-white border-b border-slate-100">
+            <button
+              onClick={openCreate}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold active:scale-95 transition-transform"
+            >
+              <Plus className="w-4 h-4" /> Create New Scale
+            </button>
+          </div>
+        )}
+
+        <div className="px-4 pt-3 pb-24 space-y-3">
+          {scales.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-sm text-slate-400 font-medium">No grading scales defined yet.</p>
+            </div>
+          ) : (
+            scales.map((scale) => (
+              <div key={scale.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
+                  <h3 className="font-bold text-slate-900">{scale.name}</h3>
+                  {!readOnly && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => { setEditingScale(scale); setFormData({ name: scale.name, ranges: scale.ranges }); setIsModalOpen(true); }}
+                        className="p-1.5 text-slate-500 hover:bg-white rounded-lg transition-colors"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(scale.id)}
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="p-5">
-              <Table>
-                <Thead>
-                  <Tr>
-                    <Th>Grade</Th>
-                    <Th>Range</Th>
-                    <Th className="text-right">Point</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
+                <div className="divide-y divide-slate-50">
                   {scale.ranges.sort((a, b) => b.min - a.min).map((range, idx) => (
-                    <Tr key={idx}>
-                      <Td className="font-bold text-slate-700">{range.grade}</Td>
-                      <Td className="text-slate-500">{range.min}% – {range.max}%</Td>
-                      <Td className="text-right font-bold text-indigo-600">{range.point.toFixed(1)}</Td>
-                    </Tr>
+                    <div key={idx} className="px-4 py-2.5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="w-8 text-center text-sm font-black text-slate-800">{range.grade}</span>
+                        <span className="text-xs text-slate-500">{range.min}% – {range.max}%</span>
+                      </div>
+                      <span className="text-xs font-bold text-indigo-600">{range.point.toFixed(1)} pts</span>
+                    </div>
                   ))}
-                </Tbody>
-              </Table>
-            </div>
-          </Card>
-        ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
-      {scales.length === 0 && (
-        <Card>
-          <EmptyState
-            icon={Settings}
-            title="No grading scales defined"
-            description="Create your first grading scale to get started."
-            action={
-              <Button icon={Plus} size="sm" onClick={() => setIsModalOpen(true)}>
-                Create Scale
+      {/* Desktop UI */}
+      <div className="hidden md:block space-y-8">
+        <PageHeader
+          title="Grading Scales"
+          subtitle="Define and manage grading systems for different examinations."
+          icon={Settings}
+          iconColor="gradient-amber"
+          actions={
+            !readOnly && (
+              <Button icon={Plus} onClick={openCreate}>
+                Create New Scale
               </Button>
-            }
-          />
-        </Card>
-      )}
+            )
+          }
+        />
 
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {scales.map((scale) => (
+            <Card key={scale.id} padding="none">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 rounded-t-2xl">
+                <h3 className="font-bold text-slate-900">{scale.name}</h3>
+                {!readOnly && (
+                  <div className="flex items-center gap-1">
+                    <IconButton
+                      icon={Edit2}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setEditingScale(scale);
+                        setFormData({ name: scale.name, ranges: scale.ranges });
+                        setIsModalOpen(true);
+                      }}
+                    />
+                    <IconButton
+                      icon={Trash2}
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleDelete(scale.id)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="p-5">
+                <Table>
+                  <Thead>
+                    <Tr>
+                      <Th>Grade</Th>
+                      <Th>Range</Th>
+                      <Th className="text-right">Point</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {scale.ranges.sort((a, b) => b.min - a.min).map((range, idx) => (
+                      <Tr key={idx}>
+                        <Td className="font-bold text-slate-700">{range.grade}</Td>
+                        <Td className="text-slate-500">{range.min}% – {range.max}%</Td>
+                        <Td className="text-right font-bold text-indigo-600">{range.point.toFixed(1)}</Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        {scales.length === 0 && (
+          <Card>
+            <EmptyState
+              icon={Settings}
+              title="No grading scales defined"
+              description="Create your first grading scale to get started."
+              action={
+                <Button icon={Plus} size="sm" onClick={() => setIsModalOpen(true)}>
+                  Create Scale
+                </Button>
+              }
+            />
+          </Card>
+        )}
+      </div>
+
+      {/* Shared Modals */}
       <ConfirmModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
@@ -307,6 +373,6 @@ export default function GradingScaleManagement({ user }: { user: UserProfile }) 
           </div>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }

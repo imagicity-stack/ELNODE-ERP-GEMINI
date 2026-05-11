@@ -146,7 +146,109 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
   };
 
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">{isAdmin ? 'Admin Portal' : 'Notices'}</p>
+          <h1 className="text-xl font-bold mt-0.5">Notice Board</h1>
+          <p className="text-xs text-indigo-100 mt-0.5">{notices.length} active announcement{notices.length === 1 ? '' : 's'}</p>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search notices..."
+            className="mt-3 w-full px-4 py-2.5 rounded-xl bg-white/15 backdrop-blur border border-white/20 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20"
+          />
+        </div>
+
+        {isAdmin && (
+          <div className="px-4 pt-3 overflow-x-auto flex gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <button
+              onClick={() => setFilterRole('all')}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
+                filterRole === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
+              )}
+            >
+              All
+            </button>
+            {roles.map(role => (
+              <button
+                key={role}
+                onClick={() => setFilterRole(role)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform capitalize",
+                  filterRole === role ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
+                )}
+              >
+                {role.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="px-4 pt-4 space-y-2.5">
+          {filteredNotices.length === 0 ? (
+            <div className="py-12 text-center">
+              <Bell className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No notices</p>
+            </div>
+          ) : (
+            filteredNotices.map((notice) => (
+              <div key={notice.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 relative overflow-hidden">
+                <div className={cn(
+                  'absolute left-0 top-0 bottom-0 w-1',
+                  notice.priority === 'high' ? 'bg-red-500' :
+                  notice.priority === 'medium' ? 'bg-amber-500' : 'bg-sky-500'
+                )} />
+                <div className="pl-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-bold text-slate-900 line-clamp-2">{notice.title}</h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{notice.content}</p>
+                    </div>
+                    <Badge variant={priorityVariant(notice.priority)} className="text-[9px] shrink-0 capitalize">{notice.priority}</Badge>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
+                    <span className="flex items-center gap-1"><User className="w-3 h-3" />{notice.authorName}</span>
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(notice.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  {notice.targetRoles && notice.targetRoles.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {notice.targetRoles.map(role => (
+                        <span key={role} className="text-[9px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md capitalize">
+                          {role.replace('_', ' ')}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {canWrite && (
+                    <button
+                      onClick={() => handleDeleteNotice(notice.id)}
+                      className="mt-2 text-[11px] text-red-600 font-bold flex items-center gap-1 active:scale-95 transition-transform"
+                    >
+                      <Trash2 className="w-3 h-3" />Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {canWrite && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          >
+            <Plus className="w-6 h-6" strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Notice Board"
         subtitle={isAdmin ? 'Manage school-wide announcements and communications.' : 'Stay updated with the latest school announcements.'}
@@ -250,6 +352,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
           </Card>
         )}
       </div>
+      </div>
 
       <ConfirmModal
         isOpen={isDeleteModalOpen}
@@ -351,6 +454,6 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
           </FormField>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }

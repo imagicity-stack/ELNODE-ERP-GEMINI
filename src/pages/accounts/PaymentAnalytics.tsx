@@ -131,7 +131,149 @@ export default function PaymentAnalytics({ user }: PaymentAnalyticsProps) {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Payment Analytics</h1>
+
+          {/* Collection % gauge */}
+          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Collection Rate</p>
+                <p className="text-3xl font-black mt-1">{stats.collectionRate.toFixed(1)}%</p>
+                <p className="text-[11px] text-emerald-100/90 mt-1">₹{stats.totalCollected.toLocaleString('en-IN')} collected</p>
+              </div>
+              <div className="relative w-20 h-20">
+                <svg className="w-20 h-20 -rotate-90" viewBox="0 0 36 36">
+                  <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="3" />
+                  <circle
+                    cx="18" cy="18" r="15" fill="none" stroke="white" strokeWidth="3"
+                    strokeDasharray={`${Math.min(100, stats.collectionRate) * 94.2 / 100} 94.2`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center text-xs font-bold">
+                  {stats.collectionRate.toFixed(0)}%
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((stats.currentMonthCollection/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Last 30 Days</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((stats.pendingAmount/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Pending</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4 space-y-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Stats Overview</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Collected</p>
+                <p className="text-base font-black text-slate-900 mt-0.5">₹{stats.totalCollected.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center mb-2">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">This Month</p>
+                <p className="text-base font-black text-slate-900 mt-0.5">₹{stats.currentMonthCollection.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-2">
+                  <Activity className="w-4 h-4" />
+                </div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pending Due</p>
+                <p className="text-base font-black text-slate-900 mt-0.5">₹{stats.pendingAmount.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                <div className="w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center mb-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Expected</p>
+                <p className="text-base font-black text-slate-900 mt-0.5">₹{stats.totalExpected.toLocaleString('en-IN')}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Method breakdown */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Payment Methods</p>
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 divide-y divide-slate-100">
+              {methodData.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500">No payments yet</div>
+              ) : (
+                methodData.map((m, i) => {
+                  const total = methodData.reduce((s, x) => s + x.value, 0);
+                  const pct = total > 0 ? (m.value / total) * 100 : 0;
+                  return (
+                    <div key={m.name} className="p-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                          <p className="text-xs font-bold text-slate-900 capitalize">{m.name.toLowerCase()}</p>
+                        </div>
+                        <p className="text-xs font-black text-slate-900">₹{m.value.toLocaleString()}</p>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Recent activity */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Recent Activity</p>
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 divide-y divide-slate-100">
+              {payments.slice(-5).reverse().map((p) => (
+                <div key={p.id} className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                      <ArrowUpRight className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900">₹{(p.amount || 0).toLocaleString()}</p>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider truncate">{p.method.replace('_', ' ')} • {p.receiptNumber}</p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 shrink-0">{new Date(p.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
+                </div>
+              ))}
+              {payments.length === 0 && (
+                <div className="p-6 text-center text-xs text-slate-500">No transactions yet</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={fetchData}
+          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          aria-label="Refresh"
+        >
+          <RefreshCcw className="w-5 h-5" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8 animate-in fade-in duration-500">
       <PageHeader
         title="Fee Analytics Terminal"
         subtitle="Real-time financial performance and collection insights"
@@ -301,6 +443,7 @@ export default function PaymentAnalytics({ user }: PaymentAnalyticsProps) {
           </div>
         </Card>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

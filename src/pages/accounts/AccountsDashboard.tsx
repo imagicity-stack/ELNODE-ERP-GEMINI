@@ -9,6 +9,10 @@ import {
   Download,
   Wallet,
   Receipt,
+  ChevronRight,
+  IndianRupee,
+  BarChart3,
+  PieChart,
 } from 'lucide-react';
 import { UserProfile, Expense, FeePayment, Fee, Student, FeeRequest, Class } from '../../types';
 import { useState, useEffect } from 'react';
@@ -183,8 +187,132 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
     return <Spinner />;
   }
 
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayCollection = payments
+    .filter(p => p.date === todayStr)
+    .reduce((sum, p) => sum + (p.amount || 0), 0);
+  const todayCount = payments.filter(p => p.date === todayStr).length;
+
+  const actionTiles = [
+    { label: 'Fee Collection', icon: IndianRupee, path: '/accounts/fee-collection', gradient: 'from-emerald-500 to-teal-600' },
+    { label: 'Payments', icon: Receipt, path: '/accounts/payment-history', gradient: 'from-teal-500 to-cyan-600' },
+    { label: 'Expenses', icon: TrendingDown, path: '/accounts/expenses', gradient: 'from-rose-500 to-red-600' },
+    { label: 'Salaries', icon: CreditCard, path: '/accounts/salaries', gradient: 'from-indigo-500 to-blue-600' },
+    { label: 'Reports', icon: BarChart3, path: '/accounts/reports', gradient: 'from-violet-500 to-purple-600' },
+    { label: 'Analytics', icon: PieChart, path: '/accounts/analytics', gradient: 'from-amber-500 to-orange-600' },
+  ];
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Hi, {user.name.split(' ')[0]}</h1>
+          <p className="text-[11px] text-emerald-100/80 mt-0.5">Here is today's financial snapshot</p>
+
+          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Today's Collection</p>
+            <p className="text-3xl font-black mt-1">₹{todayCollection.toLocaleString('en-IN')}</p>
+            <p className="text-[11px] text-emerald-100/90 mt-1">{todayCount} payment{todayCount === 1 ? '' : 's'} recorded</p>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((totalCollection/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Collected</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((totalPending/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Pending</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((netProfit/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Net</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Quick Actions</p>
+          <div className="grid grid-cols-2 gap-3">
+            {actionTiles.map((tile) => {
+              const Icon = tile.icon;
+              return (
+                <button
+                  key={tile.label}
+                  onClick={() => navigate(tile.path)}
+                  className={`bg-gradient-to-br ${tile.gradient} rounded-2xl p-4 text-white shadow-md active:scale-95 transition-transform min-h-[110px] flex flex-col justify-between text-left`}
+                >
+                  <Icon className="w-6 h-6" strokeWidth={2.2} />
+                  <p className="text-sm font-bold mt-2">{tile.label}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="px-4 mt-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Recent Activity</p>
+            <button
+              onClick={() => navigate('/accounts/payment-history')}
+              className="text-[11px] font-bold text-emerald-600 active:scale-95 transition-transform flex items-center gap-0.5"
+            >
+              View all <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 divide-y divide-slate-100">
+            {payments.length === 0 && expenses.length === 0 ? (
+              <div className="p-6 text-center">
+                <p className="text-xs text-slate-500">No recent activity</p>
+              </div>
+            ) : (
+              <>
+                {payments.slice(0, 4).map((tx) => (
+                  <div key={tx.id} className="flex items-center justify-between p-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                        <ArrowUpRight className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">Fee Payment</p>
+                        <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-emerald-600 shrink-0">+₹{(tx.amount || 0).toLocaleString()}</span>
+                  </div>
+                ))}
+                {expenses.slice(0, 3).map((tx) => (
+                  <div key={tx.id} className="flex items-center justify-between p-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                        <ArrowDownRight className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">{tx.biller}</p>
+                        <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-rose-600 shrink-0">-₹{(tx.amount || 0).toLocaleString()}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+
+        <button
+          onClick={exportReport}
+          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          aria-label="Export report"
+        >
+          <Download className="w-6 h-6" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Financial Overview"
         subtitle={`Welcome back, ${user.name}. Here's the school's financial status.`}
@@ -374,6 +502,7 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
           </div>
         )}
       </Card>
-    </div>
+      </div>
+    </>
   );
 }

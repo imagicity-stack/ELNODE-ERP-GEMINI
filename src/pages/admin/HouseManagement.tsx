@@ -102,108 +102,197 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
   );
 
   return (
-    <div className="space-y-8">
-      <PageHeader
-        title="House Management"
-        subtitle="Organize students into houses and assign teacher incharges."
-        icon={Home}
-        iconColor="gradient-violet"
-        actions={
-          !readOnly && (
-            <Button
-              icon={Plus}
-              onClick={() => {
-                setIsEditMode(false);
-                setEditingHouse(null);
-                setFormData({ name: '', color: '#4f46e5', teacherInchargeId: '' });
-                setIsModalOpen(true);
-              }}
-            >
-              Create New House
-            </Button>
-          )
-        }
-      />
+    <>
+      {/* Mobile UI */}
+      <div className="md:hidden -mx-4 -mt-4">
+        <div className="bg-gradient-to-br from-violet-600 to-purple-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-violet-200">Admin Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Houses</h1>
+          <p className="text-xs text-violet-200 mt-0.5">{houses.length} house{houses.length !== 1 ? 's' : ''} configured</p>
+        </div>
 
-      <Card padding="sm">
-        <SearchInput
-          value={searchTerm}
-          onChange={setSearchTerm}
-          placeholder="Search houses..."
-        />
-      </Card>
+        <div className="px-4 pt-3 pb-2 bg-white border-b border-slate-100 space-y-2">
+          <input
+            type="text"
+            placeholder="Search houses..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
+          />
+        </div>
 
-      <Card padding="none">
-        <Table>
-          <Thead>
-            <Tr>
-              <Th>House</Th>
-              <Th>Color</Th>
-              <Th>Teacher Incharge</Th>
-              <Th className="text-right">Actions</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {filteredHouses.map((house) => {
+        <div className="px-4 pt-3 pb-24 space-y-3">
+          {filteredHouses.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-sm text-slate-400 font-medium">{searchTerm ? 'No results found.' : 'No houses created yet.'}</p>
+            </div>
+          ) : (
+            filteredHouses.map((house) => {
               const incharge = teachers.find(t => t.id === house.teacherInchargeId);
               return (
-                <Tr key={house.id}>
-                  <Td>
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
-                        style={{ backgroundColor: house.color }}
-                      >
-                        <Home className="w-4 h-4" />
-                      </div>
-                      <span className="font-semibold text-slate-900">{house.name}</span>
+                <div key={house.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
+                      style={{ backgroundColor: house.color }}
+                    >
+                      <Home className="w-5 h-5" />
                     </div>
-                  </Td>
-                  <Td>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full border border-slate-200 shrink-0" style={{ backgroundColor: house.color }} />
-                      <span className="font-mono text-xs text-slate-500">{house.color}</span>
-                    </div>
-                  </Td>
-                  <Td>
-                    {incharge ? (
-                      <div className="flex items-center gap-2">
-                        <Avatar name={incharge.name} size="sm" />
-                        <span className="text-sm text-slate-700">{incharge.name}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-900">{house.name}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className="w-3 h-3 rounded-full border border-slate-200" style={{ backgroundColor: house.color }} />
+                        <span className="font-mono text-[10px] text-slate-400">{house.color}</span>
                       </div>
-                    ) : (
-                      <span className="text-sm text-slate-400 italic">Not Assigned</span>
-                    )}
-                  </Td>
-                  <Td className="text-right">
+                      {incharge && (
+                        <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                          <User className="w-3 h-3" /> {incharge.name}
+                        </p>
+                      )}
+                    </div>
                     {!readOnly && (
-                      <div className="flex items-center justify-end gap-1">
-                        <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(house)} />
-                        <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(house.id)} />
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => handleEdit(house)}
+                          className="p-2 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(house.id)}
+                          className="p-2 text-rose-400 hover:bg-rose-50 rounded-xl transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     )}
-                  </Td>
-                </Tr>
+                  </div>
+                </div>
               );
-            })}
-          </Tbody>
-        </Table>
-        {filteredHouses.length === 0 && (
-          <EmptyState
-            icon={Home}
-            title="No houses found"
-            description={searchTerm ? 'Try a different search term.' : 'Create your first house to get started.'}
-            action={
-              !searchTerm && (
-                <Button icon={Plus} size="sm" onClick={() => setIsModalOpen(true)}>
-                  Create House
-                </Button>
-              )
-            }
-          />
-        )}
-      </Card>
+            })
+          )}
+        </div>
 
+        {!readOnly && (
+          <button
+            onClick={() => {
+              setIsEditMode(false);
+              setEditingHouse(null);
+              setFormData({ name: '', color: '#4f46e5', teacherInchargeId: '' });
+              setIsModalOpen(true);
+            }}
+            className="fixed bottom-5 right-5 w-14 h-14 bg-violet-600 text-white rounded-full shadow-xl flex items-center justify-center active:scale-95 transition-transform z-30"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
+        )}
+      </div>
+
+      {/* Desktop UI */}
+      <div className="hidden md:block space-y-8">
+        <PageHeader
+          title="House Management"
+          subtitle="Organize students into houses and assign teacher incharges."
+          icon={Home}
+          iconColor="gradient-violet"
+          actions={
+            !readOnly && (
+              <Button
+                icon={Plus}
+                onClick={() => {
+                  setIsEditMode(false);
+                  setEditingHouse(null);
+                  setFormData({ name: '', color: '#4f46e5', teacherInchargeId: '' });
+                  setIsModalOpen(true);
+                }}
+              >
+                Create New House
+              </Button>
+            )
+          }
+        />
+
+        <Card padding="sm">
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search houses..."
+          />
+        </Card>
+
+        <Card padding="none">
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>House</Th>
+                <Th>Color</Th>
+                <Th>Teacher Incharge</Th>
+                <Th className="text-right">Actions</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {filteredHouses.map((house) => {
+                const incharge = teachers.find(t => t.id === house.teacherInchargeId);
+                return (
+                  <Tr key={house.id}>
+                    <Td>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
+                          style={{ backgroundColor: house.color }}
+                        >
+                          <Home className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold text-slate-900">{house.name}</span>
+                      </div>
+                    </Td>
+                    <Td>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-full border border-slate-200 shrink-0" style={{ backgroundColor: house.color }} />
+                        <span className="font-mono text-xs text-slate-500">{house.color}</span>
+                      </div>
+                    </Td>
+                    <Td>
+                      {incharge ? (
+                        <div className="flex items-center gap-2">
+                          <Avatar name={incharge.name} size="sm" />
+                          <span className="text-sm text-slate-700">{incharge.name}</span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-slate-400 italic">Not Assigned</span>
+                      )}
+                    </Td>
+                    <Td className="text-right">
+                      {!readOnly && (
+                        <div className="flex items-center justify-end gap-1">
+                          <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(house)} />
+                          <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(house.id)} />
+                        </div>
+                      )}
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+          {filteredHouses.length === 0 && (
+            <EmptyState
+              icon={Home}
+              title="No houses found"
+              description={searchTerm ? 'Try a different search term.' : 'Create your first house to get started.'}
+              action={
+                !searchTerm && (
+                  <Button icon={Plus} size="sm" onClick={() => setIsModalOpen(true)}>
+                    Create House
+                  </Button>
+                )
+              }
+            />
+          )}
+        </Card>
+      </div>
+
+      {/* Shared Modals */}
       <ConfirmModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
@@ -267,6 +356,6 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
           </FormField>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }

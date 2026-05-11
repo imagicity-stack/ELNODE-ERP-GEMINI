@@ -531,7 +531,92 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   };
 
   return (
-    <div className="space-y-6">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Students</h1>
+          <p className="text-xs text-indigo-100 mt-0.5">{students.length} enrolled · {classes.length} classes</p>
+          <div className="mt-3">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search name or admission no..."
+              className="w-full px-4 py-2.5 rounded-xl bg-white/15 backdrop-blur border border-white/20 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20"
+            />
+          </div>
+        </div>
+
+        <div className="px-4 pt-3 overflow-x-auto flex gap-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            onClick={() => setFilterClass('All Classes')}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
+              filterClass === 'All Classes' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
+            )}
+          >
+            All
+          </button>
+          {classes.map(cls => (
+            <button
+              key={cls.id}
+              onClick={() => setFilterClass(cls.id)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
+                filterClass === cls.id ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
+              )}
+            >
+              Class {cls.name}
+            </button>
+          ))}
+        </div>
+
+        <div className="px-4 pt-4 space-y-2.5">
+          {filteredStudents.length === 0 ? (
+            <div className="py-12 text-center">
+              <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No students found</p>
+              <p className="text-xs text-slate-500 mt-1">Try adjusting filters or add a student</p>
+            </div>
+          ) : (
+            filteredStudents.map((student) => (
+              <button
+                key={student.id}
+                onClick={() => !readOnly && handleEdit(student)}
+                className="w-full bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex items-center gap-3 active:scale-[0.98] transition-transform text-left"
+              >
+                <Avatar name={student.name} src={student.photoURL} size="md" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-900 truncate">{student.name}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md">
+                      {getClassName(student.classId)}{student.section ? ` - ${student.section}` : ''}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">{student.admissionNumber}</span>
+                  </div>
+                </div>
+                <Badge variant={student.feeStatus === 'paid' ? 'success' : student.feeStatus === 'pending' ? 'warning' : 'error'} className="text-[9px] shrink-0">
+                  {student.feeStatus}
+                </Badge>
+              </button>
+            ))
+          )}
+        </div>
+
+        {!readOnly && (
+          <button
+            onClick={openAddModal}
+            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          >
+            <Plus className="w-6 h-6" strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-6">
       <PageHeader
         title="Student Management"
         subtitle={`${filteredStudents.length} students`}
@@ -625,6 +710,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           </Tbody>
         </Table>
       </Card>
+      </div>
 
       {/* Add / Edit Modal */}
       <Modal
@@ -781,6 +867,6 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           </div>
         )}
       </Modal>
-    </div>
+    </>
   );
 }

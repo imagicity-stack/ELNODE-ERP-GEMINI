@@ -1,5 +1,5 @@
 import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure, PaymentMethod, FeeHead, FineConfig } from '../../types';
-import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale, MessageSquare } from 'lucide-react';
+import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale, MessageSquare, Search, Users } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
@@ -495,8 +495,168 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     .filter(p => p.date.startsWith(new Date().toISOString().slice(0, 7)))
     .reduce((sum, p) => sum + p.amount, 0);
 
+  const totalOutstanding = feeRequests
+    .filter(f => f.status !== 'paid')
+    .reduce((sum, f) => sum + (f.totalAmount - (f.paidAmount || 0)), 0);
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Fee Collection</h1>
+
+          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Total Outstanding</p>
+            <p className="text-3xl font-black mt-1">₹{totalOutstanding.toLocaleString('en-IN')}</p>
+            <p className="text-[11px] text-emerald-100/90 mt-1">across {feeRequests.filter(f => f.status !== 'paid').length} pending requests</p>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((todayCollection/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Today</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((monthCollection/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Month</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">{students.length}</p>
+              <p className="text-[9px] text-white/80">Students</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4 pb-2">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search student name or roll no..."
+              className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400"
+            />
+          </div>
+        </div>
+
+        <div className="px-4 overflow-x-auto flex gap-2 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            onClick={() => setSelectedClass('all')}
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap active:scale-95 transition-transform ${selectedClass === 'all' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+          >
+            All Classes
+          </button>
+          {classes.map(c => (
+            <button
+              key={c.id}
+              onClick={() => setSelectedClass(c.id)}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap active:scale-95 transition-transform ${selectedClass === c.id ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+
+        <div className="px-4 pt-2 space-y-2.5">
+          {filteredStudents.length === 0 ? (
+            <div className="py-12 text-center">
+              <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No students found</p>
+              <p className="text-xs text-slate-500 mt-1">Try a different search or class</p>
+            </div>
+          ) : (
+            filteredStudents.slice(0, 50).map((student) => {
+              const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
+              const totalFee = studentRequests.reduce((sum, r) => sum + r.totalAmount, 0);
+              const currentFine = studentRequests.reduce((sum, r) => sum + (fineConfig ? calculateFine(r, fineConfig) : 0), 0);
+              const waiverAmount = studentRequests.reduce((sum, r) => sum + (r.waivedAmount || 0), 0);
+              const paidAmount = studentRequests.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
+              const balance = totalFee + currentFine - waiverAmount - paidAmount;
+              const studentRequest = studentRequests[0];
+              const className = classes.find(c => c.id === student.classId)?.name || student.classId;
+
+              return (
+                <div key={student.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={student.name} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">{student.name}</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                        {className} • {student.section} • #{student.schoolNumber}
+                      </p>
+                    </div>
+                    <Badge
+                      variant={student.feeStatus === 'paid' ? 'success' : student.feeStatus === 'overdue' ? 'error' : 'warning'}
+                      className="text-[9px] shrink-0"
+                    >
+                      {studentRequest?.status?.replace('_', ' ') || student.feeStatus}
+                    </Badge>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-slate-50 rounded-lg py-1.5">
+                      <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Due</p>
+                      <p className="text-xs font-bold text-slate-900">₹{(totalFee + currentFine - waiverAmount).toLocaleString()}</p>
+                    </div>
+                    <div className="bg-emerald-50 rounded-lg py-1.5">
+                      <p className="text-[9px] text-emerald-700 uppercase tracking-widest font-bold">Paid</p>
+                      <p className="text-xs font-bold text-emerald-700">₹{paidAmount.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-rose-50 rounded-lg py-1.5">
+                      <p className="text-[9px] text-rose-700 uppercase tracking-widest font-bold">Balance</p>
+                      <p className="text-xs font-bold text-rose-700">₹{balance.toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    {!studentRequest ? (
+                      <button
+                        onClick={() => openRequestModal(student)}
+                        className="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Generate Request
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => openRequestModal(student, studentRequest)}
+                          className="py-2 px-3 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1 active:scale-95 transition-transform"
+                        >
+                          <Receipt className="w-3.5 h-3.5" /> Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setPaymentData({ ...paymentData, amount: balance.toString() });
+                            setIsModalOpen(true);
+                          }}
+                          className="flex-1 py-2 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform shadow-sm"
+                        >
+                          <IndianRupee className="w-3.5 h-3.5" /> Collect ₹{balance.toLocaleString()}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <button
+          onClick={exportCollectionReport}
+          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          aria-label="Export"
+        >
+          <Download className="w-6 h-6" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Fee Collection"
         subtitle="Track and manage student fee payments"
@@ -768,6 +928,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           <EmptyState title="No payment history found." />
         )}
       </Card>
+      </div>
 
       {/* Generate Fee Request Modal */}
       <Modal
@@ -1056,6 +1217,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           </div>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }

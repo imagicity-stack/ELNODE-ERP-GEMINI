@@ -115,7 +115,76 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
   const openAdd = () => { setIsEditMode(false); setEditingClass(null); setFormData({ name: '', sectionCount: 1, sections: [{ name: '', capacity: 40 }] }); setIsModalOpen(true); };
 
   return (
-    <div className="space-y-6">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Classes</h1>
+          <p className="text-xs text-indigo-100 mt-0.5">{classes.length} classes · {classes.reduce((sum, c) => sum + (c.sections?.length || 0), 0)} sections</p>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search classes..."
+            className="mt-3 w-full px-4 py-2.5 rounded-xl bg-white/15 backdrop-blur border border-white/20 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20"
+          />
+        </div>
+
+        <div className="px-4 pt-4 space-y-2.5">
+          {filteredClasses.length === 0 ? (
+            <div className="py-12 text-center">
+              <GraduationCap className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No classes</p>
+            </div>
+          ) : (
+            filteredClasses.map((cls) => (
+              <div key={cls.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center shrink-0">
+                    <GraduationCap className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-900">Class {cls.name}</p>
+                    <p className="text-[11px] text-slate-500">{cls.sections?.length || 0} sections · {(cls.sections || []).reduce((s, x) => s + (x.capacity || 0), 0)} seats</p>
+                  </div>
+                  {!readOnly && (
+                    <div className="flex gap-1 shrink-0">
+                      <button onClick={() => handleEdit(cls)} className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center active:scale-90 transition-transform">
+                        <Edit2 className="w-3.5 h-3.5 text-slate-600" />
+                      </button>
+                      <button onClick={() => handleDelete(cls.id)} className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center active:scale-90 transition-transform">
+                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {cls.sections && cls.sections.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {cls.sections.map((sec, idx) => (
+                      <span key={idx} className="text-[9px] font-bold text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded-md">
+                        {sec.name || 'A'} · {sec.capacity}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {!readOnly && (
+          <button
+            onClick={openAdd}
+            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          >
+            <Plus className="w-6 h-6" strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-6">
       <PageHeader title="Academic Classes" subtitle="Define grade levels, sections, and capacities" icon={GraduationCap} iconColor="gradient-violet"
         actions={!readOnly && <Button size="sm" icon={Plus} onClick={openAdd}>New Class</Button>} />
 
@@ -164,6 +233,7 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
           </AnimatePresence>
         </div>
       )}
+      </div>
 
       <ConfirmModal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} onConfirm={performDelete}
         title="Delete Class?" message="This action cannot be undone. All sections in this class will be removed." loading={loading} />
@@ -205,6 +275,6 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
           </div>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }
