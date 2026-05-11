@@ -268,6 +268,32 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       setIsModalOpen(false);
       fetchData();
+
+      // Auto-send WhatsApp receipt to parent (cash, bank, online — any method)
+      try {
+        const parentPhone = selectedStudent.parentDetails?.phone;
+        if (parentPhone) {
+          const cls = classes.find(c => c.id === selectedStudent.classId);
+          const classSection = `${cls?.name || selectedStudent.classId} - ${selectedStudent.section}`;
+          await fetch('/api/whatsapp/send-template', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone: parentPhone,
+              templateName: 'payment_confirmed',
+              parameters: [
+                selectedStudent.parentDetails?.fatherName || 'Parent',
+                `₹${payAmount.toLocaleString('en-IN')}`,
+                selectedStudent.name,
+                classSection,
+                paymentDoc.receiptNumber,
+                new Date(paymentData.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }),
+                (paymentData.method || '').replace(/_/g, ' '),
+              ],
+            }),
+          });
+        }
+      } catch { /* non-fatal — payment is already recorded */ }
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'feePayments');
     } finally {

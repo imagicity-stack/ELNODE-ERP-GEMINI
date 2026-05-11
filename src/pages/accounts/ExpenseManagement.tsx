@@ -49,6 +49,9 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
     date: new Date().toISOString().split('T')[0],
     status: 'paid' as 'paid' | 'pending',
     description: '',
+    phone: '',
+    address: '',
+    paymentMode: 'cash' as 'cash' | 'bank_transfer' | 'upi' | 'cheque' | 'card' | 'other',
   });
 
   const fetchExpenses = async () => {
@@ -79,6 +82,29 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
       } else {
         await addDoc(collection(db, 'expenses'), data);
       }
+
+      // Fire WhatsApp confirmation to vendor if phone provided and status is paid
+      if (!isEditMode && data.status === 'paid' && data.phone) {
+        try {
+          await fetch('/api/whatsapp/send-template', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone: data.phone,
+              templateName: 'expense_paid',
+              parameters: [
+                data.biller || 'Vendor',
+                `₹${Number(data.amount).toLocaleString('en-IN')}`,
+                data.category,
+                new Date(data.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }),
+                (data.paymentMode || 'cash').replace(/_/g, ' '),
+                data.description || '-',
+              ],
+            }),
+          });
+        } catch { /* non-fatal */ }
+      }
+
       setIsModalOpen(false);
       resetForm();
       fetchExpenses();
@@ -97,6 +123,9 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
       date: new Date().toISOString().split('T')[0],
       status: 'paid',
       description: '',
+      phone: '',
+      address: '',
+      paymentMode: 'cash',
     });
     setIsEditMode(false);
     setEditingExpense(null);
@@ -112,6 +141,9 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
       date: exp.date,
       status: exp.status,
       description: exp.description || '',
+      phone: exp.phone || '',
+      address: exp.address || '',
+      paymentMode: (exp.paymentMode as any) || 'cash',
     });
     setIsModalOpen(true);
   };
@@ -421,6 +453,35 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
                 </button>
               ))}
             </div>
+          </FormField>
+          <FormField label="Mode of Payment">
+            <Select
+              value={formData.paymentMode}
+              onChange={(e) => setFormData({ ...formData, paymentMode: e.target.value as any })}
+            >
+              <option value="cash">Cash</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="upi">UPI</option>
+              <option value="cheque">Cheque</option>
+              <option value="card">Card</option>
+              <option value="other">Other</option>
+            </Select>
+          </FormField>
+          <FormField label="Vendor Phone (for WhatsApp confirmation)">
+            <Input
+              type="tel"
+              placeholder="10-digit mobile number"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            />
+          </FormField>
+          <FormField label="Vendor Address">
+            <Input
+              type="text"
+              placeholder="Full address"
+              value={formData.address}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+            />
           </FormField>
         </form>
       </Modal>

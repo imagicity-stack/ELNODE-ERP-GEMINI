@@ -12,6 +12,7 @@ import SalaryManagement from './SalaryManagement';
 import FinancialReports from './FinancialReports';
 import PaymentAnalytics from './PaymentAnalytics';
 import ProfileSettings from '../shared/ProfileSettings';
+import WhatsAppNotifications from '../admin/WhatsAppNotifications';
 
 export default function AccountsPortal({ user }: { user: UserProfile }) {
   return (
@@ -25,6 +26,7 @@ export default function AccountsPortal({ user }: { user: UserProfile }) {
         <Route path="/reports" element={<FinancialReports user={user} />} />
         <Route path="/analytics" element={<PaymentAnalytics user={user} />} />
         <Route path="/profile" element={<ProfileSettings user={user} />} />
+        <Route path="/whatsapp" element={<WhatsAppNotifications user={user} />} />
         <Route path="*" element={<Navigate to="/accounts" />} />
       </Routes>
     </PortalLayout>
