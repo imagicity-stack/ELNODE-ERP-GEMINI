@@ -121,10 +121,13 @@ export function DataProvider({ children, user }: { children: React.ReactNode, us
       }, 'teachers');
       unsubscribes.push(unsubTeachers);
 
-      const unsubStudents = safeOnSnapshot(collection(db, 'students'), (snapshot) => {
-        setStudents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Student)));
-      }, 'students');
-      unsubscribes.push(unsubStudents);
+      // Only roles with list permission on students collection
+      if (user.role === 'admin' || user.role === 'accounts' || user.role === 'principal' || user.role === 'teacher') {
+        const unsubStudents = safeOnSnapshot(collection(db, 'students'), (snapshot) => {
+          setStudents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Student)));
+        }, 'students');
+        unsubscribes.push(unsubStudents);
+      }
 
       const unsubSubjects = safeOnSnapshot(collection(db, 'subjects'), (snapshot) => {
         const map: Record<string, string> = {};
