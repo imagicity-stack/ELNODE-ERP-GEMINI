@@ -31,6 +31,9 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
   const [localLoading, setLocalLoading] = useState(false);
   const { showToast } = useToast();
 
+  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const [mobileDay, setMobileDay] = useState<string>(todayName);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<any>(null);
   const [saving, setSaving] = useState(false);
@@ -221,7 +224,96 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
   }
 
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-6 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 px-4 pt-5 pb-3 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100">My Timetable</p>
+          <h1 className="text-xl font-bold mt-0.5">{mobileDay === todayName ? 'Today' : mobileDay}</h1>
+
+          {/* Day chips */}
+          {config && (
+            <div className="mt-3 -mx-4 px-4 overflow-x-auto flex gap-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {config.days.map((day) => (
+                <button
+                  key={day}
+                  onClick={() => setMobileDay(day)}
+                  className={cn(
+                    "shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all",
+                    mobileDay === day
+                      ? "bg-white text-blue-700"
+                      : "bg-white/15 text-white border border-white/20"
+                  )}
+                >
+                  {day.slice(0, 3)}
+                  {day === todayName && (
+                    <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-yellow-300 animate-pulse" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {!config ? (
+          <div className="px-4 pt-8 text-center">
+            <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-sm font-bold text-slate-700">Timetable not configured</p>
+          </div>
+        ) : (
+          <div className="px-4 pt-4 space-y-2">
+            {config.slots.map((slot) => {
+              if (slot.type === 'break') {
+                return (
+                  <div key={slot.id} className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-2 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-amber-700 uppercase">Short Break</span>
+                    <span className="text-[10px] text-amber-600">{slot.startTime}–{slot.endTime}</span>
+                  </div>
+                );
+              }
+              if (slot.type === 'lunch') {
+                return (
+                  <div key={slot.id} className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-blue-700 uppercase">Lunch Break</span>
+                    <span className="text-[10px] text-blue-600">{slot.startTime}–{slot.endTime}</span>
+                  </div>
+                );
+              }
+              const period = getPeriod(mobileDay, slot.id);
+              if (!period) {
+                return (
+                  <div key={slot.id} className="bg-white border border-dashed border-slate-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{slot.label}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{slot.startTime} – {slot.endTime}</p>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-300 uppercase">Free</span>
+                  </div>
+                );
+              }
+              return (
+                <button
+                  key={slot.id}
+                  onClick={() => handleOpenLog(period, slot)}
+                  className="w-full text-left bg-white border-l-4 border-l-blue-500 border-y border-r border-slate-100 rounded-xl px-4 py-3 shadow-sm active:scale-[0.98] transition-transform"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{slot.label} · {slot.startTime}</p>
+                      <p className="text-sm font-bold text-slate-900 truncate mt-0.5">{subjects[period.subjectId] || period.subjectId}</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Class {classes[period.classId] || period.classId}</p>
+                    </div>
+                    <Edit3 className="w-4 h-4 text-blue-500 shrink-0 mt-1" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Teacher Timetable"
         subtitle="Your weekly teaching schedule and class assignments."
@@ -316,8 +408,9 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
           </div>
         </Card>
       )}
+      </div>
 
-      {/* Lesson Log Modal */}
+      {/* Lesson Log Modal — shared by mobile + desktop */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -459,6 +552,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
           </div>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }

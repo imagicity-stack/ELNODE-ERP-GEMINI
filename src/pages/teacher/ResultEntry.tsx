@@ -246,7 +246,130 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
   }
 
   return (
-    <div className="space-y-6">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-indigo-600 to-purple-700 px-4 pt-4 pb-5 text-white">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1.5 text-xs font-bold text-indigo-100 mb-2"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back
+          </button>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">{subject?.name} ({subject?.code})</p>
+          <h1 className="text-lg font-bold mt-0.5">{exam?.name}</h1>
+          <p className="text-xs text-indigo-100 mt-1">Max marks: {exam?.maxMarks}</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
+              <p className="text-base font-bold">{students.length}</p>
+              <p className="text-[9px] text-white/70">Total</p>
+            </div>
+            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
+              <p className="text-base font-bold">{Object.keys(results).length}</p>
+              <p className="text-[9px] text-white/70">Entered</p>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mx-4 mt-3 bg-rose-50 text-rose-700 px-3 py-2 rounded-xl text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+        {success && (
+          <div className="mx-4 mt-3 bg-emerald-50 text-emerald-700 px-3 py-2 rounded-xl text-xs flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>Saved successfully</span>
+          </div>
+        )}
+
+        <div className="px-4 mt-3 mb-3">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search student..."
+            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-indigo-400"
+          />
+        </div>
+
+        <div className="px-4 space-y-2">
+          {filteredStudents.length === 0 ? (
+            <div className="py-12 text-center">
+              <User className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No students found</p>
+            </div>
+          ) : filteredStudents.map((student) => {
+            const studentResult = results[student.id];
+            const subResult = studentResult?.subjectResults?.find(r => r.subjectId === exam?.subjectId);
+            const marks = subResult?.marksObtained || '';
+            return (
+              <div key={student.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                <div className="flex items-center gap-3 mb-3">
+                  <Avatar name={student.name} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">{student.name}</p>
+                    <p className="text-[10px] text-slate-500">#{student.admissionNumber}</p>
+                  </div>
+                  {subResult?.grade && (
+                    <Badge
+                      variant={
+                        (subResult.grade) === 'F' ? 'error' :
+                        ['A+', 'A', 'B+'].includes(subResult.grade) ? 'success' : 'indigo'
+                      }
+                      className="w-9 h-9 flex items-center justify-center text-base rounded-full font-bold"
+                    >
+                      {subResult.grade}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex gap-2 items-center">
+                  <Input
+                    type="number"
+                    min="0"
+                    max={exam?.maxMarks}
+                    step="0.5"
+                    value={marks}
+                    disabled={readOnly}
+                    onChange={(e) => handleMarkChange(student.id, e.target.value)}
+                    className={cn(
+                      "w-24 text-center font-bold text-base h-11 shrink-0",
+                      marks === '' ? "border-slate-200" : "border-indigo-300 bg-indigo-50/30 text-indigo-700"
+                    )}
+                    placeholder={`/${exam?.maxMarks}`}
+                  />
+                  <Input
+                    placeholder="Remarks (optional)"
+                    value={subResult?.remarks || ''}
+                    disabled={readOnly}
+                    onChange={(e) => handleRemarksChange(student.id, e.target.value)}
+                    className="flex-1 h-11 text-sm"
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Sticky save */}
+        {!readOnly && (
+          <div className="fixed bottom-0 left-0 right-0 px-4 py-3 bg-white border-t border-slate-100 shadow-2xl z-50">
+            <Button
+              onClick={handleSaveAll}
+              disabled={saving}
+              loading={saving}
+              className="w-full !py-3.5"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              {saving ? 'Saving...' : `Save Results (${Object.keys(results).length})`}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -440,6 +563,7 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
           </table>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
