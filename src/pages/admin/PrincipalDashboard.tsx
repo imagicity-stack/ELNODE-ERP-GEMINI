@@ -117,7 +117,143 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
   }, []);
 
   return (
-    <div className="space-y-8 pb-12">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 px-4 pt-5 pb-6 text-white">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-6 h-6 rounded-md bg-indigo-500/30 flex items-center justify-center">
+              <Zap className="w-3.5 h-3.5 text-indigo-200 fill-indigo-300" />
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Command Center</p>
+          </div>
+          <h1 className="text-xl font-bold">Welcome, {user.name.split(' ')[0]}</h1>
+          <p className="text-xs text-indigo-100 mt-0.5">
+            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="bg-white/10 backdrop-blur rounded-xl p-3 border border-white/10">
+              <Users className="w-4 h-4 text-indigo-300 mb-1" />
+              <p className="text-lg font-bold leading-tight">{stats.students}</p>
+              <p className="text-[10px] text-white/70 uppercase tracking-wide">Students</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-3 border border-white/10">
+              <Briefcase className="w-4 h-4 text-violet-300 mb-1" />
+              <p className="text-lg font-bold leading-tight">{stats.teachers}</p>
+              <p className="text-[10px] text-white/70 uppercase tracking-wide">Faculty</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-3 border border-white/10">
+              <ClipboardCheck className="w-4 h-4 text-emerald-300 mb-1" />
+              <p className="text-lg font-bold leading-tight">{stats.attendanceToday}</p>
+              <p className="text-[10px] text-white/70 uppercase tracking-wide">Attendance</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur rounded-xl p-3 border border-white/10">
+              <GraduationCap className="w-4 h-4 text-amber-300 mb-1" />
+              <p className="text-lg font-bold leading-tight">{stats.classes}</p>
+              <p className="text-[10px] text-white/70 uppercase tracking-wide">Classes</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4 space-y-3">
+          {/* Success rate card */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+            <div className="flex items-center gap-4">
+              <div className="relative w-20 h-20 shrink-0">
+                <svg className="w-full h-full transform -rotate-90">
+                  <circle cx="40" cy="40" r="34" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-100" />
+                  <circle cx="40" cy="40" r="34" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={213} strokeDashoffset={213 * (1 - 0.85)} className="text-indigo-600" strokeLinecap="round" />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xl font-black text-slate-900">85%</span>
+                </div>
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Academic</p>
+                <p className="text-sm font-bold text-slate-900">Excellence Score</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Overall progression this term</p>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="p-2.5 bg-emerald-50 rounded-xl">
+                <p className="text-[9px] font-bold text-emerald-700 uppercase">Engagement</p>
+                <div className="mt-1 w-full h-1 bg-emerald-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 w-[75%]" />
+                </div>
+              </div>
+              <div className="p-2.5 bg-amber-50 rounded-xl">
+                <p className="text-[9px] font-bold text-amber-700 uppercase">Punctuality</p>
+                <div className="mt-1 w-full h-1 bg-amber-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-amber-500 w-[94%]" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick directives */}
+          <div className="bg-slate-900 rounded-2xl p-4 shadow-xl">
+            <h2 className="text-sm font-bold text-white mb-3">Quick Directives</h2>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { icon: Megaphone, label: 'Broadcast', color: 'bg-indigo-500' },
+                { icon: ClipboardCheck, label: 'Review', color: 'bg-violet-500' },
+                { icon: CalendarIcon, label: 'Schedule', color: 'bg-emerald-500' },
+                { icon: FileText, label: 'Reports', color: 'bg-rose-500' },
+              ].map((action, i) => (
+                <button
+                  key={i}
+                  className="p-2 rounded-xl bg-white/5 border border-white/10 flex flex-col items-center active:scale-95 transition-transform"
+                >
+                  <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center mb-1", action.color)}>
+                    <action.icon className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="text-[9px] font-bold text-white/80">{action.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!noticesReadOnly && (
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+                  <Megaphone className="w-4 h-4 text-indigo-600" />
+                </div>
+                <h2 className="text-sm font-bold text-slate-900">Emergency Notice</h2>
+              </div>
+              <textarea
+                placeholder="Type school-wide announcement..."
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 focus:outline-none min-h-[80px] resize-none"
+              />
+              <button className="w-full mt-2 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-700 text-white text-sm font-bold rounded-xl active:scale-95 transition-transform">
+                Broadcast Now
+              </button>
+            </div>
+          )}
+
+          <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl p-4 text-white relative overflow-hidden">
+            <Award className="absolute -top-2 -right-2 w-20 h-20 opacity-20 rotate-12" />
+            <h2 className="text-sm font-bold mb-2">Next Council Meeting</h2>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/20 flex flex-col items-center justify-center">
+                <span className="text-sm font-black leading-none">12</span>
+                <span className="text-[8px] font-bold uppercase">May</span>
+              </div>
+              <div>
+                <p className="text-sm font-bold">10:00 AM</p>
+                <p className="text-[11px] text-white/70">Board Room • Block A</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="fixed top-0 left-0 right-0 h-0.5 bg-indigo-500 animate-pulse z-50" />
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8 pb-12">
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
@@ -326,6 +462,7 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
