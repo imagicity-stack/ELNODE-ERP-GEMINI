@@ -104,8 +104,76 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
     return 'purple';
   };
 
+  const openAdd = () => {
+    setIsEditMode(false);
+    setEditingSubject(null);
+    setFormData({ name: '', code: '', type: 'theory' });
+    setIsModalOpen(true);
+  };
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Subjects</h1>
+          <p className="text-xs text-indigo-100 mt-0.5">{subjects.length} subjects defined</p>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search name or code..."
+            className="mt-3 w-full px-4 py-2.5 rounded-xl bg-white/15 backdrop-blur border border-white/20 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20"
+          />
+        </div>
+
+        <div className="px-4 pt-4 space-y-2.5">
+          {filteredSubjects.length === 0 ? (
+            <div className="py-12 text-center">
+              <Book className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No subjects</p>
+            </div>
+          ) : (
+            filteredSubjects.map((subject) => (
+              <div key={subject.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shrink-0">
+                  <Book className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-900 truncate">{subject.name}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="font-mono text-[10px] font-bold text-indigo-600">{subject.code}</span>
+                    <Badge variant={typeVariant(subject.type || 'theory')} className="text-[9px]">{subject.type || 'theory'}</Badge>
+                  </div>
+                </div>
+                {!readOnly && (
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => handleEdit(subject)} className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center active:scale-90 transition-transform">
+                      <Edit2 className="w-3.5 h-3.5 text-slate-600" />
+                    </button>
+                    <button onClick={() => handleDelete(subject.id)} className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center active:scale-90 transition-transform">
+                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {!readOnly && (
+          <button
+            onClick={openAdd}
+            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          >
+            <Plus className="w-6 h-6" strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Subject Repository"
         subtitle="Define and manage academic subjects with specific codes."
@@ -196,6 +264,7 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
           />
         )}
       </Card>
+      </div>
 
       <ConfirmModal
         isOpen={isDeleteModalOpen}
@@ -259,6 +328,6 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
           </FormField>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }
