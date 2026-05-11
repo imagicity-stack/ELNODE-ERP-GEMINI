@@ -11,7 +11,8 @@ import {
   GraduationCap,
   CreditCard,
   RefreshCcw,
-  ExternalLink
+  ExternalLink,
+  Receipt,
 } from 'lucide-react';
 import { collection, getDocs, query, orderBy, where, Timestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -139,8 +140,139 @@ export default function PaymentHistory({ user }: PaymentHistoryProps) {
     showToast('Export successful!', 'success');
   };
 
+  const todayStr = new Date().toISOString().split('T')[0];
+  const monthPrefix = new Date().toISOString().slice(0, 7);
+  const todayPayments = payments.filter(p => p.date && p.date.startsWith(todayStr));
+  const todayAmount = todayPayments.reduce((s, p) => s + (p.amount || 0), 0);
+  const monthAmount = payments.filter(p => p.date && p.date.startsWith(monthPrefix)).reduce((s, p) => s + (p.amount || 0), 0);
+
+  const dateFilters = [
+    { label: 'All', val: '' },
+    { label: 'Today', val: todayStr },
+    { label: '7d', val: new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0] },
+    { label: '30d', val: new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0] },
+  ];
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Payment History</h1>
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-base font-bold">{todayPayments.length}</p>
+              <p className="text-[9px] text-white/80">Today's Count</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-base font-bold">₹{((todayAmount/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Today</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-base font-bold">₹{((monthAmount/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">This Month</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4 pb-2">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search receipt, student or txn ID..."
+              className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400"
+            />
+          </div>
+        </div>
+
+        <div className="px-4 overflow-x-auto flex gap-2 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {dateFilters.map(f => (
+            <button
+              key={f.label}
+              onClick={() => setStartDate(f.val)}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap active:scale-95 transition-transform ${startDate === f.val ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+            >
+              {f.label}
+            </button>
+          ))}
+          <button
+            onClick={() => setSelectedMethod(selectedMethod === 'all' ? 'online' : 'all')}
+            className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap active:scale-95 transition-transform ${selectedMethod !== 'all' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+          >
+            {selectedMethod === 'all' ? 'All Methods' : selectedMethod.replace('_', ' ').toUpperCase()}
+          </button>
+        </div>
+
+        <div className="px-4 pt-2 space-y-2.5">
+          {loading ? (
+            <div className="py-10 flex justify-center"><Spinner /></div>
+          ) : filteredPayments.length === 0 ? (
+            <div className="py-12 text-center">
+              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No payments found</p>
+              <p className="text-xs text-slate-500 mt-1">Adjust filters to see more</p>
+            </div>
+          ) : (
+            filteredPayments.slice(0, 50).map((p) => {
+              const student = globalStudents.find(s => s.id === p.studentId);
+              const className = student ? (classes.find(c => c.id === student.classId)?.name || student.classId) : 'N/A';
+              return (
+                <div key={p.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                      <Receipt className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-bold text-slate-900 truncate">{student?.name || 'Unknown'}</p>
+                        <p className="text-sm font-black text-emerald-600 shrink-0">₹{(p.amount || 0).toLocaleString()}</p>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                        {className} • {p.receiptNumber}
+                      </p>
+                      <div className="mt-2 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant={p.method === 'online' ? 'success' : 'info'} className="capitalize text-[9px] py-0.5 px-1.5">
+                            <span className="flex items-center gap-1">
+                              {p.method === 'online' ? <ExternalLink className="w-2.5 h-2.5" /> : <CreditCard className="w-2.5 h-2.5" />}
+                              {p.method.replace('_', ' ')}
+                            </span>
+                          </Badge>
+                          <span className="text-[10px] text-slate-400">{new Date(p.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                        </div>
+                        <button
+                          onClick={() => showToast('Receipt downloading...', 'info')}
+                          className="p-1.5 rounded-lg bg-slate-50 text-slate-600 active:scale-90 transition-transform"
+                          aria-label="Download"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <button
+          onClick={handleExport}
+          disabled={filteredPayments.length === 0}
+          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40 disabled:opacity-50"
+          aria-label="Export CSV"
+        >
+          <Download className="w-6 h-6" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Payment History"
         subtitle="Comprehensive record of all school fee transactions"
@@ -344,6 +476,7 @@ export default function PaymentHistory({ user }: PaymentHistoryProps) {
           />
         )}
       </Card>
-    </div>
+      </div>
+    </>
   );
 }
