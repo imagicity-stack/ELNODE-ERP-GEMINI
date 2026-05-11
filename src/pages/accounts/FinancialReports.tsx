@@ -1,5 +1,6 @@
 import { UserProfile, Expense, FeePayment, Salary } from '../../types';
-import { Download, FileText, PieChart, TrendingUp, Calendar, Filter, Loader2 } from 'lucide-react';
+import { Download, FileText, PieChart, TrendingUp, Calendar, Filter, Loader2, Sparkles } from 'lucide-react';
+import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -53,6 +54,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [dateRange, setDateRange] = useState('This Month');
   const [generating, setGenerating] = useState<ReportType | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -448,6 +450,22 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
         </div>
       </div>
       </div>
+
+      {/* Floating AI Insights button */}
+      <button
+        onClick={() => setAiOpen(true)}
+        className="fixed bottom-5 right-5 md:bottom-8 md:right-8 z-30 group flex items-center gap-2 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white shadow-xl shadow-violet-500/30 rounded-full pl-3 pr-4 py-3 active:scale-95 transition-transform"
+        aria-label="Open AI insights"
+      >
+        <Sparkles className="w-5 h-5" />
+        <span className="text-xs font-bold hidden md:inline">Ask AI</span>
+      </button>
+
+      <AIInsightsPanel
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        period={dateRange as any}
+      />
     </>
   );
 }

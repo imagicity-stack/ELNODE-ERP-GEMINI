@@ -12,6 +12,7 @@ import {
   FileText,
   BookOpen,
   BarChart3,
+  Sparkles,
 } from 'lucide-react';
 import {
   BarChart,
@@ -35,6 +36,7 @@ import { Notice, UserProfile } from '../../types';
 import { Link } from 'react-router-dom';
 import { StatCard, Card, Badge, Button, Avatar } from '../../components/ui';
 import UpdatesSection from '../../components/UpdatesSection';
+import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
 
 const GENDER_COLORS = ['#6366f1', '#ec4899'];
@@ -60,6 +62,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   ]);
   const [genderStats, setGenderStats] = useState([{ name: 'Boys', value: 0 }, { name: 'Girls', value: 0 }]);
   const [pendingLeaves, setPendingLeaves] = useState(0);
+  const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -540,6 +543,17 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         </Card>
       </div>
       </div>
+
+      <button
+        onClick={() => setAiOpen(true)}
+        className="fixed bottom-5 right-5 md:bottom-8 md:right-8 z-30 flex items-center gap-2 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white shadow-xl shadow-violet-500/30 rounded-full pl-3 pr-4 py-3 active:scale-95 transition-transform"
+        aria-label="Open AI insights"
+      >
+        <Sparkles className="w-5 h-5" />
+        <span className="text-xs font-bold hidden md:inline">Ask AI</span>
+      </button>
+
+      <AIInsightsPanel open={aiOpen} onClose={() => setAiOpen(false)} period="This Month" />
     </>
   );
 }
