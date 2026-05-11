@@ -40,6 +40,7 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mobileCategoryFilter, setMobileCategoryFilter] = useState<string>('all');
 
   const [formData, setFormData] = useState({
     category: 'utilities',
@@ -140,8 +141,116 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
   const pendingBills = expenses.filter(e => e.status === 'pending').reduce((sum, e) => sum + e.amount, 0);
 
+  const monthPrefix = new Date().toISOString().slice(0, 7);
+  const monthExpenses = expenses.filter(e => e.date && e.date.startsWith(monthPrefix));
+  const monthTotal = monthExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const categories = ['all', 'utilities', 'maintenance', 'stationery', 'events', 'salary', 'other'];
+  const mobileFilteredExpenses = filteredExpenses.filter(e => mobileCategoryFilter === 'all' || e.category === mobileCategoryFilter);
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Expenses</h1>
+
+          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">This Month</p>
+            <p className="text-3xl font-black mt-1">₹{monthTotal.toLocaleString('en-IN')}</p>
+            <p className="text-[11px] text-emerald-100/90 mt-1">{monthExpenses.length} expense{monthExpenses.length === 1 ? '' : 's'} recorded</p>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((totalExpenses/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">All Time</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((pendingBills/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Pending</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4 pb-2">
+          <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search category or biller..." />
+        </div>
+
+        <div className="px-4 overflow-x-auto flex gap-2 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {categories.map(c => (
+            <button
+              key={c}
+              onClick={() => setMobileCategoryFilter(c)}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap capitalize active:scale-95 transition-transform ${mobileCategoryFilter === c ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+            >
+              {c === 'all' ? 'All' : c}
+            </button>
+          ))}
+        </div>
+
+        <div className="px-4 pt-2 space-y-2.5">
+          {mobileFilteredExpenses.length === 0 ? (
+            <div className="py-12 text-center">
+              <Receipt className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No expenses</p>
+              <p className="text-xs text-slate-500 mt-1">Tap + to add an expense</p>
+            </div>
+          ) : (
+            mobileFilteredExpenses.map((exp) => (
+              <div key={exp.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-sm uppercase shrink-0">
+                    {exp.category.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-bold text-slate-900 capitalize truncate">{exp.category}</p>
+                      <p className="text-sm font-black text-rose-600 shrink-0">-₹{(exp.amount || 0).toLocaleString()}</p>
+                    </div>
+                    <p className="text-[11px] text-slate-600 truncate">{exp.biller}</p>
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={exp.status === 'paid' ? 'success' : 'warning'} className="text-[9px]">
+                          {exp.status}
+                        </Badge>
+                        <span className="text-[10px] text-slate-400">{new Date(exp.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleEdit(exp)}
+                          className="p-1.5 rounded-lg bg-slate-50 text-slate-600 active:scale-90 transition-transform"
+                          aria-label="Edit"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(exp.id)}
+                          className="p-1.5 rounded-lg bg-rose-50 text-rose-600 active:scale-90 transition-transform"
+                          aria-label="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <button
+          onClick={() => { resetForm(); setIsModalOpen(true); }}
+          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          aria-label="Add expense"
+        >
+          <Plus className="w-6 h-6" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Expense Management"
         subtitle="Track and manage school expenditures and bills"
@@ -224,6 +333,7 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
           <EmptyState icon={Receipt} title="No expenses found" description="Add your first expense to get started." />
         )}
       </Card>
+      </div>
 
       {/* Delete Confirmation Modal */}
       <ConfirmModal
@@ -314,6 +424,6 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
           </FormField>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }
