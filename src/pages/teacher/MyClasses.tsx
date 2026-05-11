@@ -49,23 +49,32 @@ export default function MyClasses({ user }: MyClassesProps) {
 
   return (
     <div className="space-y-6">
-      <PageHeader 
-        title="My Assigned Classes" 
-        subtitle="Manage and view details of classes you are assigned to." 
-        icon={GraduationCap} 
+      {/* Mobile compact header */}
+      <div className="md:hidden -mx-4 -mt-4 bg-gradient-to-br from-blue-600 to-indigo-700 px-4 pt-5 pb-5 text-white">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100">Assigned Classes</p>
+        <h1 className="text-xl font-bold mt-0.5">My Classes</h1>
+        <p className="text-xs text-blue-100 mt-1">{classes.length} class{classes.length !== 1 ? 'es' : ''} assigned</p>
+      </div>
+
+      <div className="hidden md:block">
+      <PageHeader
+        title="My Assigned Classes"
+        subtitle="Manage and view details of classes you are assigned to."
+        icon={GraduationCap}
         iconColor="gradient-blue"
       />
+      </div>
 
       {loading ? (
         <Spinner />
       ) : classes.length === 0 ? (
-        <EmptyState 
-          icon={GraduationCap} 
-          title="No classes assigned" 
-          description="You haven't been assigned to any classes yet. Please contact the administrator." 
+        <EmptyState
+          icon={GraduationCap}
+          title="No classes assigned"
+          description="You haven't been assigned to any classes yet. Please contact the administrator."
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           <AnimatePresence mode="popLayout">
             {classes.map((cls, i) => (
               <motion.div 
@@ -74,7 +83,7 @@ export default function MyClasses({ user }: MyClassesProps) {
                 initial={{ opacity: 0, y: 16 }} 
                 animate={{ opacity: 1, y: 0 }} 
                 transition={{ delay: i * 0.05 }}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 hover:shadow-md transition-all group"
+                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-6 hover:shadow-md transition-all group"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shadow-sm group-hover:scale-110 transition-transform">

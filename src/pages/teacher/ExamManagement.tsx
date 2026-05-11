@@ -214,7 +214,95 @@ export default function ExamManagement({ user }: ExamManagementProps) {
   };
 
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100">Exams & Results</p>
+          <h1 className="text-xl font-bold mt-0.5">Manage Exams</h1>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
+              <p className="text-base font-bold">{exams.filter(e => e.status === 'scheduled').length}</p>
+              <p className="text-[9px] text-white/70">Upcoming</p>
+            </div>
+            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
+              <p className="text-base font-bold">{exams.filter(e => e.status === 'completed').length}</p>
+              <p className="text-[9px] text-white/70">Done</p>
+            </div>
+            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
+              <p className="text-base font-bold">{exams.filter(e => e.status === 'scheduled' && new Date(e.startDate) < new Date()).length}</p>
+              <p className="text-[9px] text-white/70">Pending</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 mt-3 mb-3">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search exams..."
+            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-blue-400"
+          />
+        </div>
+
+        <div className="px-4 space-y-2">
+          {loading ? (
+            <div className="py-10 flex justify-center"><Spinner /></div>
+          ) : filteredExams.length === 0 ? (
+            <div className="py-12 text-center">
+              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No exams scheduled</p>
+              <p className="text-xs text-slate-500 mt-1">Tap the + button to add</p>
+            </div>
+          ) : (
+            filteredExams.map((exam) => (
+              <div key={exam.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
+                    {exam.name.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">{exam.name}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      {subjects.find(s => s.id === exam.subjectId)?.name || exam.subjectId} · {new Date(exam.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Max {exam.maxMarks} marks</p>
+                  </div>
+                  <Badge variant={examStatusVariant(exam.status)} className="text-[9px] shrink-0">
+                    {exam.status}
+                  </Badge>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => navigate(`/teacher/exams/${exam.id}/marks`)}
+                    className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold active:scale-95 transition-transform"
+                  >
+                    {exam.status === 'completed' ? 'Edit Results' : 'Enter Results'}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(exam.id)}
+                    className="py-2.5 px-4 rounded-xl bg-red-50 text-red-600 text-xs font-bold active:scale-95 transition-transform"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* FAB */}
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+        >
+          <Plus className="w-6 h-6" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Exam & Result Management"
         subtitle="Schedule exams and manage student results for your classes."
@@ -337,8 +425,9 @@ export default function ExamManagement({ user }: ExamManagementProps) {
               />
         )}
       </Card>
+      </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal — shared by mobile + desktop */}
       <ConfirmModal
         isOpen={isDeleteModalOpen}
         onClose={() => { setIsDeleteModalOpen(false); setDeletingId(null); }}
@@ -494,6 +583,6 @@ export default function ExamManagement({ user }: ExamManagementProps) {
           </FormField>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }

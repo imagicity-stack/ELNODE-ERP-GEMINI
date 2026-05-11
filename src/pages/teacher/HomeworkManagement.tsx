@@ -200,7 +200,102 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
   };
 
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100">Homework</p>
+          <h1 className="text-xl font-bold mt-0.5">Assignments</h1>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
+              <p className="text-base font-bold">{stats.active}</p>
+              <p className="text-[9px] text-white/70">Active</p>
+            </div>
+            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
+              <p className="text-base font-bold">{stats.totalSubmissions}</p>
+              <p className="text-[9px] text-white/70">Submissions</p>
+            </div>
+            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
+              <p className="text-base font-bold">{stats.completed}</p>
+              <p className="text-[9px] text-white/70">Completed</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 mt-3 mb-3">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search homework..."
+            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-blue-400"
+          />
+        </div>
+
+        <div className="px-4 space-y-2">
+          {loading ? (
+            <div className="py-10 flex justify-center"><Spinner /></div>
+          ) : filteredHomework.length === 0 ? (
+            <div className="py-12 text-center">
+              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No homework yet</p>
+              <p className="text-xs text-slate-500 mt-1">Tap the + button to assign</p>
+            </div>
+          ) : (
+            filteredHomework.map((hw) => {
+              const isActive = new Date(hw.dueDate) >= new Date();
+              return (
+                <div key={hw.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                  <div className="flex items-start gap-3 mb-2">
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
+                      {hw.subjectId.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-900 line-clamp-2">{hw.content}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        {hw.classId} · {hw.subjectId}
+                      </p>
+                    </div>
+                    <Badge variant={isActive ? 'info' : 'success'} className="text-[9px] shrink-0">
+                      {isActive ? 'Active' : 'Done'}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                    <span className="text-[10px] text-slate-500">
+                      Due {new Date(hw.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </span>
+                    <span className="text-[10px] font-bold text-blue-700">
+                      {hw.submissions?.length || 0} submitted
+                    </span>
+                  </div>
+                  {hw.attachmentUrl && (
+                    <a
+                      href={hw.attachmentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 bg-indigo-50 w-fit px-2 py-1 rounded-md"
+                    >
+                      <FileText className="w-3 h-3" />
+                      Attachment
+                    </a>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* FAB */}
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+        >
+          <Plus className="w-6 h-6" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Homework Management"
         subtitle="Assign and track homework for your classes."
@@ -313,8 +408,9 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
               />
         )}
       </Card>
+      </div>
 
-      {/* Assign Homework Modal */}
+      {/* Assign Homework Modal — shared by mobile + desktop */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -415,6 +511,6 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
           </FormField>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }
