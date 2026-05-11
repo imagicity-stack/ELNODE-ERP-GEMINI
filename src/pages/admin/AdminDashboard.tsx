@@ -9,6 +9,9 @@ import {
   TrendingUp,
   ArrowUpRight,
   Clock,
+  FileText,
+  BookOpen,
+  BarChart3,
 } from 'lucide-react';
 import {
   BarChart,
@@ -25,13 +28,12 @@ import {
   Cell,
 } from 'recharts';
 import { motion } from 'motion/react';
-import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Notice, UserProfile } from '../../types';
 import { Link } from 'react-router-dom';
-import { StatCard, Card, Badge, Button, Avatar, PageHeader } from '../../components/ui';
+import { StatCard, Card, Badge, Button, Avatar } from '../../components/ui';
 import UpdatesSection from '../../components/UpdatesSection';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
 
@@ -168,15 +170,152 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   };
 
   const noticePriorityVariant = (p: string) => p === 'high' ? 'error' : p === 'medium' ? 'warning' : 'info';
+  const greeting = `Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}`;
+
+  // Mobile tiles
+  const mobileTiles = [
+    { label: 'Students', value: counts.students, icon: Users, to: '/superadmin/students', color: 'from-indigo-500 to-indigo-600' },
+    { label: 'Teachers', value: counts.teachers, icon: GraduationCap, to: '/superadmin/teachers', color: 'from-blue-500 to-blue-600' },
+    { label: 'Classes', value: counts.classes, icon: Building2, to: '/superadmin/classes', color: 'from-violet-500 to-violet-600' },
+    { label: 'Notices', value: notices.length, icon: Megaphone, to: '/superadmin/notices', color: 'from-amber-500 to-orange-600' },
+    { label: 'Fees', value: `₹${(counts.feeCollection / 1000).toFixed(0)}k`, icon: CreditCard, to: '/superadmin/fees', color: 'from-emerald-500 to-emerald-600' },
+    { label: 'Reports', value: '', icon: BarChart3, to: '#', color: 'from-rose-500 to-rose-600', onClick: downloadReport },
+  ];
 
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-6 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">{greeting}, {user.name.split(' ')[0]}</h1>
+          <p className="text-xs text-indigo-100 mt-0.5">
+            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2.5 text-center">
+              <p className="text-lg font-bold">{counts.students}</p>
+              <p className="text-[9px] text-white/80 uppercase tracking-wide">Students</p>
+            </div>
+            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2.5 text-center">
+              <p className="text-lg font-bold">{counts.teachers}</p>
+              <p className="text-[9px] text-white/80 uppercase tracking-wide">Teachers</p>
+            </div>
+            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2.5 text-center">
+              <p className="text-lg font-bold">{counts.classes}</p>
+              <p className="text-[9px] text-white/80 uppercase tracking-wide">Classes</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4">
+          {pendingLeaves > 0 && (
+            <Link to="/superadmin/leaves" className="block mb-3 active:scale-[0.98] transition-transform">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-amber-900">{pendingLeaves} Pending Leave{pendingLeaves > 1 ? 's' : ''}</p>
+                  <p className="text-[11px] text-amber-700">Tap to review</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-amber-500" />
+              </div>
+            </Link>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {mobileTiles.map((t) => {
+              const Inner = (
+                <div className={`bg-gradient-to-br ${t.color} rounded-2xl p-4 text-white shadow-md active:scale-95 transition-transform`}>
+                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center mb-2">
+                    <t.icon className="w-5 h-5 text-white" />
+                  </div>
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-white/80">{t.label}</p>
+                  {t.value !== '' && <p className="text-xl font-bold mt-0.5">{t.value}</p>}
+                  {t.value === '' && <p className="text-sm font-bold mt-0.5">Download</p>}
+                </div>
+              );
+              return t.onClick ? (
+                <button key={t.label} onClick={t.onClick} className="text-left">{Inner}</button>
+              ) : (
+                <Link key={t.label} to={t.to}>{Inner}</Link>
+              );
+            })}
+          </div>
+
+          {/* Latest notices */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 mb-3">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center">
+                  <Megaphone className="w-4 h-4 text-indigo-600" />
+                </div>
+                <h3 className="font-bold text-sm text-slate-900">Latest Notices</h3>
+              </div>
+              <Link to="/superadmin/notices" className="text-[11px] text-indigo-600 font-bold">View all</Link>
+            </div>
+            {notices.length > 0 ? (
+              <div className="space-y-2.5">
+                {notices.slice(0, 3).map((n) => (
+                  <div key={n.id} className="pb-2.5 border-b border-slate-50 last:border-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-2 mb-0.5">
+                      <h4 className="text-xs font-bold text-slate-900 line-clamp-1 flex-1">{n.title}</h4>
+                      <Badge variant={noticePriorityVariant(n.priority)} className="text-[9px] shrink-0">{n.priority}</Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-500 line-clamp-2">{n.content}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 text-center py-4">No recent notices</p>
+            )}
+          </div>
+
+          {/* Recent admissions */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-sm text-slate-900">Recent Admissions</h3>
+              <Link to="/superadmin/students" className="text-[11px] text-indigo-600 font-bold">View all</Link>
+            </div>
+            {recentAdmissions.length > 0 ? (
+              <div className="space-y-2.5">
+                {recentAdmissions.slice(0, 5).map((s) => (
+                  <div key={s.id} className="flex items-center gap-2.5">
+                    <Avatar name={s.name} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-900 truncate">{s.name}</p>
+                      <p className="text-[10px] text-slate-500">{s.classId} {s.section && `· ${s.section}`}</p>
+                    </div>
+                    <Badge variant={s.feeStatus === 'paid' ? 'success' : 'warning'} className="text-[9px]">
+                      {s.feeStatus || 'Pending'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 text-center py-4">No recent admissions</p>
+            )}
+          </div>
+        </div>
+
+        {/* FAB */}
+        <Link
+          to="/superadmin/admissions"
+          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+        >
+          <UserPlus className="w-6 h-6" strokeWidth={2.5} />
+        </Link>
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Admin Dashboard</h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {user.name.split(' ')[0]}! Here's an overview of your school.
+            {greeting}, {user.name.split(' ')[0]}! Here's an overview of your school.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -400,6 +539,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           </div>
         </Card>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
