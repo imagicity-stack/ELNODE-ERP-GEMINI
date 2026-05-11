@@ -8,7 +8,10 @@ import {
   Bell,
   ArrowRight,
   ClipboardCheck,
-  FileText
+  FileText,
+  ChevronRight,
+  PenLine,
+  GraduationCap,
 } from 'lucide-react';
 import { UserProfile, Teacher, Attendance, Homework, Notice, Timetable, TimetableConfig, Exam } from '../../types';
 import { cn } from '../../lib/utils';
@@ -147,8 +150,138 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
     );
   }
 
+  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+
+  const teacherMobileTiles = [
+    {
+      to: '/teacher/attendance',
+      label: 'Attendance',
+      icon: ClipboardCheck,
+      hint: schedule.length > 0 ? `${schedule.length} classes today` : 'Mark today',
+      bg: 'from-emerald-500 to-emerald-700',
+      urgent: schedule.length > 0,
+    },
+    {
+      to: '/teacher/timetable',
+      label: 'Timetable',
+      icon: Calendar,
+      hint: todayName,
+      bg: 'from-sky-500 to-sky-700',
+    },
+    {
+      to: '/teacher/homework',
+      label: 'Homework',
+      icon: PenLine,
+      hint: pendingHomework.length > 0 ? `${pendingHomework.length} assigned` : 'Assign work',
+      bg: 'from-amber-500 to-amber-700',
+    },
+    {
+      to: '/teacher/exams',
+      label: 'Exams',
+      icon: FileText,
+      hint: exams.length > 0 ? `${exams.length} upcoming` : 'View exams',
+      bg: 'from-indigo-500 to-indigo-700',
+    },
+    {
+      to: '/teacher/classes',
+      label: 'My Classes',
+      icon: GraduationCap,
+      hint: `${teacherData?.classes?.length || 0} assigned`,
+      bg: 'from-violet-500 to-violet-700',
+    },
+    {
+      to: '/teacher/notes',
+      label: 'Notes',
+      icon: BookOpen,
+      hint: 'My notes',
+      bg: 'from-rose-500 to-rose-700',
+    },
+  ];
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile Simplified UI ───────────────────────────────────────────── */}
+      <div className="md:hidden space-y-5 -mx-4 -mt-4">
+        {/* Greeting card */}
+        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 px-5 pt-6 pb-8 text-white rounded-b-3xl shadow-lg">
+          <p className="text-xs font-medium text-blue-100 uppercase tracking-widest">Teacher Portal</p>
+          <h1 className="text-2xl font-bold mt-1">{user.name}</h1>
+          <p className="text-xs text-blue-100 mt-1">{todayName}</p>
+
+          {/* Today's first period quick-look */}
+          {schedule.length > 0 && (
+            <Link
+              to="/teacher/attendance"
+              className="mt-5 flex items-center justify-between bg-white/15 backdrop-blur-sm border border-white/20 rounded-2xl px-4 py-3 active:bg-white/25 transition-all"
+            >
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100">Classes Today</p>
+                <p className="text-lg font-bold leading-tight">{schedule.length} Period{schedule.length !== 1 ? 's' : ''}</p>
+              </div>
+              <div className="bg-white text-blue-700 rounded-full px-3 py-1.5 text-xs font-bold flex items-center gap-1">
+                Attend <ChevronRight className="w-3.5 h-3.5" />
+              </div>
+            </Link>
+          )}
+
+          {/* Quick stats */}
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {[
+              { label: 'Classes', value: teacherData?.classes?.length || 0 },
+              { label: 'Students', value: attendanceCount.total },
+              { label: 'Homework', value: pendingHomework.length },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-white/15 backdrop-blur-sm rounded-xl px-2 py-2 text-center">
+                <p className="text-sm font-bold">{value}</p>
+                <p className="text-[9px] text-white/70 mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Action tiles */}
+        <div className="grid grid-cols-2 gap-3 px-4">
+          {teacherMobileTiles.map(({ to, label, icon: Icon, hint, urgent, bg }) => (
+            <Link
+              key={to}
+              to={to}
+              className={`relative bg-gradient-to-br ${bg} rounded-2xl p-4 text-white shadow-md active:scale-95 transition-transform min-h-[110px] flex flex-col justify-between`}
+            >
+              <Icon className="w-7 h-7" strokeWidth={2.25} />
+              <div>
+                <p className="text-base font-bold leading-tight">{label}</p>
+                <p className="text-[11px] text-white/80 mt-0.5">{hint}</p>
+              </div>
+              {urgent && (
+                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-yellow-300 rounded-full animate-pulse" />
+              )}
+            </Link>
+          ))}
+        </div>
+
+        {/* Staff notices */}
+        {notices.length > 0 && (
+          <div className="px-4 pb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Bell className="w-4 h-4 text-blue-600" />
+                Staff Notices
+              </h3>
+            </div>
+            <div className="space-y-2">
+              {notices.slice(0, 2).map((notice) => (
+                <div key={notice.id} className="bg-white border border-slate-100 rounded-xl p-3">
+                  <p className="text-sm font-bold text-slate-900 line-clamp-1">{notice.title}</p>
+                  <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{notice.content}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       {/* Welcome Header */}
       <PageHeader
         title={`Welcome, ${user.name}!`}
@@ -384,6 +517,7 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
           </Card>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
