@@ -378,8 +378,146 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
 
   const categories = ['All', 'Teacher', 'Principal', 'Accounts', 'Admin', 'Other Staff'];
 
+  const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const staffCategoryChips = ['all', 'teacher', 'principal', 'accounts', 'admin', 'other staff'];
+
   return (
-    <div className="space-y-8 pb-20">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Salary Management</h1>
+          <p className="text-[11px] text-emerald-100/90 mt-1">Payroll for {monthLabel}</p>
+
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-white/15 backdrop-blur rounded-lg px-3 py-1.5 text-xs font-bold text-white border-0 focus:outline-none"
+              style={{ colorScheme: 'dark' }}
+            />
+          </div>
+
+          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Total Payout</p>
+            <p className="text-3xl font-black mt-1">₹{stats.totalPaid.toLocaleString('en-IN')}</p>
+            <p className="text-[11px] text-emerald-100/90 mt-1">Net est. ₹{stats.totalNet.toLocaleString('en-IN')}</p>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-base font-bold">{staffList.length}</p>
+              <p className="text-[9px] text-white/80">Staff</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-base font-bold">{stats.pendingCount}</p>
+              <p className="text-[9px] text-white/80">Pending</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-base font-bold">₹{((stats.totalExpenses/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">All Paid</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4 pb-2">
+          <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search staff by name or email..." />
+        </div>
+
+        <div className="px-4 overflow-x-auto flex gap-2 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {staffCategoryChips.map(c => (
+            <button
+              key={c}
+              onClick={() => setSelectedCategory(c)}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap capitalize active:scale-95 transition-transform ${selectedCategory === c ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+            >
+              {c === 'all' ? 'All' : c}
+            </button>
+          ))}
+        </div>
+
+        <div className="px-4 pt-2 space-y-2.5">
+          {filteredStaff.length === 0 ? (
+            <div className="py-12 text-center">
+              <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No staff found</p>
+            </div>
+          ) : (
+            filteredStaff.map((staff) => {
+              const salary = salaries.find(s => (s.employeeId === staff.id || (s as any).teacherId === staff.id) && s.month === selectedMonth);
+              const isPaid = salary?.status === 'paid';
+              return (
+                <div key={staff.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={staff.name} size="sm" src={staff.photoURL} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">{staff.name}</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                        {staff.staffCategory} • {(staff as any).role || 'Staff'}
+                      </p>
+                    </div>
+                    {!salary ? (
+                      <Badge variant="warning" className="text-[9px] shrink-0">UNRECORDED</Badge>
+                    ) : (
+                      <Badge variant={isPaid ? 'success' : salary.status === 'partially_paid' ? 'info' : 'default'} className="text-[9px] shrink-0">
+                        {salary.status.replace('_', ' ').toUpperCase()}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="bg-slate-50 rounded-lg py-1.5 px-2">
+                      <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Net Salary</p>
+                      <p className="text-sm font-black text-slate-900">
+                        ₹{(salary ? (salary.netAmount || (salary as any).amount) : staff.baseSalary).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-emerald-50 rounded-lg py-1.5 px-2">
+                      <p className="text-[9px] text-emerald-700 uppercase tracking-widest font-bold">Paid</p>
+                      <p className="text-sm font-black text-emerald-700">₹{(salary?.paidAmount || 0).toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    {!salary ? (
+                      <button
+                        onClick={() => handleOpenCreatePayroll(staff)}
+                        className="w-full py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Generate Payroll
+                      </button>
+                    ) : !isPaid ? (
+                      <button
+                        onClick={() => handleOpenPayment(salary)}
+                        className="w-full py-2 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform shadow-sm"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" /> Disburse ₹{salary.balanceAmount.toLocaleString()}
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-bold flex items-center justify-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Paid
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <button
+          onClick={exportPayroll}
+          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          aria-label="Export"
+        >
+          <Download className="w-6 h-6" strokeWidth={2.5} />
+        </button>
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8 pb-20">
       <PageHeader
         title="Robust Payroll Management"
         subtitle="End-to-end salary processing with deduction tracking and detailed analytics"
@@ -622,6 +760,8 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
             </Button>
           </Card>
         </div>
+      </div>
+
       </div>
 
       {/* Step 1: Create Payroll Modal */}
@@ -901,7 +1041,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
           </div>
         </div>
       </Modal>
-    </div>
+    </>
   );
 }
 
