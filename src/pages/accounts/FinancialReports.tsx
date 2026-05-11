@@ -284,8 +284,97 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
     },
   ];
 
+  const range = getMonthRange(dateRange);
+  const totalIncome = payments.filter((p) => inRange(p.date, range)).reduce((s, p) => s + (p.amount || 0), 0);
+  const totalExpenseAmt = expenses.filter((e) => inRange(e.date, range)).reduce((s, e) => s + (e.amount || 0), 0);
+  const monthPrefix = range.from.slice(0, 7);
+  const totalSalariesAmt = salaries.filter((s) => s.month?.startsWith(monthPrefix)).reduce((s, e) => s + (e.netAmount || 0), 0);
+  const netProfit = totalIncome - (totalExpenseAmt + totalSalariesAmt);
+  const ranges = ['This Month', 'Last Month', 'This Quarter', 'This Year'];
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Financial Reports</h1>
+          <p className="text-[11px] text-emerald-100/90 mt-1">{dateRange} snapshot</p>
+
+          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Net {netProfit >= 0 ? 'Profit' : 'Loss'}</p>
+            <p className="text-3xl font-black mt-1">₹{Math.abs(netProfit).toLocaleString('en-IN')}</p>
+            <p className="text-[11px] text-emerald-100/90 mt-1">
+              Income ₹{((totalIncome/1000)|0).toLocaleString()}k − Costs ₹{(((totalExpenseAmt+totalSalariesAmt)/1000)|0).toLocaleString()}k
+            </p>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((totalIncome/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Income</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((totalExpenseAmt/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Expense</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-bold">₹{((totalSalariesAmt/1000)|0).toLocaleString()}k</p>
+              <p className="text-[9px] text-white/80">Salary</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4 pb-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Date Range</p>
+          <div className="overflow-x-auto flex gap-2 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            {ranges.map(r => (
+              <button
+                key={r}
+                onClick={() => setDateRange(r)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap active:scale-95 transition-transform ${dateRange === r ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="px-4 pt-2 space-y-3">
+          {reports.map((report) => {
+            const Icon = report.icon;
+            const isLoading = generating === report.type;
+            return (
+              <button
+                key={report.type}
+                onClick={() => handleGenerate(report.type)}
+                disabled={!!generating}
+                className="w-full bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex items-center gap-3 active:scale-[0.98] transition-transform disabled:opacity-60 text-left"
+              >
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${report.gradient}`}>
+                  <Icon className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-900">{report.title}</p>
+                  <p className="text-[11px] text-slate-500 leading-snug">{report.desc}</p>
+                </div>
+                <div className="shrink-0">
+                  {isLoading ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <Download className="w-4 h-4" />
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Financial Reports"
         subtitle="Generate and download school financial statements"
@@ -358,6 +447,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
           </Card>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
