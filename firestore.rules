@@ -220,7 +220,7 @@ service cloud.firestore {
     // Helper collections
     match /gradingScales/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
     match /exams/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin() || isTeacher(); }
-    match /salaries/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin(); }
+    match /salaries/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
     match /expenses/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
     match /payroll-config/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin(); }
     match /fine-config/{id} { allow read: if isAdmin() || isAccountant() || isParent() || isStudent(); allow write: if isAdmin(); }
