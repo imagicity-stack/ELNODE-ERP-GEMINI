@@ -205,8 +205,70 @@ export default function StaffManagement({ user }: { user: any }) {
     return 'error';
   };
 
+  const openAddModal = () => {
+    setIsEditMode(false);
+    setEditingStaff(null);
+    setFormData({ name: '', email: '', role: 'accounts', joiningDate: '', salary: '' });
+    setIsModalOpen(true);
+  };
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Staff & HR</h1>
+          <p className="text-xs text-indigo-100 mt-0.5">{staff.length} non-faculty members</p>
+        </div>
+
+        <div className="px-4 pt-4 space-y-2.5">
+          {staff.length === 0 ? (
+            <div className="py-12 text-center">
+              <Briefcase className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No staff yet</p>
+              <p className="text-xs text-slate-500 mt-1">Tap + to add a member</p>
+            </div>
+          ) : (
+            staff.map((member) => (
+              <button
+                key={member.id}
+                onClick={() => !readOnly && handleEdit(member)}
+                className="w-full bg-white rounded-2xl shadow-sm border border-slate-100 p-3 text-left active:scale-[0.98] transition-transform"
+              >
+                <div className="flex items-center gap-3">
+                  <Avatar name={member.name} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">{member.name}</p>
+                    <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
+                      <Mail className="w-3 h-3 shrink-0" />{member.email}
+                    </p>
+                  </div>
+                  <Badge variant={statusVariant(member.status)} className="text-[9px] shrink-0">
+                    {member.status}
+                  </Badge>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[10px]">
+                  <span className="font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md uppercase">{member.role}</span>
+                  <span className="text-slate-500">₹{(member.salary || 0).toLocaleString()}</span>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+
+        {!readOnly && (
+          <button
+            onClick={openAddModal}
+            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          >
+            <Plus className="w-6 h-6" strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title="Staff & HR Management"
         subtitle="Manage non-faculty staff members and their roles."
@@ -302,6 +364,7 @@ export default function StaffManagement({ user }: { user: any }) {
           />
         )}
       </Card>
+      </div>
 
       <Modal
         isOpen={isModalOpen}
@@ -369,6 +432,6 @@ export default function StaffManagement({ user }: { user: any }) {
           </FormField>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }
