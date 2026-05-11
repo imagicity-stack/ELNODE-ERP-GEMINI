@@ -1,30 +1,30 @@
 import { useState, useEffect } from 'react';
-import { 
-  History as HistoryIcon, 
-  Search, 
-  Filter, 
-  Download, 
-  Clock, 
-  User, 
-  Tag, 
+import {
+  History as HistoryIcon,
+  Search,
+  Filter,
+  Download,
+  Clock,
+  User,
+  Tag,
   Info,
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
   FileText
 } from 'lucide-react';
-import { 
-  PageHeader, 
-  Card, 
-  Button, 
-  Input, 
-  Select, 
-  Table, 
-  Thead, 
-  Th, 
-  Tbody, 
-  Tr, 
-  Td, 
+import {
+  PageHeader,
+  Card,
+  Button,
+  Input,
+  Select,
+  Table,
+  Thead,
+  Th,
+  Tbody,
+  Tr,
+  Td,
   Badge,
   EmptyState,
   IconButton
@@ -54,13 +54,13 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
     setLoading(true);
     const result = await getActivityLogs(
       selectedSection === 'all' ? undefined : selectedSection as ActivitySection,
-      500 // Fetch more for filtering/viewing
+      500
     );
     setLogs(result);
     setLoading(false);
   };
 
-  const filteredLogs = logs.filter(log => 
+  const filteredLogs = logs.filter(log =>
     log.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
     log.details.toLowerCase().includes(searchTerm.toLowerCase())
@@ -116,131 +116,233 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Activity Tracker"
-        subtitle="Monitor system logs and user activities across all modules."
-        icon={HistoryIcon}
-        iconColor="gradient-indigo"
-        actions={
-          <Button icon={Download} onClick={exportPDF} disabled={logs.length === 0}>
-            Export PDF
-          </Button>
-        }
-      />
-
-      <Card className="p-4 flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            placeholder="Search logs by action, user or details..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+    <>
+      {/* Mobile UI */}
+      <div className="md:hidden -mx-4 -mt-4">
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Activity Tracker</h1>
+          <p className="text-xs text-indigo-200 mt-0.5">{filteredLogs.length} log{filteredLogs.length !== 1 ? 's' : ''} found</p>
         </div>
-        <div className="flex gap-2 w-full md:w-auto">
-          <Select
-            value={selectedSection}
-            onChange={(e) => setSelectedSection(e.target.value)}
-            className="w-full md:w-48"
+
+        {/* Section filter chips */}
+        <div className="px-4 pt-3 pb-2 overflow-x-auto flex gap-2 [scrollbar-width:none] bg-white border-b border-slate-100">
+          {['all', ...SECTIONS].map(s => (
+            <button
+              key={s}
+              onClick={() => setSelectedSection(s)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all active:scale-95 ${selectedSection === s ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}
+            >
+              {s === 'all' ? 'All' : s}
+            </button>
+          ))}
+        </div>
+
+        <div className="px-4 pt-3 pb-3 bg-white border-b border-slate-100 flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              placeholder="Search logs..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-9 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
+            />
+          </div>
+          <button
+            onClick={exportPDF}
+            disabled={logs.length === 0}
+            className="px-3 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold active:scale-95 transition-transform disabled:opacity-50"
           >
-            <option value="all">All Sections</option>
-            {SECTIONS.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </Select>
+            <Download className="w-4 h-4" />
+          </button>
         </div>
-      </Card>
 
-      <div className={loading ? "opacity-60 pointer-events-none transition-opacity" : ""}>
-        <Card padding="none">
-          <Table>
-          <Thead>
-            <Tr>
-              <Th>Timestamp</Th>
-              <Th>User</Th>
-              <Th className="hidden md:table-cell">Section</Th>
-              <Th className="hidden sm:table-cell">Action</Th>
-              <Th>Details</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {paginatedLogs.map((log) => (
-              <Tr key={log.id} className="hover:bg-slate-50/50">
-                <Td className="whitespace-nowrap">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold text-slate-900">
+        <div className="px-4 pt-3 pb-24 space-y-2">
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600" />
+            </div>
+          ) : paginatedLogs.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-sm text-slate-400 font-medium">No activity logs found.</p>
+            </div>
+          ) : (
+            paginatedLogs.map((log) => (
+              <div key={log.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+                    <User className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-sm font-bold text-slate-900">{log.userName}</span>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                        log.section === 'Super Admin' ? 'bg-rose-100 text-rose-700' :
+                        log.section === 'Accounts' ? 'bg-emerald-100 text-emerald-700' :
+                        log.section === 'Academic' ? 'bg-blue-100 text-blue-700' :
+                        'bg-slate-100 text-slate-600'
+                      }`}>{log.section}</span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-700 mb-0.5">{log.action}</p>
+                    <p className="text-[10px] text-slate-500 line-clamp-2">{log.details}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 font-mono">
                       {format(new Date(log.timestamp), 'MMM dd, h:mm a')}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono sm:hidden">
-                      {log.section} · {log.action}
-                    </span>
+                    </p>
                   </div>
-                </Td>
-                <Td>
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-                      <User className="w-4 h-4 text-slate-500" />
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-sm font-bold text-slate-900 truncate">{log.userName}</span>
-                      <span className="text-xs text-slate-500 capitalize md:hidden">{log.userRole.replace('_', ' ')}</span>
-                    </div>
-                  </div>
-                </Td>
-                <Td className="hidden md:table-cell">
-                  <Badge variant={getSectionColor(log.section) as any}>
-                    {log.section}
-                  </Badge>
-                </Td>
-                <Td className="hidden sm:table-cell">
-                  <span className="text-sm font-medium text-slate-700">{log.action}</span>
-                </Td>
-                <Td className="max-w-xs truncate">
-                  <span className="text-xs text-slate-500" title={log.details}>
-                    {log.details}
-                  </span>
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
+                </div>
+              </div>
+            ))
+          )}
 
-        {filteredLogs.length === 0 && !loading && (
-          <EmptyState
-            title="No activities found"
-            description="Adjust your search or filters to see more results."
-            icon={FileText}
-          />
-        )}
-
-        {totalPages > 1 && (
-          <div className="p-4 border-t border-slate-100 flex items-center justify-between">
-            <p className="text-xs text-slate-500">
-              Showing {(page - 1) * itemsPerPage + 1} to {Math.min(page * itemsPerPage, filteredLogs.length)} of {filteredLogs.length} logs
-            </p>
-            <div className="flex gap-2">
-              <IconButton
-                icon={ChevronLeft}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between py-2">
+              <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                size="sm"
-              />
-              <span className="flex items-center px-3 text-xs font-bold text-slate-700 bg-slate-50 rounded-lg">
-                {page} / {totalPages}
-              </span>
-              <IconButton
-                icon={ChevronRight}
+                className="p-2 bg-white border border-slate-200 rounded-xl text-slate-600 disabled:opacity-40"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-bold text-slate-600">{page} / {totalPages}</span>
+              <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                size="sm"
-              />
+                className="p-2 bg-white border border-slate-200 rounded-xl text-slate-600 disabled:opacity-40"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Desktop UI */}
+      <div className="hidden md:block space-y-6">
+        <PageHeader
+          title="Activity Tracker"
+          subtitle="Monitor system logs and user activities across all modules."
+          icon={HistoryIcon}
+          iconColor="gradient-indigo"
+          actions={
+            <Button icon={Download} onClick={exportPDF} disabled={logs.length === 0}>
+              Export PDF
+            </Button>
+          }
+        />
+
+        <Card className="p-4 flex flex-col md:flex-row gap-4 items-center">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              placeholder="Search logs by action, user or details..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
           </div>
-        )}
-      </Card>
-    </div>
-  </div>
+          <div className="flex gap-2 w-full md:w-auto">
+            <Select
+              value={selectedSection}
+              onChange={(e) => setSelectedSection(e.target.value)}
+              className="w-full md:w-48"
+            >
+              <option value="all">All Sections</option>
+              {SECTIONS.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </Select>
+          </div>
+        </Card>
+
+        <div className={loading ? "opacity-60 pointer-events-none transition-opacity" : ""}>
+          <Card padding="none">
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Timestamp</Th>
+                  <Th>User</Th>
+                  <Th className="hidden md:table-cell">Section</Th>
+                  <Th className="hidden sm:table-cell">Action</Th>
+                  <Th>Details</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {paginatedLogs.map((log) => (
+                  <Tr key={log.id} className="hover:bg-slate-50/50">
+                    <Td className="whitespace-nowrap">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-slate-900">
+                          {format(new Date(log.timestamp), 'MMM dd, h:mm a')}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono sm:hidden">
+                          {log.section} · {log.action}
+                        </span>
+                      </div>
+                    </Td>
+                    <Td>
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                          <User className="w-4 h-4 text-slate-500" />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-bold text-slate-900 truncate">{log.userName}</span>
+                          <span className="text-xs text-slate-500 capitalize md:hidden">{log.userRole.replace('_', ' ')}</span>
+                        </div>
+                      </div>
+                    </Td>
+                    <Td className="hidden md:table-cell">
+                      <Badge variant={getSectionColor(log.section) as any}>
+                        {log.section}
+                      </Badge>
+                    </Td>
+                    <Td className="hidden sm:table-cell">
+                      <span className="text-sm font-medium text-slate-700">{log.action}</span>
+                    </Td>
+                    <Td className="max-w-xs truncate">
+                      <span className="text-xs text-slate-500" title={log.details}>
+                        {log.details}
+                      </span>
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+
+            {filteredLogs.length === 0 && !loading && (
+              <EmptyState
+                title="No activities found"
+                description="Adjust your search or filters to see more results."
+                icon={FileText}
+              />
+            )}
+
+            {totalPages > 1 && (
+              <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+                <p className="text-xs text-slate-500">
+                  Showing {(page - 1) * itemsPerPage + 1} to {Math.min(page * itemsPerPage, filteredLogs.length)} of {filteredLogs.length} logs
+                </p>
+                <div className="flex gap-2">
+                  <IconButton
+                    icon={ChevronLeft}
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    size="sm"
+                  />
+                  <span className="flex items-center px-3 text-xs font-bold text-slate-700 bg-slate-50 rounded-lg">
+                    {page} / {totalPages}
+                  </span>
+                  <IconButton
+                    icon={ChevronRight}
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    size="sm"
+                  />
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+    </>
   );
 }
