@@ -6,7 +6,11 @@ import {
   Clock,
   TrendingUp,
   Bell,
-  ArrowRight
+  ArrowRight,
+  ClipboardCheck,
+  FileText,
+  Users,
+  ChevronRight,
 } from 'lucide-react';
 import { UserProfile, Notice, Homework, Attendance, FeeRequest } from '../../types';
 import { Link } from 'react-router-dom';
@@ -95,8 +99,121 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
   const attendancePercentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
   const pendingFeeAmount = feeRequests.reduce((sum, f) => sum + ((f.totalAmount || 0) - (f.paidAmount || 0)), 0);
 
+  const mobileTiles = [
+    {
+      to: '/student/attendance',
+      label: 'Attendance',
+      icon: ClipboardCheck,
+      hint: `${attendancePercentage}% present`,
+      bg: 'from-emerald-500 to-emerald-700',
+    },
+    {
+      to: '/student/fees',
+      label: 'Fees',
+      icon: CreditCard,
+      hint: pendingFeeAmount > 0 ? `₹${pendingFeeAmount.toLocaleString('en-IN')} due` : 'All clear',
+      urgent: pendingFeeAmount > 0,
+      bg: 'from-violet-500 to-violet-700',
+    },
+    {
+      to: '/student/homework',
+      label: 'Homework',
+      icon: CheckSquare,
+      hint: homework.length > 0 ? `${homework.length} pending` : 'All done',
+      bg: 'from-amber-500 to-amber-700',
+    },
+    {
+      to: '/student/timetable',
+      label: 'Timetable',
+      icon: Calendar,
+      hint: 'Class schedule',
+      bg: 'from-sky-500 to-sky-700',
+    },
+    {
+      to: '/student/subjects',
+      label: 'Subjects',
+      icon: BookOpen,
+      hint: 'My subjects',
+      bg: 'from-indigo-500 to-indigo-700',
+    },
+    {
+      to: '/student/leave',
+      label: 'Leave',
+      icon: FileText,
+      hint: 'Apply for leave',
+      bg: 'from-rose-500 to-rose-700',
+    },
+  ];
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile Simplified UI ───────────────────────────────────────────── */}
+      <div className="md:hidden space-y-5 -mx-4 -mt-4">
+        {/* Greeting header */}
+        <div className="bg-gradient-to-br from-emerald-500 to-teal-700 px-5 pt-6 pb-8 text-white rounded-b-3xl shadow-lg">
+          <p className="text-xs font-medium text-emerald-100 uppercase tracking-widest">Student Portal</p>
+          <h1 className="text-2xl font-bold mt-1">{user.name}</h1>
+          <p className="text-xs text-emerald-100 mt-1">
+            {classesMap[user.classId] || user.classId || ''}{user.section ? ` · ${user.section}` : ''}
+          </p>
+          {/* Stats row */}
+          <div className="mt-5 grid grid-cols-3 gap-2">
+            {[
+              { label: 'Attendance', value: `${attendancePercentage}%` },
+              { label: 'Homework', value: `${homework.length} pending` },
+              { label: 'Fees Due', value: pendingFeeAmount > 0 ? `₹${pendingFeeAmount.toLocaleString('en-IN')}` : 'Nil' },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-white/15 backdrop-blur-sm rounded-xl px-2 py-2 text-center">
+                <p className="text-sm font-bold">{value}</p>
+                <p className="text-[9px] text-white/70 mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Action tiles */}
+        <div className="grid grid-cols-2 gap-3 px-4">
+          {mobileTiles.map(({ to, label, icon: Icon, hint, urgent, bg }) => (
+            <Link
+              key={to}
+              to={to}
+              className={`relative bg-gradient-to-br ${bg} rounded-2xl p-4 text-white shadow-md active:scale-95 transition-transform min-h-[110px] flex flex-col justify-between`}
+            >
+              <Icon className="w-7 h-7" strokeWidth={2.25} />
+              <div>
+                <p className="text-base font-bold leading-tight">{label}</p>
+                <p className="text-[11px] text-white/80 mt-0.5">{hint}</p>
+              </div>
+              {urgent && (
+                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-yellow-300 rounded-full animate-pulse" />
+              )}
+            </Link>
+          ))}
+        </div>
+
+        {/* Latest notices */}
+        {notices.length > 0 && (
+          <div className="px-4 pb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Bell className="w-4 h-4 text-emerald-600" />
+                Notices
+              </h3>
+            </div>
+            <div className="space-y-2">
+              {notices.slice(0, 2).map((notice) => (
+                <div key={notice.id} className="bg-white border border-slate-100 rounded-xl p-3">
+                  <p className="text-sm font-bold text-slate-900 line-clamp-1">{notice.title}</p>
+                  <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{notice.content}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       <PageHeader
         title={`Hello, ${user.name}!`}
         subtitle="Welcome to your student portal. Check your latest updates below."
@@ -237,6 +354,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
