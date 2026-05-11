@@ -247,8 +247,76 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
     );
   };
 
+  const upcomingEvents = events
+    .filter(e => parseISO(e.startDate) >= new Date())
+    .sort((a, b) => parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime());
+
   return (
-    <div className="space-y-8">
+    <>
+      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
+      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
+          <h1 className="text-xl font-bold mt-0.5">Academic Calendar</h1>
+          <p className="text-xs text-indigo-100 mt-0.5">{events.length} events · {upcomingEvents.length} upcoming</p>
+          <div className="mt-3 flex items-center justify-between bg-white/15 backdrop-blur rounded-xl px-3 py-2">
+            <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="active:scale-90 transition-transform">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <p className="text-sm font-bold">{format(currentMonth, 'MMMM yyyy')}</p>
+            <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="active:scale-90 transition-transform">
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-4 pt-4 space-y-2.5">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Upcoming Events</h3>
+          {upcomingEvents.length === 0 ? (
+            <div className="py-12 text-center">
+              <CalendarIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-700">No upcoming events</p>
+            </div>
+          ) : (
+            upcomingEvents.map(event => (
+              <div key={event.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex items-center gap-3">
+                <div className={cn(
+                  'w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0',
+                  event.type === 'holiday' ? 'bg-red-50 text-red-600' :
+                  event.type === 'exam' ? 'bg-amber-50 text-amber-600' :
+                  event.type === 'meeting' ? 'bg-violet-50 text-violet-600' :
+                  'bg-indigo-50 text-indigo-600'
+                )}>
+                  <span className="text-[9px] font-bold uppercase">{format(parseISO(event.startDate), 'MMM')}</span>
+                  <span className="text-sm font-bold leading-none">{format(parseISO(event.startDate), 'dd')}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-900 truncate">{event.title}</p>
+                  <p className="text-[11px] text-slate-500 capitalize">{event.type} · {event.allDay ? 'All Day' : format(parseISO(event.startDate), 'hh:mm a')}</p>
+                  {event.location && <p className="text-[10px] text-slate-400 truncate">{event.location}</p>}
+                </div>
+                {canWrite && (
+                  <button onClick={() => handleDeleteEvent(event.id)} className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center active:scale-90 transition-transform">
+                    <svg className="w-3.5 h-3.5 text-red-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {canWrite && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          >
+            <Plus className="w-6 h-6" strokeWidth={2.5} />
+          </button>
+        )}
+      </div>
+
+      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
+      <div className="hidden md:block space-y-8">
       {renderHeader()}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -301,6 +369,7 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
             </p>
           </div>
         </div>
+      </div>
       </div>
 
       <ConfirmModal
@@ -373,6 +442,6 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
           </FormField>
         </form>
       </Modal>
-    </div>
+    </>
   );
 }
