@@ -83,8 +83,9 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
         await addDoc(collection(db, 'expenses'), data);
       }
 
-      // Fire WhatsApp confirmation to vendor if phone provided and status is paid
-      if (!isEditMode && data.status === 'paid' && data.phone) {
+      // Fire WhatsApp confirmation to vendor — only for non-salary expenses
+      // (salary disbursements have their own salary_disbursed template fired from SalaryManagement)
+      if (!isEditMode && data.status === 'paid' && data.phone && data.category !== 'salary') {
         try {
           await fetch('/api/whatsapp/send-template', {
             method: 'POST',
@@ -95,10 +96,10 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
               parameters: [
                 data.biller || 'Vendor',
                 `₹${Number(data.amount).toLocaleString('en-IN')}`,
+                data.description || data.category,
                 data.category,
                 new Date(data.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }),
                 (data.paymentMode || 'cash').replace(/_/g, ' '),
-                data.description || '-',
               ],
             }),
           });
@@ -415,6 +416,15 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
               required
               value={formData.biller}
               onChange={(e) => setFormData({ ...formData, biller: e.target.value })}
+            />
+          </FormField>
+          <FormField label="What was this paid for?" required>
+            <Input
+              type="text"
+              required
+              placeholder="e.g. May electricity bill, 50 reams of A4 paper, AC servicing"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             />
           </FormField>
           <div className="grid grid-cols-2 gap-4">
