@@ -11,8 +11,17 @@ interface AIInsightsPanelProps {
   open: boolean;
   onClose: () => void;
   period?: 'This Month' | 'Last Month' | 'This Quarter' | 'This Year';
-  /** Optional initial system-like greeting line displayed before user types */
   greeting?: string;
+  /** Override the default financial context builder */
+  contextBuilder?: () => Promise<any>;
+  /** Role-specific suggested prompts */
+  suggestedPrompts?: string[];
+  /** Custom summary chips rendered below the greeting */
+  summaryRenderer?: (context: any) => React.ReactNode;
+  /** Textarea placeholder */
+  placeholder?: string;
+  /** Header subtitle label */
+  label?: string;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -84,7 +93,10 @@ function inline(text: string): React.ReactNode {
   return parts;
 }
 
-export default function AIInsightsPanel({ open, onClose, period = 'This Month', greeting }: AIInsightsPanelProps) {
+export default function AIInsightsPanel({
+  open, onClose, period = 'This Month', greeting,
+  contextBuilder, suggestedPrompts, summaryRenderer, placeholder, label,
+}: AIInsightsPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -93,17 +105,20 @@ export default function AIInsightsPanel({ open, onClose, period = 'This Month', 
   const [context, setContext] = useState<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const loadContext = contextBuilder ?? (() => buildAIContext(period));
+
   // Fetch fresh context when panel opens
   useEffect(() => {
     if (!open) return;
     if (context) return;
     setContextLoading(true);
     setContextError(null);
-    buildAIContext(period)
+    loadContext()
       .then(setContext)
       .catch((e) => setContextError(e?.message || 'Failed to load data'))
       .finally(() => setContextLoading(false));
-  }, [open, period]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -184,7 +199,7 @@ export default function AIInsightsPanel({ open, onClose, period = 'This Month', 
     setMessages([]);
     setContext(null);
     setContextLoading(true);
-    buildAIContext(period)
+    loadContext()
       .then(setContext)
       .catch((e) => setContextError(e?.message || 'Failed to load data'))
       .finally(() => setContextLoading(false));
@@ -210,7 +225,7 @@ export default function AIInsightsPanel({ open, onClose, period = 'This Month', 
             </div>
             <div>
               <p className="text-sm font-bold">AI Insights</p>
-              <p className="text-[11px] text-violet-100">Gemini · {context?.period?.label || period}</p>
+              <p className="text-[11px] text-violet-100">Gemini · {label || context?.period?.label || period}</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -258,7 +273,7 @@ export default function AIInsightsPanel({ open, onClose, period = 'This Month', 
                   {greeting ||
                     `Hi! I've loaded your school's data for ${context?.period?.label || period}. Ask me anything about finances, fees, expenses, payroll, or operational performance.`}
                 </p>
-                {context?.summary && (
+                {summaryRenderer ? summaryRenderer(context) : context?.summary && (
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                     <div className="bg-emerald-50 rounded-lg p-2">
                       <p className="text-[9px] text-emerald-700 font-bold uppercase">Income</p>
@@ -280,7 +295,7 @@ export default function AIInsightsPanel({ open, onClose, period = 'This Month', 
 
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-4 mb-2">Try asking</p>
               <div className="space-y-2">
-                {SUGGESTED_PROMPTS.map(p => (
+                {(suggestedPrompts ?? SUGGESTED_PROMPTS).map(p => (
                   <button
                     key={p}
                     onClick={() => sendMessage(p)}
@@ -331,7 +346,7 @@ export default function AIInsightsPanel({ open, onClose, period = 'This Month', 
                 }
               }}
               rows={1}
-              placeholder={contextLoading ? 'Loading data…' : 'Ask about fees, expenses, payroll…'}
+              placeholder={contextLoading ? 'Loading data…' : (placeholder ?? 'Ask about fees, expenses, payroll…')}
               disabled={loading || contextLoading}
               className="flex-1 resize-none px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-violet-400 focus:bg-white max-h-32"
             />

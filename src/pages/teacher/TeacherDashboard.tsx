@@ -12,6 +12,7 @@ import {
   ChevronRight,
   PenLine,
   GraduationCap,
+  Sparkles,
 } from 'lucide-react';
 import { UserProfile, Teacher, Attendance, Homework, Notice, Timetable, TimetableConfig, Exam } from '../../types';
 import { cn } from '../../lib/utils';
@@ -29,6 +30,8 @@ import {
   Spinner,
 } from '../../components/ui';
 import UpdatesSection from '../../components/UpdatesSection';
+import AIInsightsPanel from '../../components/AIInsightsPanel';
+import { buildTeacherContext } from '../../lib/aiContext';
 
 interface TeacherDashboardProps {
   user: UserProfile;
@@ -42,6 +45,7 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
   const [exams, setExams] = useState<Exam[]>([]);
   const [classPerformance, setClassPerformance] = useState<Record<string, { avg: number, trend: number }>>({});
   const [localLoading, setLocalLoading] = useState(true);
+  const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -518,6 +522,48 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
         </div>
       </div>
       </div>
+
+      {/* AI Insights floating button */}
+      <button
+        onClick={() => setAiOpen(true)}
+        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white px-4 py-3 rounded-2xl shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 active:scale-95 transition-all text-sm font-bold"
+        aria-label="Open AI Insights"
+      >
+        <Sparkles className="w-4 h-4" />
+        <span className="hidden sm:inline">AI Insights</span>
+      </button>
+
+      <AIInsightsPanel
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        label="Teacher AI"
+        greeting={`Hi ${user.name}! I've loaded your class data. Ask me about attendance, homework, student performance, or upcoming exams.`}
+        contextBuilder={() => buildTeacherContext(teacherData?.id || '', teacherData?.classes || [])}
+        placeholder="Ask about attendance, homework, exams…"
+        suggestedPrompts={[
+          'How is attendance looking across my classes today?',
+          'Which homework assignments are due soon?',
+          'Summarise my students\' exam performance.',
+          'Are there any upcoming exams I should prepare for?',
+          'Which class has the lowest average score?',
+        ]}
+        summaryRenderer={(ctx) => ctx?.summary ? (
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="bg-blue-50 rounded-lg p-2">
+              <p className="text-[9px] text-blue-700 font-bold uppercase">Classes</p>
+              <p className="text-xs font-black text-blue-800 mt-0.5">{ctx.summary.classCount}</p>
+            </div>
+            <div className="bg-emerald-50 rounded-lg p-2">
+              <p className="text-[9px] text-emerald-700 font-bold uppercase">Students</p>
+              <p className="text-xs font-black text-emerald-800 mt-0.5">{ctx.summary.studentCount}</p>
+            </div>
+            <div className="bg-amber-50 rounded-lg p-2">
+              <p className="text-[9px] text-amber-700 font-bold uppercase">Homework</p>
+              <p className="text-xs font-black text-amber-800 mt-0.5">{ctx.summary.homeworkAssigned}</p>
+            </div>
+          </div>
+        ) : null}
+      />
     </>
   );
 }
