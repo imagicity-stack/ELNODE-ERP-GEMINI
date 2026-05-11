@@ -339,8 +339,8 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
 
   const filteredStaff = useMemo(() => {
     return staffList.filter(s => {
-      const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           s.email.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = (s.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (s.email || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory === 'all' || s.staffCategory.toLowerCase() === selectedCategory.toLowerCase();
       return matchesSearch && matchesCategory;
     });
