@@ -111,6 +111,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
     paidAmount: 0,
     method: 'bank_transfer',
     transactionId: '',
+    phone: '',
   });
 
   const fetchData = async () => {
@@ -250,10 +251,12 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
 
   const handleOpenPayment = (salary: Salary) => {
     setProcessingSalary(salary);
+    const staff = staffList.find(s => s.id === salary.employeeId);
     setPaymentData({
       paidAmount: salary.balanceAmount,
       method: 'bank_transfer',
       transactionId: '',
+      phone: (staff as any)?.phone || '',
     });
     setIsPayModalOpen(true);
   };
@@ -302,6 +305,36 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
 
       logActivity(user, 'Processed Salary Payment', 'Accounts', `Paid ₹${paymentData.paidAmount.toLocaleString()} to ${processingSalary.employeeName}`);
       showToast('Payment processed successfully', 'success');
+
+      // Persist phone back to staff record if changed, and fire WhatsApp
+      try {
+        const staff = staffList.find(s => s.id === processingSalary.employeeId);
+        const enteredPhone = (paymentData.phone || '').trim();
+        if (enteredPhone && staff && (staff as any).phone !== enteredPhone) {
+          const collectionName = staff.staffCategory === 'Teacher' ? 'teachers' : 'staff';
+          await updateDoc(doc(db, collectionName, processingSalary.employeeId), { phone: enteredPhone });
+        }
+        if (enteredPhone) {
+          await fetch('/api/whatsapp/send-template', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone: enteredPhone,
+              templateName: 'salary_disbursed',
+              parameters: [
+                processingSalary.employeeName,
+                `₹${paymentData.paidAmount.toLocaleString('en-IN')}`,
+                processingSalary.month,
+                processingSalary.employeeRole,
+                (paymentData.method || '').replace(/_/g, ' '),
+                paymentData.transactionId || '-',
+                new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }),
+              ],
+            }),
+          });
+        }
+      } catch { /* non-fatal */ }
+
       setIsPayModalOpen(false);
       fetchData();
     } catch (err) {
@@ -962,10 +995,19 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
             </div>
 
             <FormField label="Transaction ID / Ref">
-              <Input 
+              <Input
                 value={paymentData.transactionId}
                 onChange={(e) => setPaymentData({ ...paymentData, transactionId: e.target.value })}
                 placeholder="TXN..."
+              />
+            </FormField>
+
+            <FormField label="Mobile Number (WhatsApp confirmation will be sent)">
+              <Input
+                type="tel"
+                value={paymentData.phone}
+                onChange={(e) => setPaymentData({ ...paymentData, phone: e.target.value })}
+                placeholder="10-digit mobile number"
               />
             </FormField>
 
@@ -975,6 +1017,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                 <p className="text-sm font-bold text-blue-900">Accounting Note</p>
                 <p className="text-[10px] text-blue-700 mt-0.5">
                   This will be recorded as a "Salary" expense in the accounts portal.
+                  {paymentData.phone ? ' A WhatsApp confirmation will be sent to the employee.' : ''}
                 </p>
               </div>
             </div>

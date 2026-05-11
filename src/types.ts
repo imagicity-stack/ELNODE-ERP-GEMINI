@@ -58,6 +58,7 @@ export interface Teacher {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role?: string; // For categorization
   subjects: string[]; // Subject IDs
   classes: string[]; // Class IDs or formatted strings
@@ -77,6 +78,7 @@ export interface StaffMember {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: string; // 'principal', 'accounts', 'security', etc.
   joiningDate: string;
   salary: number;
@@ -352,6 +354,9 @@ export interface Expense {
   status: 'paid' | 'pending';
   description?: string;
   receiptUrl?: string;
+  phone?: string;
+  address?: string;
+  paymentMode?: 'cash' | 'bank_transfer' | 'upi' | 'cheque' | 'card' | 'other';
 }
 
 export interface PayrollConfig {
