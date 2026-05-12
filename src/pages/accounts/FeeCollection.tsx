@@ -1,7 +1,7 @@
 import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure, PaymentMethod, FeeHead, FineConfig } from '../../types';
 import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale, MessageSquare, Search, Users } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc, runTransaction } from 'firebase/firestore';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
@@ -208,55 +208,145 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       if (!pendingRequest) throw new Error('No pending fee request found for student');
 
       const payAmount = Number(paymentData.amount);
-      const currentFine = fineConfig ? calculateFine(pendingRequest, fineConfig) : 0;
-      const totalRequired = pendingRequest.totalAmount + currentFine - (pendingRequest.waivedAmount || 0);
-      const remaining = totalRequired - (pendingRequest.paidAmount || 0);
-
-      if (payAmount > remaining) {
-        showToast(`Payment amount exceeds remaining balance (₹${remaining})`, 'error');
+      if (!Number.isFinite(payAmount) || payAmount <= 0) {
+        showToast('Enter a valid payment amount', 'error');
         setLoading(false);
         return;
       }
 
-      const paymentDoc: Omit<FeePayment, 'id'> = {
-        studentId: selectedStudent.id,
-        classId: selectedStudent.classId,
-        feeRequestId: pendingRequest.id,
-        feeHead: paymentData.head,
-        amount: payAmount,
-        date: paymentData.date,
-        method: paymentData.method,
-        referenceNumber: paymentData.referenceNumber,
-        receiptNumber: `REC-${Date.now()}`,
-        remarks: paymentData.remarks,
-      };
+      const receiptNumber = `REC-${Date.now()}`;
+      const requestRef = doc(db, 'feeRequests', pendingRequest.id);
 
-      await addDoc(collection(db, 'feePayments'), paymentDoc);
+      // Pre-fetch prior payments for this fee request so we can allocate the new
+      // amount across the request's heads (derived bookkeeping; authoritative
+      // totals stay on the transactional fee-request read below).
+      const priorPaymentsSnap = await getDocs(query(
+        collection(db, 'feePayments'),
+        where('feeRequestId', '==', pendingRequest.id)
+      ));
+      const priorPayments = priorPaymentsSnap.docs.map(d => d.data() as FeePayment);
+
+      // Atomic transaction: re-read the fee request, validate against latest state,
+      // create payment + update request together. Prevents stale-read overpayments.
+      const txResult = await runTransaction(db, async (tx) => {
+        const fresh = await tx.get(requestRef);
+        if (!fresh.exists()) throw new Error('Fee request no longer exists');
+        const freshData = { id: fresh.id, ...(fresh.data() as Omit<FeeRequest, 'id'>) } as FeeRequest;
+
+        if (freshData.status === 'paid') {
+          throw new Error('This fee request is already fully paid');
+        }
+
+        const currentFine = fineConfig ? calculateFine(freshData, fineConfig) : 0;
+        const totalRequired = freshData.totalAmount + currentFine - (freshData.waivedAmount || 0);
+        const alreadyPaid = freshData.paidAmount || 0;
+        const remaining = totalRequired - alreadyPaid;
+
+        if (payAmount > remaining + 0.001) {
+          throw new Error(`Payment amount exceeds remaining balance (₹${remaining.toFixed(2)})`);
+        }
+
+        const newPaidAmount = alreadyPaid + payAmount;
+        const newStatus: FeeRequest['status'] =
+          newPaidAmount + 0.001 >= totalRequired ? 'paid' : 'partially_paid';
+
+        // ── Allocate the new payment across the request's heads (FIFO).
+        // Uses balances derived from prior payments' allocations. Falls back to
+        // the user-selected head if the request has no head breakdown.
+        const headBalances = new Map<string, number>();
+        (freshData.heads || []).forEach(h => {
+          headBalances.set(h.name, (h.finalAmount ?? h.amount ?? 0));
+        });
+        for (const p of priorPayments) {
+          if (p.allocations && p.allocations.length) {
+            for (const a of p.allocations) {
+              const cur = headBalances.get(a.headName) ?? 0;
+              headBalances.set(a.headName, Math.max(0, cur - (a.amount || 0)));
+            }
+          } else if (p.feeHead && headBalances.has(p.feeHead)) {
+            const cur = headBalances.get(p.feeHead) ?? 0;
+            headBalances.set(p.feeHead, Math.max(0, cur - (p.amount || 0)));
+          }
+        }
+
+        const allocations: { headName: string; amount: number }[] = [];
+        let remainingToAllocate = payAmount;
+        // Prefer the user-selected head first, then walk the rest in declared order.
+        const orderedHeads = (freshData.heads || []).map(h => h.name);
+        const ordered = orderedHeads.includes(paymentData.head)
+          ? [paymentData.head, ...orderedHeads.filter(n => n !== paymentData.head)]
+          : orderedHeads;
+
+        for (const name of ordered) {
+          if (remainingToAllocate <= 0.001) break;
+          const bal = headBalances.get(name) ?? 0;
+          if (bal <= 0) continue;
+          const take = Math.min(bal, remainingToAllocate);
+          allocations.push({ headName: name, amount: Number(take.toFixed(2)) });
+          remainingToAllocate -= take;
+        }
+        // Any leftover (e.g. fine portion, or request had no heads) gets a fallback row
+        if (remainingToAllocate > 0.001) {
+          allocations.push({
+            headName: paymentData.head || 'Other',
+            amount: Number(remainingToAllocate.toFixed(2)),
+          });
+        }
+
+        const paymentDoc: Omit<FeePayment, 'id'> = {
+          studentId: selectedStudent.id,
+          classId: selectedStudent.classId,
+          feeRequestId: pendingRequest.id,
+          feeHead: paymentData.head,
+          amount: payAmount,
+          fineAmount: 0, // Fine snapshot lives on the FeeRequest; payments record cash collected
+          allocations,
+          date: paymentData.date,
+          method: paymentData.method,
+          referenceNumber: paymentData.referenceNumber,
+          receiptNumber,
+          remarks: paymentData.remarks,
+        };
+
+        const newPayRef = doc(collection(db, 'feePayments'));
+        tx.set(newPayRef, paymentDoc);
+        tx.update(requestRef, {
+          paidAmount: newPaidAmount,
+          fineAmount: currentFine,
+          status: newStatus,
+          updatedAt: new Date().toISOString(),
+        });
+
+        return { paymentId: newPayRef.id, newStatus, paymentDoc };
+      });
+
+      const paymentDoc = txResult.paymentDoc;
+
       logActivity(
-        user, 
-        'Recorded Fee Payment', 
-        'Accounts', 
+        user,
+        'Recorded Fee Payment',
+        'Accounts',
         `Collected ₹${payAmount.toLocaleString()} from ${selectedStudent.name} for ${paymentData.head}`,
         { studentId: selectedStudent.id, feeHead: paymentData.head, amount: payAmount }
       );
 
-      const newPaidAmount = (pendingRequest.paidAmount || 0) + payAmount;
-      const newStatus = newPaidAmount >= totalRequired ? 'paid' : 'partially_paid';
-
-      // Update request status
-      await updateDoc(doc(db, 'feeRequests', pendingRequest.id), { 
-        paidAmount: newPaidAmount,
-        fineAmount: currentFine, // Snapshot the fine amount at time of payment
-        status: newStatus 
-      });
-
-      // Update student status based on all requests
-      const studentRequests = feeRequests.filter(r => r.studentId === selectedStudent.id);
-      const isStillPending = studentRequests.some(r => r.id !== pendingRequest.id && r.status !== 'paid') || newStatus !== 'paid';
-      
-      await updateDoc(doc(db, 'students', selectedStudent.id), { 
-        feeStatus: isStillPending ? 'pending' : 'paid' 
-      });
+      // Recompute student.feeStatus from the latest set of requests (best-effort,
+      // derived field — done after the atomic write so it never blocks payment).
+      try {
+        const allReqSnap = await getDocs(query(
+          collection(db, 'feeRequests'),
+          where('studentId', '==', selectedStudent.id)
+        ));
+        const allReqs = allReqSnap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<FeeRequest, 'id'>) } as FeeRequest));
+        const stillPending = allReqs.some(r =>
+          r.id === pendingRequest.id ? txResult.newStatus !== 'paid' : r.status !== 'paid'
+        );
+        await updateDoc(doc(db, 'students', selectedStudent.id), {
+          feeStatus: stillPending ? 'pending' : 'paid',
+        });
+      } catch (statusErr) {
+        console.warn('[FeeCollection] derived student.feeStatus update failed:', statusErr);
+      }
 
       await logActivity(
         user,
@@ -294,8 +384,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           });
         }
       } catch { /* non-fatal — payment is already recorded */ }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'feePayments');
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (msg && !msg.toLowerCase().includes('firestore') && !msg.toLowerCase().includes('permission')) {
+        showToast(msg, 'error');
+      } else {
+        handleFirestoreError(err, OperationType.WRITE, 'feePayments');
+      }
     } finally {
       setLoading(false);
     }
@@ -320,7 +415,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       };
 
       if (isEditingRequest && currentRequestId) {
-        await updateDoc(doc(db, 'feeRequests', currentRequestId), requestPayload);
+        // Preserve createdAt and immutable bookkeeping fields on edit
+        const editPayload: Partial<FeeRequest> = {
+          ...requestPayload,
+          updatedAt: new Date().toISOString(),
+        } as Partial<FeeRequest>;
+        await updateDoc(doc(db, 'feeRequests', currentRequestId), editPayload);
         showToast('Fee request updated successfully!', 'success');
         await logActivity(
           user,
@@ -387,38 +487,57 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
   const handleDeletePayment = async (paymentId: string) => {
     if (!window.confirm('Are you sure you want to delete this payment record? This will revert the paid status of the corresponding fee request.')) return;
-    
+
     setLoading(true);
     try {
       const payment = payments.find(p => p.id === paymentId);
       if (!payment) return;
 
-      const request = feeRequests.find(r => r.id === payment.feeRequestId);
-      const student = students.find(s => s.id === payment.studentId);
+      const paymentRef = doc(db, 'feePayments', paymentId);
+      const requestRef = payment.feeRequestId ? doc(db, 'feeRequests', payment.feeRequestId) : null;
 
-      // 1. Delete payment doc
-      await deleteDoc(doc(db, 'feePayments', paymentId));
+      // Atomic delete + rollback. Re-reads request inside the transaction so
+      // the rolled-back paidAmount reflects current DB state, not stale UI cache.
+      await runTransaction(db, async (tx) => {
+        const payDoc = await tx.get(paymentRef);
+        if (!payDoc.exists()) {
+          // Already deleted — nothing to do, treat as success
+          return;
+        }
 
-      // 2. Rollback request paid amount
-      if (request) {
-        const newPaidAmount = Math.max(0, (request.paidAmount || 0) - payment.amount);
-        const newStatus = newPaidAmount === 0 ? 'pending' : 'partially_paid';
-        
-        await updateDoc(doc(db, 'feeRequests', request.id), {
-          paidAmount: newPaidAmount,
-          status: newStatus
-        });
+        if (requestRef) {
+          const reqDoc = await tx.get(requestRef);
+          if (reqDoc.exists()) {
+            const reqData = reqDoc.data() as FeeRequest;
+            const newPaidAmount = Math.max(0, (reqData.paidAmount || 0) - payment.amount);
+            const newStatus: FeeRequest['status'] = newPaidAmount === 0 ? 'pending' : 'partially_paid';
+            tx.update(requestRef, {
+              paidAmount: newPaidAmount,
+              status: newStatus,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
 
-        // Update student status based on all requests
-        const studentRequests = feeRequests.filter(r => r.studentId === student.id);
-        const isStillPending = studentRequests.some(r => {
-          if (r.id === request.id) return true; // Just rollbacked to unpaid, so this request is definitely pending
+        tx.delete(paymentRef);
+      });
+
+      // Recompute derived student.feeStatus (best-effort, post-transaction)
+      try {
+        const allReqSnap = await getDocs(query(
+          collection(db, 'feeRequests'),
+          where('studentId', '==', payment.studentId)
+        ));
+        const stillPending = allReqSnap.docs.some(d => {
+          const r = d.data() as FeeRequest;
+          if (d.id === payment.feeRequestId) return true; // just rolled back
           return r.status !== 'paid';
         });
-
-        await updateDoc(doc(db, 'students', student.id), { 
-          feeStatus: isStillPending ? 'pending' : 'paid' 
+        await updateDoc(doc(db, 'students', payment.studentId), {
+          feeStatus: stillPending ? 'pending' : 'paid',
         });
+      } catch (statusErr) {
+        console.warn('[FeeCollection] derived student.feeStatus update failed after delete:', statusErr);
       }
 
       await logActivity(
@@ -431,8 +550,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       showToast('Payment record deleted successfully', 'success');
       fetchData();
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, 'feePayments');
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (msg && !msg.toLowerCase().includes('firestore') && !msg.toLowerCase().includes('permission')) {
+        showToast(msg, 'error');
+      } else {
+        handleFirestoreError(err, OperationType.DELETE, 'feePayments');
+      }
     } finally {
       setLoading(false);
     }
@@ -656,7 +780,15 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                         <button
                           onClick={() => {
                             setSelectedStudent(student);
-                            setPaymentData({ ...paymentData, amount: balance.toString() });
+                            // Default head to the first head from the active request, falling back to structure / global
+                            const pending = feeRequests.find(r => r.studentId === student.id && r.status !== 'paid');
+                            const structure = feeStructures.find(fs => fs.classId === student.classId);
+                            const defaultHead =
+                              pending?.heads?.[0]?.name ||
+                              structure?.heads?.[0]?.name ||
+                              globalHeads[0]?.name ||
+                              'Tuition Fees';
+                            setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
                             setIsModalOpen(true);
                           }}
                           className="flex-1 py-2 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform shadow-sm"
@@ -1143,12 +1275,27 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               value={paymentData.head}
               onChange={(e) => setPaymentData({ ...paymentData, head: e.target.value })}
             >
-              <option value="Tuition Fees">Tuition Fees</option>
-              <option value="Transport Fees">Transport Fees</option>
-              <option value="Examination Fees">Examination Fees</option>
-              <option value="Hostel Fees">Hostel Fees</option>
-              <option value="Academic Fees">Academic Fees</option>
-              <option value="Miscellaneous">Miscellaneous</option>
+              {(() => {
+                // Prefer heads from the active pending fee request for this student.
+                // Fall back to the student's class fee structure, then to the global heads.
+                const pending = selectedStudent
+                  ? feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid')
+                  : null;
+                const structure = selectedStudent
+                  ? feeStructures.find(fs => fs.classId === selectedStudent.classId)
+                  : null;
+
+                const sourceHeads =
+                  (pending?.heads && pending.heads.length > 0 && pending.heads.map(h => h.name)) ||
+                  (structure?.heads && structure.heads.length > 0 && structure.heads.map(h => h.name)) ||
+                  (globalHeads.length > 0 && globalHeads.map(h => h.name)) ||
+                  ['Tuition Fees', 'Transport Fees', 'Examination Fees', 'Hostel Fees', 'Academic Fees', 'Miscellaneous'];
+
+                const unique = Array.from(new Set(sourceHeads as string[]));
+                return unique.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ));
+              })()}
             </Select>
           </FormField>
           <FormField label="Amount (₹)" required>

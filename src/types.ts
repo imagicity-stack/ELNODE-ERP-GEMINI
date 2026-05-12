@@ -399,13 +399,20 @@ export interface Salary {
   updatedAt: string;
 }
 
+export interface PaymentAllocation {
+  headName: string;        // Must match a name in the parent FeeRequest.heads[]
+  amount: number;          // Portion of FeePayment.amount applied to this head
+}
+
 export interface FeePayment {
   id: string;
   studentId: string;
   classId: string;
   feeRequestId: string;
-  feeHead: string; // e.g. Tuition, Transport
+  feeHead: string;                  // Primary head label (kept for backwards-compatibility)
   amount: number;
+  fineAmount?: number;              // Fine snapshotted into this payment (if any)
+  allocations?: PaymentAllocation[]; // Breakdown across the request's heads
   date: string;
   method: PaymentMethod;
   referenceNumber?: string;
