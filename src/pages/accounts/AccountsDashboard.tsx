@@ -14,6 +14,7 @@ import {
   BarChart3,
   PieChart,
   Sparkles,
+  Scale,
 } from 'lucide-react';
 import { UserProfile, Expense, FeePayment, Fee, Student, FeeRequest, Class } from '../../types';
 import { useState, useEffect } from 'react';
@@ -203,6 +204,7 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
     { label: 'Salaries', icon: CreditCard, path: '/accounts/salaries', gradient: 'from-indigo-500 to-blue-600' },
     { label: 'Reports', icon: BarChart3, path: '/accounts/reports', gradient: 'from-violet-500 to-purple-600' },
     { label: 'Analytics', icon: PieChart, path: '/accounts/analytics', gradient: 'from-amber-500 to-orange-600' },
+    { label: 'Reconciliation', icon: Scale, path: '/accounts/reconciliation', gradient: 'from-slate-500 to-slate-700' },
   ];
 
   return (

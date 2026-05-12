@@ -217,6 +217,15 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       const receiptNumber = `REC-${Date.now()}`;
       const requestRef = doc(db, 'feeRequests', pendingRequest.id);
 
+      // Pre-fetch prior payments for this fee request so we can allocate the new
+      // amount across the request's heads (derived bookkeeping; authoritative
+      // totals stay on the transactional fee-request read below).
+      const priorPaymentsSnap = await getDocs(query(
+        collection(db, 'feePayments'),
+        where('feeRequestId', '==', pendingRequest.id)
+      ));
+      const priorPayments = priorPaymentsSnap.docs.map(d => d.data() as FeePayment);
+
       // Atomic transaction: re-read the fee request, validate against latest state,
       // create payment + update request together. Prevents stale-read overpayments.
       const txResult = await runTransaction(db, async (tx) => {
@@ -241,12 +250,57 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         const newStatus: FeeRequest['status'] =
           newPaidAmount + 0.001 >= totalRequired ? 'paid' : 'partially_paid';
 
+        // ── Allocate the new payment across the request's heads (FIFO).
+        // Uses balances derived from prior payments' allocations. Falls back to
+        // the user-selected head if the request has no head breakdown.
+        const headBalances = new Map<string, number>();
+        (freshData.heads || []).forEach(h => {
+          headBalances.set(h.name, (h.finalAmount ?? h.amount ?? 0));
+        });
+        for (const p of priorPayments) {
+          if (p.allocations && p.allocations.length) {
+            for (const a of p.allocations) {
+              const cur = headBalances.get(a.headName) ?? 0;
+              headBalances.set(a.headName, Math.max(0, cur - (a.amount || 0)));
+            }
+          } else if (p.feeHead && headBalances.has(p.feeHead)) {
+            const cur = headBalances.get(p.feeHead) ?? 0;
+            headBalances.set(p.feeHead, Math.max(0, cur - (p.amount || 0)));
+          }
+        }
+
+        const allocations: { headName: string; amount: number }[] = [];
+        let remainingToAllocate = payAmount;
+        // Prefer the user-selected head first, then walk the rest in declared order.
+        const orderedHeads = (freshData.heads || []).map(h => h.name);
+        const ordered = orderedHeads.includes(paymentData.head)
+          ? [paymentData.head, ...orderedHeads.filter(n => n !== paymentData.head)]
+          : orderedHeads;
+
+        for (const name of ordered) {
+          if (remainingToAllocate <= 0.001) break;
+          const bal = headBalances.get(name) ?? 0;
+          if (bal <= 0) continue;
+          const take = Math.min(bal, remainingToAllocate);
+          allocations.push({ headName: name, amount: Number(take.toFixed(2)) });
+          remainingToAllocate -= take;
+        }
+        // Any leftover (e.g. fine portion, or request had no heads) gets a fallback row
+        if (remainingToAllocate > 0.001) {
+          allocations.push({
+            headName: paymentData.head || 'Other',
+            amount: Number(remainingToAllocate.toFixed(2)),
+          });
+        }
+
         const paymentDoc: Omit<FeePayment, 'id'> = {
           studentId: selectedStudent.id,
           classId: selectedStudent.classId,
           feeRequestId: pendingRequest.id,
           feeHead: paymentData.head,
           amount: payAmount,
+          fineAmount: 0, // Fine snapshot lives on the FeeRequest; payments record cash collected
+          allocations,
           date: paymentData.date,
           method: paymentData.method,
           referenceNumber: paymentData.referenceNumber,
@@ -361,7 +415,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       };
 
       if (isEditingRequest && currentRequestId) {
-        await updateDoc(doc(db, 'feeRequests', currentRequestId), requestPayload);
+        // Preserve createdAt and immutable bookkeeping fields on edit
+        const editPayload: Partial<FeeRequest> = {
+          ...requestPayload,
+          updatedAt: new Date().toISOString(),
+        } as Partial<FeeRequest>;
+        await updateDoc(doc(db, 'feeRequests', currentRequestId), editPayload);
         showToast('Fee request updated successfully!', 'success');
         await logActivity(
           user,
@@ -721,7 +780,15 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                         <button
                           onClick={() => {
                             setSelectedStudent(student);
-                            setPaymentData({ ...paymentData, amount: balance.toString() });
+                            // Default head to the first head from the active request, falling back to structure / global
+                            const pending = feeRequests.find(r => r.studentId === student.id && r.status !== 'paid');
+                            const structure = feeStructures.find(fs => fs.classId === student.classId);
+                            const defaultHead =
+                              pending?.heads?.[0]?.name ||
+                              structure?.heads?.[0]?.name ||
+                              globalHeads[0]?.name ||
+                              'Tuition Fees';
+                            setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
                             setIsModalOpen(true);
                           }}
                           className="flex-1 py-2 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform shadow-sm"
@@ -1208,12 +1275,27 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               value={paymentData.head}
               onChange={(e) => setPaymentData({ ...paymentData, head: e.target.value })}
             >
-              <option value="Tuition Fees">Tuition Fees</option>
-              <option value="Transport Fees">Transport Fees</option>
-              <option value="Examination Fees">Examination Fees</option>
-              <option value="Hostel Fees">Hostel Fees</option>
-              <option value="Academic Fees">Academic Fees</option>
-              <option value="Miscellaneous">Miscellaneous</option>
+              {(() => {
+                // Prefer heads from the active pending fee request for this student.
+                // Fall back to the student's class fee structure, then to the global heads.
+                const pending = selectedStudent
+                  ? feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid')
+                  : null;
+                const structure = selectedStudent
+                  ? feeStructures.find(fs => fs.classId === selectedStudent.classId)
+                  : null;
+
+                const sourceHeads =
+                  (pending?.heads && pending.heads.length > 0 && pending.heads.map(h => h.name)) ||
+                  (structure?.heads && structure.heads.length > 0 && structure.heads.map(h => h.name)) ||
+                  (globalHeads.length > 0 && globalHeads.map(h => h.name)) ||
+                  ['Tuition Fees', 'Transport Fees', 'Examination Fees', 'Hostel Fees', 'Academic Fees', 'Miscellaneous'];
+
+                const unique = Array.from(new Set(sourceHeads as string[]));
+                return unique.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ));
+              })()}
             </Select>
           </FormField>
           <FormField label="Amount (₹)" required>

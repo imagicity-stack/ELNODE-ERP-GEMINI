@@ -11,6 +11,7 @@ import ExpenseManagement from './ExpenseManagement';
 import SalaryManagement from './SalaryManagement';
 import FinancialReports from './FinancialReports';
 import PaymentAnalytics from './PaymentAnalytics';
+import PaymentReconciliation from './PaymentReconciliation';
 import ProfileSettings from '../shared/ProfileSettings';
 import WhatsAppNotifications from '../admin/WhatsAppNotifications';
 
@@ -25,6 +26,7 @@ export default function AccountsPortal({ user }: { user: UserProfile }) {
         <Route path="/salaries" element={<SalaryManagement user={user} />} />
         <Route path="/reports" element={<FinancialReports user={user} />} />
         <Route path="/analytics" element={<PaymentAnalytics user={user} />} />
+        <Route path="/reconciliation" element={<PaymentReconciliation user={user} />} />
         <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="/whatsapp" element={<WhatsAppNotifications user={user} />} />
         <Route path="*" element={<Navigate to="/accounts" />} />
