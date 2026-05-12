@@ -54,6 +54,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     admissionNumber: '',
     classId: '',
     section: '',
+    gender: '',
     fatherName: '',
     motherName: '',
     phone: '',
@@ -108,6 +109,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         admissionNumber: formData.admissionNumber,
         classId: formData.classId,
         section: formData.section,
+        gender: formData.gender,
         houseId: formData.houseId,
         photoURL: formData.photoURL,
         transportDetails: formData.transportDetails,
@@ -301,6 +303,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       admissionNumber: student.admissionNumber,
       classId: classObj?.id || student.classId,
       section: student.section,
+      gender: student.gender || '',
       fatherName: student.parentDetails?.fatherName || '',
       motherName: student.parentDetails?.motherName || '',
       phone: student.parentDetails?.phone || '',
@@ -508,7 +511,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const openAddModal = () => {
     setIsEditMode(false);
     setEditingStudent(null);
-    setFormData({ name: '', schoolNumber: '', admissionNumber: '', classId: '', section: '', fatherName: '', motherName: '', phone: '', email: '', transportDetails: '', medicalNotes: '', academicHistory: '', houseId: '', address: '', photoURL: '' });
+    setFormData({ name: '', schoolNumber: '', admissionNumber: '', classId: '', section: '', gender: '', fatherName: '', motherName: '', phone: '', email: '', transportDetails: '', medicalNotes: '', academicHistory: '', houseId: '', address: '', photoURL: '' });
     setIsModalOpen(true);
   };
 
@@ -771,7 +774,15 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                     ))}
                   </Select>
                 </FormField>
-                <FormField label="House" className="col-span-2">
+                <FormField label="Gender" required>
+                  <Select required value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}>
+                    <option value="">Select Gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </Select>
+                </FormField>
+                <FormField label="House">
                   <Select value={formData.houseId} onChange={e => setFormData({...formData, houseId: e.target.value})}>
                     <option value="">Select House (optional)</option>
                     {houses.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
