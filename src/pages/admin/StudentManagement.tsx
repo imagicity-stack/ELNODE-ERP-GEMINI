@@ -212,23 +212,26 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       // Create Student Auth Account
       const studentUid = await getOrCreateUser(studentEmail);
 
-      // Create Parent Auth Account
-      const parentUidFromAuth = await getOrCreateUser(parentEmail);
-      
-      // 1. Check if parent already exists (by phone or email)
-      const parentsQuery = query(
-        collection(db, 'users'), 
-        where('role', '==', 'parent'),
-        where('email', '==', parentEmail)
-      );
-      const parentDocs = await getDocs(parentsQuery);
-      
-      let parentUid = parentUidFromAuth;
-      let isNewParent = true;
+      // Look up existing parent by phone number (multi-child families share one login)
+      const normalizePhone = (p: string) => (p || '').replace(/\D/g, '').slice(-10);
+      const normalizedPhone = normalizePhone(formData.phone);
 
-      if (!parentDocs.empty) {
-        parentUid = parentDocs.docs[0].id;
+      const allParentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'parent')));
+      const existingParentDoc = normalizedPhone
+        ? allParentsSnap.docs.find(d => normalizePhone((d.data() as any).phone || '') === normalizedPhone)
+        : undefined;
+
+      let parentUid: string;
+      let isNewParent: boolean;
+      let existingParentData: UserProfile | null = null;
+
+      if (existingParentDoc) {
+        parentUid = existingParentDoc.id;
+        existingParentData = existingParentDoc.data() as UserProfile;
         isNewParent = false;
+      } else {
+        parentUid = await getOrCreateUser(parentEmail);
+        isNewParent = true;
       }
 
       // 2. Save Student Document
@@ -272,10 +275,9 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         });
       } else {
         // Update existing parent with new student ID
-        const existingData = parentDocs.docs[0].data() as UserProfile;
         await setDoc(doc(db, 'users', parentUid), {
-          ...existingData,
-          studentIds: [...(existingData.studentIds || []), studentRef.id]
+          ...(existingParentData || {}),
+          studentIds: [...((existingParentData?.studentIds) || []), studentRef.id]
         }, { merge: true });
       }
 
@@ -411,13 +413,27 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         const parentEmail = `p${schoolNumber}@${SCHOOL_DOMAIN}`;
 
         const studentUid = await getOrCreateUser(studentEmail);
-        const parentUidFromAuth = await getOrCreateUser(parentEmail);
 
-        const parentsQuery = query(collection(db, 'users'), where('role', '==', 'parent'), where('email', '==', parentEmail));
-        const parentDocs = await getDocs(parentsQuery);
-        let parentUid = parentUidFromAuth;
-        let isNewParent = true;
-        if (!parentDocs.empty) { parentUid = parentDocs.docs[0].id; isNewParent = false; }
+        // Look up existing parent by phone (multi-child families share one login)
+        const normalizePhone = (p: string) => (p || '').replace(/\D/g, '').slice(-10);
+        const normalizedPhone = normalizePhone(row.phone || '');
+        const allParentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'parent')));
+        const existingParentDoc = normalizedPhone
+          ? allParentsSnap.docs.find(d => normalizePhone((d.data() as any).phone || '') === normalizedPhone)
+          : undefined;
+
+        let parentUid: string;
+        let isNewParent: boolean;
+        let existingParentData: UserProfile | null = null;
+
+        if (existingParentDoc) {
+          parentUid = existingParentDoc.id;
+          existingParentData = existingParentDoc.data() as UserProfile;
+          isNewParent = false;
+        } else {
+          parentUid = await getOrCreateUser(parentEmail);
+          isNewParent = true;
+        }
 
         const studentRef = await addDoc(collection(db, 'students'), {
           name,
@@ -469,8 +485,10 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             createdAt: new Date().toISOString(),
           });
         } else {
-          const existingData = parentDocs.docs[0].data() as UserProfile;
-          await setDoc(doc(db, 'users', parentUid), { ...existingData, studentIds: [...(existingData.studentIds || []), studentRef.id] }, { merge: true });
+          await setDoc(doc(db, 'users', parentUid), {
+            ...(existingParentData || {}),
+            studentIds: [...((existingParentData?.studentIds) || []), studentRef.id],
+          }, { merge: true });
         }
 
         results.push({ name, status: 'ok' });
