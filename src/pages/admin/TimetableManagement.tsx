@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, doc, query, where, addDoc, updateDoc, deleteDoc, getDoc, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { Calendar, Plus, Trash2, Edit2, Clock, Users, BookOpen, AlertCircle, Settings, Save, Trash } from 'lucide-react';
+import { Calendar, Plus, Trash2, Edit2, Clock, Users, BookOpen, AlertCircle, Settings, Save, Trash, Archive, History } from 'lucide-react';
 import { PageHeader, Card, Button, IconButton, Modal, ConfirmModal, Select, FormField, Input, Badge } from '../../components/ui';
+import { logActivity } from '../../services/activityService';
 import { Class, Subject, Teacher, Timetable, TimetableConfig, TimeSlot, UserProfile } from '../../types';
 import { usePermissions } from '../../hooks/usePermissions';
 
@@ -18,6 +19,13 @@ export default function TimetableManagement({ user }: { user: UserProfile }) {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [publishEffectiveFrom, setPublishEffectiveFrom] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [publishAcademicYear, setPublishAcademicYear] = useState<string>('');
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [archiveDocs, setArchiveDocs] = useState<Timetable[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [configLoading, setConfigLoading] = useState(false);
 
@@ -129,6 +137,8 @@ export default function TimetableManagement({ user }: { user: UserProfile }) {
               room: formData.room
             }]
           }],
+          version: 1,
+          effectiveFrom: new Date().toISOString().split('T')[0],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         } as any; // Type assertion because of schedule structure
@@ -184,6 +194,79 @@ export default function TimetableManagement({ user }: { user: UserProfile }) {
     if (!selectedTimetable) return null;
     const daySchedule = selectedTimetable.schedule.find(s => s.day === day);
     return daySchedule?.periods.find(p => p.slotId === slotId);
+  };
+
+  // Archive current timetable into `timetableArchive`, then bump the live doc's version.
+  // Existing readers (parents/students/teachers) keep reading the live doc and see the new version
+  // immediately; historical lesson logs continue to reference their original slot snapshots.
+  const handlePublishNewVersion = async () => {
+    if (!selectedTimetable || !selectedClassId) return;
+    setPublishLoading(true);
+    try {
+      const effectiveFromIso = publishEffectiveFrom || new Date().toISOString().split('T')[0];
+      const prevVersion = selectedTimetable.version || 1;
+      const nextVersion = prevVersion + 1;
+
+      // 1) Snapshot the current live doc into the archive collection.
+      const archivePayload: any = {
+        classId: selectedTimetable.classId,
+        schedule: selectedTimetable.schedule,
+        academicYear: selectedTimetable.academicYear || publishAcademicYear || '',
+        version: prevVersion,
+        effectiveFrom: selectedTimetable.effectiveFrom || '',
+        effectiveTo: effectiveFromIso,
+        updatedAt: selectedTimetable.updatedAt,
+        archivedAt: new Date().toISOString(),
+        archivedBy: user.uid,
+      };
+      // Strip undefined values for Firestore safety
+      const archiveClean = JSON.parse(JSON.stringify(archivePayload));
+      await addDoc(collection(db, 'timetableArchive'), archiveClean);
+
+      // 2) Update the live doc with new version metadata. Schedule stays as-is; the admin
+      //    can now edit it freely and those edits belong to the new version.
+      await updateDoc(doc(db, 'timetable', selectedTimetable.id), {
+        version: nextVersion,
+        effectiveFrom: effectiveFromIso,
+        academicYear: publishAcademicYear || selectedTimetable.academicYear || '',
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Refresh local state
+      const snap = await getDocs(collection(db, 'timetable'));
+      setTimetables(snap.docs.map(d => ({ id: d.id, ...d.data() } as Timetable)));
+
+      logActivity(
+        user,
+        'Published Timetable Version',
+        'Academic',
+        `Class ${classes.find(c => c.id === selectedClassId)?.name || selectedClassId} → v${nextVersion} (effective ${effectiveFromIso})`,
+        { classId: selectedClassId, version: nextVersion, effectiveFrom: effectiveFromIso }
+      );
+
+      setIsPublishModalOpen(false);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'timetable');
+    } finally {
+      setPublishLoading(false);
+    }
+  };
+
+  const openHistory = async () => {
+    if (!selectedClassId) return;
+    setIsHistoryModalOpen(true);
+    setHistoryLoading(true);
+    try {
+      const q = query(collection(db, 'timetableArchive'), where('classId', '==', selectedClassId));
+      const snap = await getDocs(q);
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Timetable));
+      docs.sort((a, b) => (b.version || 0) - (a.version || 0));
+      setArchiveDocs(docs);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'timetableArchive');
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   const saveConfig = async () => {
@@ -377,13 +460,35 @@ export default function TimetableManagement({ user }: { user: UserProfile }) {
         actions={
           <div className="flex items-center gap-3">
              {!readOnly && (
-               <Button 
+               <Button
                   variant="secondary"
-                  icon={Settings} 
+                  icon={Settings}
                   onClick={() => setIsConfigModalOpen(true)}
               >
                   Schedule Settings
               </Button>
+             )}
+             {selectedTimetable && (
+               <Button
+                 variant="secondary"
+                 icon={History}
+                 onClick={openHistory}
+               >
+                 History
+               </Button>
+             )}
+             {!readOnly && selectedTimetable && (
+               <Button
+                 variant="secondary"
+                 icon={Archive}
+                 onClick={() => {
+                   setPublishEffectiveFrom(new Date().toISOString().split('T')[0]);
+                   setPublishAcademicYear(selectedTimetable.academicYear || '');
+                   setIsPublishModalOpen(true);
+                 }}
+               >
+                 Save as New Version
+               </Button>
              )}
              <Select
               value={selectedClassId}
@@ -694,6 +799,82 @@ export default function TimetableManagement({ user }: { user: UserProfile }) {
             />
           </FormField>
         </form>
+      </Modal>
+
+      {/* Publish New Version Modal */}
+      <Modal
+        isOpen={isPublishModalOpen}
+        onClose={() => setIsPublishModalOpen(false)}
+        title="Save as New Version"
+        subtitle="Archive the current schedule and start a new version. Past lesson logs remain anchored to their original slots."
+        footer={
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" onClick={() => setIsPublishModalOpen(false)}>Cancel</Button>
+            <Button icon={Archive} onClick={handlePublishNewVersion} loading={publishLoading}>Archive & Publish</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-sm text-amber-800 flex gap-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">When should you use this?</p>
+              <p className="mt-1 text-xs leading-relaxed">
+                Use this for permanent restructures (new term, government rule change). For minor timing tweaks just edit the slots directly — old lesson logs already store their slot labels.
+              </p>
+            </div>
+          </div>
+          <FormField label="Effective from">
+            <Input type="date" value={publishEffectiveFrom} onChange={e => setPublishEffectiveFrom(e.target.value)} />
+          </FormField>
+          <FormField label="Academic year">
+            <Input placeholder="e.g. 2025-26" value={publishAcademicYear} onChange={e => setPublishAcademicYear(e.target.value)} />
+          </FormField>
+          <div className="text-xs text-slate-500">
+            Current version: <span className="font-bold text-slate-700">v{selectedTimetable?.version || 1}</span>
+            {' → '}
+            New version: <span className="font-bold text-emerald-600">v{(selectedTimetable?.version || 1) + 1}</span>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Version History Modal */}
+      <Modal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        title="Timetable Version History"
+        subtitle="Archived versions for the selected class."
+        size="xl"
+      >
+        {historyLoading ? (
+          <p className="text-center py-8 text-sm text-slate-500">Loading history...</p>
+        ) : archiveDocs.length === 0 ? (
+          <div className="py-12 text-center">
+            <History className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-sm font-bold text-slate-700">No archived versions yet</p>
+            <p className="text-xs text-slate-500 mt-1">Publishing a new version archives the current one here.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {archiveDocs.map(a => (
+              <div key={a.id} className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">Version {a.version || '?'}{a.academicYear ? ` · ${a.academicYear}` : ''}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {a.effectiveFrom ? `Effective ${a.effectiveFrom}` : 'Effective date n/a'}
+                      {a.effectiveTo ? ` → ${a.effectiveTo}` : ''}
+                    </p>
+                  </div>
+                  <Badge variant="info">Archived</Badge>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2">
+                  Archived {a.archivedAt ? new Date(a.archivedAt).toLocaleString() : ''} · {a.schedule?.length || 0} days configured
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </Modal>
     </>
   );

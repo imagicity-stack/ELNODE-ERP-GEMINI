@@ -12,7 +12,7 @@ export const logActivity = async (
   if (!user) return;
 
   try {
-    const log: any = {
+    const rawLog: any = {
       timestamp: serverTimestamp(),
       userId: user.uid,
       userName: user.name,
@@ -21,8 +21,11 @@ export const logActivity = async (
       section,
       details,
       userAgent: navigator.userAgent,
-      metadata,
+      ...(metadata !== undefined ? { metadata } : {}),
     };
+
+    // Strip undefined values so Firestore addDoc never receives them
+    const log = JSON.parse(JSON.stringify(rawLog));
 
     await addDoc(collection(db, 'activityLogs'), log);
   } catch (err) {

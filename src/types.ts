@@ -147,6 +147,13 @@ export interface Timetable {
     }[];
   }[];
   updatedAt: string;
+  // Versioning metadata (optional, additive)
+  academicYear?: string;        // e.g. '2025-26'
+  version?: number;             // monotonically increases when a new version is published
+  effectiveFrom?: string;       // ISO date this version became active
+  effectiveTo?: string;         // ISO date this version stopped (only set on archive copies)
+  archivedAt?: string;          // ISO timestamp when archived (only on docs in `timetableArchive`)
+  archivedBy?: string;          // user UID who triggered the archive
 }
 
 export interface FeeHead {
@@ -428,6 +435,11 @@ export interface LessonLog {
   teacherId: string;
   date: string;
   slotId: string;
+  // Snapshotted slot details so logs stay readable even if the timetable slot is later changed/deleted
+  slotLabel?: string;
+  slotStartTime?: string;
+  slotEndTime?: string;
+  timetableVersion?: number;
   topic: string;
   classwork: string;
   classworkFileUrl?: string;

@@ -136,12 +136,19 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     setSaving(true);
     try {
       const today = new Date().toISOString().split('T')[0];
+      const slot = selectedPeriod.slot || {};
+      const activeTimetable = timetables.find(t => t.classId === selectedPeriod.classId);
       const logData: any = {
         classId: selectedPeriod.classId,
         subjectId: selectedPeriod.subjectId,
         teacherId: teacherData?.id || user.uid,
         date: today,
-        slotId: selectedPeriod.slot.id,
+        slotId: slot.id,
+        // Snapshot slot details so this log survives future timetable changes
+        slotLabel: slot.label || '',
+        slotStartTime: slot.startTime || '',
+        slotEndTime: slot.endTime || '',
+        timetableVersion: activeTimetable?.version ?? null,
         topic: lessonData.topic,
         classwork: lessonData.classwork,
         homework: lessonData.homework,
