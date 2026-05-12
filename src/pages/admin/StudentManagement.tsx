@@ -13,12 +13,16 @@ import {
   Edit2,
   Trash2,
   Download,
+  Upload,
   UserPlus,
   Phone,
   FileText,
   Activity,
   Users,
   AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  FileDown,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -46,6 +50,13 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('students');
   const { showToast } = useToast();
+
+  // Bulk import state
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const [importResults, setImportResults] = useState<{ name: string; status: 'ok' | 'error'; message?: string }[]>([]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -287,6 +298,193 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ─── Bulk import helpers ──────────────────────────────────────────────────
+
+  const CSV_HEADERS = [
+    'name', 'admissionNumber', 'class', 'section', 'gender',
+    'fatherName', 'motherName', 'phone', 'email',
+    'house', 'transportDetails', 'medicalNotes', 'academicHistory', 'address',
+  ];
+
+  const handleDownloadTemplate = () => {
+    const exampleRows = [
+      ['Ravi Kumar', '1001', '5', 'A', 'male', 'Suresh Kumar', 'Priya Kumar', '9876543210', 'parent@example.com', 'Red House', '', '', '', '123 Main Street'],
+      ['Anita Sharma', '1002', '3', 'B', 'female', 'Ramesh Sharma', 'Sunita Sharma', '9123456789', 'sharma@example.com', '', '', '', '', ''],
+    ];
+    const lines = [CSV_HEADERS.join(','), ...exampleRows.map(r => r.map(v => `"${v}"`).join(','))];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'student_import_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const parseCSV = (text: string): Record<string, string>[] => {
+    const lines = text.trim().split('\n').filter(Boolean);
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+    return lines.slice(1).map(line => {
+      // Handle quoted fields with commas
+      const values: string[] = [];
+      let cur = '', inQuote = false;
+      for (const ch of line) {
+        if (ch === '"') { inQuote = !inQuote; }
+        else if (ch === ',' && !inQuote) { values.push(cur.trim()); cur = ''; }
+        else cur += ch;
+      }
+      values.push(cur.trim());
+      return Object.fromEntries(headers.map((h, i) => [h, (values[i] || '').replace(/^"|"$/g, '').trim()]));
+    });
+  };
+
+  const handleCSVFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const rows = parseCSV(text);
+      const errors: string[] = [];
+      rows.forEach((row, i) => {
+        const rowNum = i + 2;
+        if (!row.name) errors.push(`Row ${rowNum}: name is required`);
+        if (!row.admissionnumber) errors.push(`Row ${rowNum}: admissionNumber is required`);
+        if (!row.class) errors.push(`Row ${rowNum}: class is required`);
+        if (!row.section) errors.push(`Row ${rowNum}: section is required`);
+        if (!row.gender || !['male', 'female', 'other'].includes(row.gender.toLowerCase())) errors.push(`Row ${rowNum}: gender must be male/female/other`);
+        if (!row.fathername) errors.push(`Row ${rowNum}: fatherName is required`);
+        if (!row.mothername) errors.push(`Row ${rowNum}: motherName is required`);
+        if (!row.phone) errors.push(`Row ${rowNum}: phone is required`);
+        if (!row.email) errors.push(`Row ${rowNum}: email is required`);
+      });
+      setImportRows(rows);
+      setImportErrors(errors);
+      setImportProgress(null);
+      setImportResults([]);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleBulkImport = async () => {
+    if (importRows.length === 0 || importErrors.length > 0) return;
+
+    let secondaryApp;
+    try { secondaryApp = getApp('Secondary'); }
+    catch (e) { secondaryApp = initializeApp(firebaseConfig, 'Secondary'); }
+    const secondaryAuth = getAuth(secondaryApp);
+
+    const getOrCreateUser = async (email: string) => {
+      const defaultPassword = 'password123';
+      try {
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, email, defaultPassword);
+        await signOut(secondaryAuth);
+        return cred.user.uid;
+      } catch (err: any) {
+        if (err.code === 'auth/email-already-in-use') {
+          const cred = await signInWithEmailAndPassword(secondaryAuth, email, defaultPassword);
+          await signOut(secondaryAuth);
+          return cred.user.uid;
+        }
+        throw err;
+      }
+    };
+
+    setImportProgress({ done: 0, total: importRows.length, failed: 0 });
+    const results: { name: string; status: 'ok' | 'error'; message?: string }[] = [];
+    let failed = 0;
+
+    for (let i = 0; i < importRows.length; i++) {
+      const row = importRows[i];
+      const name = row.name;
+      const admissionNumber = row.admissionnumber;
+      const gender = row.gender?.toLowerCase();
+      const houseObj = houses.find(h => h.name.toLowerCase() === (row.house || '').toLowerCase());
+      const classObj = classes.find(c => c.name === row.class || c.name.toLowerCase() === row.class?.toLowerCase());
+
+      try {
+        if (!classObj) throw new Error(`Class "${row.class}" not found`);
+
+        const schoolNumber = admissionNumber;
+        const studentEmail = `${schoolNumber}@${SCHOOL_DOMAIN}`;
+        const parentEmail = `p${schoolNumber}@${SCHOOL_DOMAIN}`;
+
+        const studentUid = await getOrCreateUser(studentEmail);
+        const parentUidFromAuth = await getOrCreateUser(parentEmail);
+
+        const parentsQuery = query(collection(db, 'users'), where('role', '==', 'parent'), where('email', '==', parentEmail));
+        const parentDocs = await getDocs(parentsQuery);
+        let parentUid = parentUidFromAuth;
+        let isNewParent = true;
+        if (!parentDocs.empty) { parentUid = parentDocs.docs[0].id; isNewParent = false; }
+
+        const studentRef = await addDoc(collection(db, 'students'), {
+          name,
+          schoolNumber,
+          admissionNumber,
+          classId: classObj.id,
+          section: row.section,
+          gender,
+          houseId: houseObj?.id || '',
+          transportDetails: row.transportdetails || '',
+          medicalNotes: row.medicalnotes || '',
+          academicHistory: row.academichistory || '',
+          parentId: parentUid,
+          feeStatus: 'pending',
+          photoURL: '',
+          parentDetails: {
+            fatherName: row.fathername,
+            motherName: row.mothername,
+            phone: row.phone,
+            email: row.email,
+          },
+          createdAt: new Date().toISOString(),
+        });
+
+        await setDoc(doc(db, 'users', studentUid), {
+          uid: studentUid,
+          email: studentEmail,
+          name,
+          role: 'student',
+          schoolNumber,
+          classId: classObj.id,
+          section: row.section,
+          parentId: parentUid,
+          studentId: studentRef.id,
+          photoURL: '',
+          createdAt: new Date().toISOString(),
+        });
+
+        if (isNewParent) {
+          await setDoc(doc(db, 'users', parentUid), {
+            uid: parentUid,
+            email: parentEmail,
+            name: `Parent of ${name}`,
+            role: 'parent',
+            schoolNumber,
+            studentIds: [studentRef.id],
+            phone: row.phone,
+            address: row.address || '',
+            createdAt: new Date().toISOString(),
+          });
+        } else {
+          const existingData = parentDocs.docs[0].data() as UserProfile;
+          await setDoc(doc(db, 'users', parentUid), { ...existingData, studentIds: [...(existingData.studentIds || []), studentRef.id] }, { merge: true });
+        }
+
+        results.push({ name, status: 'ok' });
+      } catch (err: any) {
+        failed++;
+        results.push({ name: name || `Row ${i + 2}`, status: 'error', message: err.message || 'Unknown error' });
+      }
+
+      setImportProgress({ done: i + 1, total: importRows.length, failed });
+      setImportResults([...results]);
+    }
+
+    fetchStudents();
+    await logActivity(user, 'BULK_IMPORT_STUDENTS', 'Students', `Bulk imported ${importRows.length - failed}/${importRows.length} students`);
   };
 
   const handleEdit = (student: Student) => {
@@ -628,6 +826,11 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         actions={
           <>
             <Button variant="secondary" size="sm" icon={Download}>Export</Button>
+            {!readOnly && (
+              <Button variant="secondary" size="sm" icon={Upload} onClick={() => { setImportRows([]); setImportErrors([]); setImportProgress(null); setImportResults([]); setImportModalOpen(true); }}>
+                Import CSV
+              </Button>
+            )}
             {!readOnly && <Button size="sm" icon={UserPlus} onClick={openAddModal}>Add Student</Button>}
           </>
         }
@@ -836,6 +1039,150 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             </div>
           </div>
         </form>
+      </Modal>
+
+      {/* Bulk Import Modal */}
+      <Modal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        title="Bulk Import Students"
+        subtitle="Upload a CSV file to add multiple students at once"
+        size="xl"
+        footer={
+          <div className="flex items-center justify-between w-full gap-3">
+            <Button variant="secondary" size="sm" icon={FileDown} onClick={handleDownloadTemplate}>
+              Download Template
+            </Button>
+            <div className="flex gap-3">
+              <Button variant="secondary" onClick={() => setImportModalOpen(false)}>Cancel</Button>
+              <Button
+                icon={Upload}
+                onClick={handleBulkImport}
+                disabled={importRows.length === 0 || importErrors.length > 0 || !!importProgress}
+                loading={!!importProgress && importProgress.done < importProgress.total}
+              >
+                Import {importRows.length > 0 ? `${importRows.length} Students` : ''}
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-5">
+          {/* File drop zone */}
+          {!importProgress && (
+            <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group">
+              <Upload className="w-8 h-8 text-slate-300 group-hover:text-indigo-400 mb-2 transition-colors" />
+              <p className="text-sm font-semibold text-slate-500 group-hover:text-indigo-600">Click to upload CSV file</p>
+              <p className="text-xs text-slate-400 mt-1">or drag and drop</p>
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={e => e.target.files?.[0] && handleCSVFile(e.target.files[0])}
+                onDrop={e => { e.preventDefault(); const f = e.dataTransfer?.files?.[0]; if (f) handleCSVFile(f); }}
+              />
+            </label>
+          )}
+
+          {/* Validation errors */}
+          {importErrors.length > 0 && (
+            <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 space-y-1.5 max-h-40 overflow-y-auto">
+              <p className="text-xs font-bold text-rose-700 uppercase tracking-wide flex items-center gap-1.5">
+                <XCircle className="w-3.5 h-3.5" /> {importErrors.length} validation error{importErrors.length > 1 ? 's' : ''}
+              </p>
+              {importErrors.map((e, i) => (
+                <p key={i} className="text-xs text-rose-600">{e}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Preview table */}
+          {importRows.length > 0 && importErrors.length === 0 && !importProgress && (
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+                Preview — {importRows.length} student{importRows.length > 1 ? 's' : ''} ready to import
+              </p>
+              <div className="border border-slate-100 rounded-xl overflow-hidden max-h-52 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 sticky top-0">
+                    <tr>
+                      {['Name', 'Adm. No.', 'Class', 'Sec.', 'Gender', 'Father', 'Phone'].map(h => (
+                        <th key={h} className="text-left px-3 py-2 font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {importRows.map((row, i) => (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="px-3 py-2 font-medium text-slate-800">{row.name}</td>
+                        <td className="px-3 py-2 font-mono text-slate-600">{row.admissionnumber}</td>
+                        <td className="px-3 py-2 text-slate-600">{row.class}</td>
+                        <td className="px-3 py-2 text-slate-600">{row.section}</td>
+                        <td className="px-3 py-2 text-slate-600 capitalize">{row.gender}</td>
+                        <td className="px-3 py-2 text-slate-600">{row.fathername}</td>
+                        <td className="px-3 py-2 text-slate-600">{row.phone}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Progress */}
+          {importProgress && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold text-slate-700">Importing… {importProgress.done} / {importProgress.total}</span>
+                {importProgress.failed > 0 && <span className="text-rose-500 text-xs font-bold">{importProgress.failed} failed</span>}
+              </div>
+              <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-2.5 bg-indigo-500 rounded-full transition-all duration-300"
+                  style={{ width: `${(importProgress.done / importProgress.total) * 100}%` }}
+                />
+              </div>
+
+              {/* Per-row results */}
+              {importResults.length > 0 && (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {importResults.map((r, i) => (
+                    <div key={i} className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${r.status === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                      {r.status === 'ok'
+                        ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        : <XCircle className="w-3.5 h-3.5 shrink-0" />}
+                      <span className="font-semibold">{r.name}</span>
+                      {r.message && <span className="opacity-70">— {r.message}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Done summary */}
+              {importProgress.done === importProgress.total && (
+                <div className={`flex items-center gap-2 p-3 rounded-xl text-sm font-semibold ${importProgress.failed === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  <CheckCircle2 className="w-4 h-4" />
+                  {importProgress.failed === 0
+                    ? `All ${importProgress.total} students imported successfully!`
+                    : `${importProgress.total - importProgress.failed} imported, ${importProgress.failed} failed — check errors above`}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* How-to hint */}
+          {!importProgress && importRows.length === 0 && (
+            <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-500 space-y-1">
+              <p className="font-bold text-slate-700">CSV format rules:</p>
+              <p>• First row must be the header row exactly as in the template</p>
+              <p>• <span className="font-semibold">Required:</span> name, admissionNumber, class, section, gender, fatherName, motherName, phone, email</p>
+              <p>• <span className="font-semibold">Optional:</span> house, transportDetails, medicalNotes, academicHistory, address</p>
+              <p>• <span className="font-semibold">class</span> must match an existing class name (e.g. "5", "10A")</p>
+              <p>• <span className="font-semibold">gender</span> must be male, female, or other</p>
+              <p>• Download the template above for a ready-to-fill example</p>
+            </div>
+          )}
+        </div>
       </Modal>
 
       {/* Delete Modal */}
