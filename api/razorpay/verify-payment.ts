@@ -8,6 +8,21 @@ interface ServiceAccount {
   private_key: string;
 }
 
+interface FineSlab {
+  startDay: number;
+  endDay?: number;
+  fixedPenalty: number;
+  percentagePenalty: number;
+  isHigherOf: boolean;
+  escalationRate?: number;
+}
+
+interface FineConfig {
+  isEnabled: boolean;
+  gracePeriodDays: number;
+  slabs: FineSlab[];
+}
+
 // ── JWT / OAuth2 helper (no firebase-admin, no native modules) ────────────────
 let _tokenCache: { token: string; expiresAt: number } | null = null;
 
@@ -75,45 +90,112 @@ function fromFS(fields: Record<string, any> = {}): Record<string, any> {
   return out;
 }
 
+function toFSFields(obj: Record<string, any>): Record<string, any> {
+  const fields: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) fields[k] = toFS(v);
+  return fields;
+}
+
 class FSClient {
   private base: string;
   private auth: string;
+  public docPrefix: string; // `projects/.../databases/.../documents`
 
   constructor(projectId: string, dbId: string, token: string) {
     this.base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${dbId}/documents`;
+    this.docPrefix = `projects/${projectId}/databases/${dbId}/documents`;
     this.auth = `Bearer ${token}`;
   }
 
   private h() { return { Authorization: this.auth, 'Content-Type': 'application/json' }; }
 
-  async getDoc(col: string, id: string): Promise<{ exists: boolean; data: Record<string, any> }> {
-    const r = await fetch(`${this.base}/${col}/${id}`, { headers: this.h() });
+  docName(col: string, id: string): string {
+    return `${this.docPrefix}/${col}/${id}`;
+  }
+
+  async getDoc(col: string, id: string, txId?: string): Promise<{ exists: boolean; data: Record<string, any> }> {
+    const url = txId
+      ? `${this.base}/${col}/${id}?transaction=${encodeURIComponent(txId)}`
+      : `${this.base}/${col}/${id}`;
+    const r = await fetch(url, { headers: this.h() });
     if (r.status === 404) return { exists: false, data: {} };
     if (!r.ok) throw new Error(`Firestore GET ${col}/${id} → ${r.status}: ${await r.text()}`);
     const doc = await r.json();
     return { exists: true, data: fromFS(doc.fields) };
   }
 
-  async addDoc(col: string, data: Record<string, any>): Promise<string> {
-    const fields: Record<string, any> = {};
-    for (const [k, v] of Object.entries(data)) fields[k] = toFS(v);
-    const r = await fetch(`${this.base}/${col}`, {
-      method: 'POST', headers: this.h(), body: JSON.stringify({ fields }),
+  async runQuery(structuredQuery: any): Promise<Array<{ id: string; data: Record<string, any> }>> {
+    const r = await fetch(`${this.base}:runQuery`, {
+      method: 'POST',
+      headers: this.h(),
+      body: JSON.stringify({ structuredQuery }),
     });
-    if (!r.ok) throw new Error(`Firestore ADD ${col} → ${r.status}: ${await r.text()}`);
-    const doc = await r.json();
-    return (doc.name as string).split('/').pop()!;
+    if (!r.ok) throw new Error(`Firestore runQuery → ${r.status}: ${await r.text()}`);
+    const arr = await r.json() as any[];
+    return arr.filter(x => x.document).map(x => ({
+      id: x.document.name.split('/').pop()!,
+      data: fromFS(x.document.fields || {}),
+    }));
   }
 
-  async updateDoc(col: string, id: string, data: Record<string, any>): Promise<void> {
-    const fields: Record<string, any> = {};
-    for (const [k, v] of Object.entries(data)) fields[k] = toFS(v);
-    const mask = Object.keys(data).map(f => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
-    const r = await fetch(`${this.base}/${col}/${id}?${mask}`, {
-      method: 'PATCH', headers: this.h(), body: JSON.stringify({ fields }),
+  async beginTransaction(): Promise<string> {
+    const r = await fetch(`${this.base}:beginTransaction`, {
+      method: 'POST', headers: this.h(), body: '{}',
     });
-    if (!r.ok) throw new Error(`Firestore UPDATE ${col}/${id} → ${r.status}: ${await r.text()}`);
+    if (!r.ok) throw new Error(`Firestore beginTx → ${r.status}: ${await r.text()}`);
+    const j = await r.json() as { transaction: string };
+    return j.transaction;
   }
+
+  async commit(writes: any[], txId?: string): Promise<void> {
+    const body: any = { writes };
+    if (txId) body.transaction = txId;
+    const r = await fetch(`${this.base}:commit`, {
+      method: 'POST', headers: this.h(), body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const text = await r.text();
+      const err: any = new Error(`Firestore commit → ${r.status}: ${text}`);
+      err.status = r.status;
+      err.body = text;
+      throw err;
+    }
+  }
+
+  async rollback(txId: string): Promise<void> {
+    try {
+      await fetch(`${this.base}:rollback`, {
+        method: 'POST', headers: this.h(), body: JSON.stringify({ transaction: txId }),
+      });
+    } catch { /* swallow */ }
+  }
+}
+
+// ── Fine calculation (server-side, mirrors src/services/fineService.ts) ───────
+function calculateFine(invoice: { dueDate: string; totalAmount: number; status?: string },
+                       config: FineConfig | null,
+                       today: Date = new Date()): number {
+  if (!config || !config.isEnabled) return 0;
+  const due = new Date(invoice.dueDate);
+  if (isNaN(due.getTime())) return 0;
+  const daysOverdue = Math.floor((today.getTime() - due.getTime()) / 86400000);
+  if (daysOverdue <= (config.gracePeriodDays || 0)) return 0;
+
+  const slab = (config.slabs || []).find(s => {
+    const after = daysOverdue >= s.startDay;
+    const before = s.endDay ? daysOverdue <= s.endDay : true;
+    return after && before;
+  });
+  if (!slab) return 0;
+
+  const fixed = slab.fixedPenalty || 0;
+  const percent = (invoice.totalAmount * (slab.percentagePenalty || 0)) / 100;
+  let penalty = slab.isHigherOf ? Math.max(fixed, percent) : (fixed + percent);
+  if (slab.escalationRate && !slab.endDay) {
+    const extraDays = daysOverdue - slab.startDay;
+    penalty += extraDays * slab.escalationRate;
+  }
+  return Math.round(penalty);
 }
 
 // ── WATI (inlined to avoid cross-directory import bundling issues) ─────────────
@@ -169,43 +251,146 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Payment signature verification failed' });
 
   let step = 'parse-service-account';
+  let txId: string | undefined;
+  let db: FSClient | undefined;
   try {
     const sa: ServiceAccount = JSON.parse(saRaw);
     const dbId = process.env.FIRESTORE_DATABASE_ID ?? 'ai-studio-cb22793f-2766-4225-bb0a-411c4a36f1b5';
 
     step = 'get-access-token';
     const token = await getAccessToken(sa);
-    const db = new FSClient(sa.project_id, dbId, token);
+    db = new FSClient(sa.project_id, dbId, token);
+
+    // ── Idempotency check: deterministic payment doc id keyed on razorpay payment id
+    const paymentDocId = `rzp_${razorpay_payment_id}`;
+
+    step = 'idempotency-check';
+    const existing = await db.getDoc('feePayments', paymentDocId);
+    if (existing.exists) {
+      // Webhook retry — payment already recorded. Return success without duplicating.
+      return res.status(200).json({
+        success: true,
+        receiptNumber: existing.data.receiptNumber,
+        paymentId: paymentDocId,
+        idempotent: true,
+      });
+    }
+
+    // ── Begin Firestore transaction for consistent paidAmount update
+    step = 'begin-transaction';
+    txId = await db.beginTransaction();
 
     step = 'fetch-fee-request';
-    const { exists, data: feeRequest } = await db.getDoc('feeRequests', feeRequestId);
-    if (!exists) return res.status(404).json({ error: 'Fee request not found' });
-    if (feeRequest.studentId !== studentId)
+    const { exists, data: feeRequest } = await db.getDoc('feeRequests', feeRequestId, txId);
+    if (!exists) {
+      await db.rollback(txId);
+      return res.status(404).json({ error: 'Fee request not found' });
+    }
+    if (feeRequest.studentId !== studentId) {
+      await db.rollback(txId);
       return res.status(403).json({ error: 'Fee request does not belong to this student' });
+    }
+    if (feeRequest.status === 'paid') {
+      await db.rollback(txId);
+      return res.status(409).json({ error: 'Fee request is already fully paid' });
+    }
 
+    // ── Server-side fine recalculation (do not trust client-supplied amount)
+    step = 'load-fine-config';
+    const fineCfgDoc = await db.getDoc('fineConfig', 'global');
+    const fineConfig: FineConfig | null = fineCfgDoc.exists
+      ? (fineCfgDoc.data as FineConfig)
+      : null;
+    const fineAmount = calculateFine(
+      { dueDate: feeRequest.dueDate, totalAmount: feeRequest.totalAmount, status: feeRequest.status },
+      fineConfig,
+    );
+
+    const alreadyPaid = feeRequest.paidAmount || 0;
+    const totalRequired = (feeRequest.totalAmount || 0) + fineAmount - (feeRequest.waivedAmount || 0);
+    const remaining = Math.max(0, totalRequired - alreadyPaid);
+
+    if (amount > remaining + 0.001) {
+      await db.rollback(txId);
+      return res.status(400).json({
+        error: 'Payment amount exceeds remaining balance',
+        remaining,
+      });
+    }
+
+    const newPaidAmount = alreadyPaid + amount;
+    const newStatus = newPaidAmount + 0.001 >= totalRequired ? 'paid' : 'partially_paid';
     const now = new Date().toISOString();
     const receiptNumber = `REC-${Date.now()}`;
 
-    step = 'record-payment';
-    const paymentId = await db.addDoc('feePayments', {
-      studentId, classId: classId || '', feeRequestId,
-      feeHead: feeHead || 'Academic Fee', amount,
-      date: now.split('T')[0], method: 'online',
-      transactionId: razorpay_payment_id, orderId: razorpay_order_id,
-      receiptNumber,
-      remarks: `Online Payment${month ? ` - ${month}` : ''}`,
-      verifiedAt: now,
-    });
+    // ── Atomic commit: payment + fee request + student status all-or-nothing
+    step = 'atomic-commit';
+    const writes: any[] = [
+      // 1. Create payment with idempotency precondition (must not already exist)
+      {
+        update: {
+          name: db.docName('feePayments', paymentDocId),
+          fields: toFSFields({
+            studentId,
+            classId: classId || '',
+            feeRequestId,
+            feeHead: feeHead || 'Academic Fee',
+            amount,
+            fineAmount,
+            date: now.split('T')[0],
+            method: 'online',
+            transactionId: razorpay_payment_id,
+            orderId: razorpay_order_id,
+            receiptNumber,
+            remarks: `Online Payment${month ? ` - ${month}` : ''}`,
+            verifiedAt: now,
+          }),
+        },
+        currentDocument: { exists: false },
+      },
+      // 2. Update fee request paid amount + status + snapshot fine
+      {
+        updateMask: { fieldPaths: ['paidAmount', 'status', 'fineAmount', 'updatedAt'] },
+        update: {
+          name: db.docName('feeRequests', feeRequestId),
+          fields: toFSFields({
+            paidAmount: newPaidAmount,
+            status: newStatus,
+            fineAmount,
+            updatedAt: now,
+          }),
+        },
+      },
+    ];
 
-    step = 'update-fee-request';
-    const newPaidAmount = (feeRequest.paidAmount || 0) + amount;
-    const totalRequired = feeRequest.totalAmount - (feeRequest.waivedAmount || 0);
-    const newStatus = newPaidAmount >= totalRequired ? 'paid' : 'partially_paid';
-    await db.updateDoc('feeRequests', feeRequestId, { paidAmount: newPaidAmount, status: newStatus, updatedAt: now });
-
+    // 3. If fully paid, mark student feeStatus = 'paid' in the same commit
     if (newStatus === 'paid') {
-      step = 'update-student-fee-status';
-      await db.updateDoc('students', studentId, { feeStatus: 'paid', updatedAt: now });
+      writes.push({
+        updateMask: { fieldPaths: ['feeStatus', 'updatedAt'] },
+        update: {
+          name: db.docName('students', studentId),
+          fields: toFSFields({ feeStatus: 'paid', updatedAt: now }),
+        },
+      });
+    }
+
+    try {
+      await db.commit(writes, txId);
+    } catch (commitErr: any) {
+      // Idempotency race: another worker already recorded this payment between
+      // our pre-check and the commit. Return success with the existing record.
+      if (commitErr?.status === 400 && /already exists|FAILED_PRECONDITION/i.test(commitErr.body || '')) {
+        const dup = await db.getDoc('feePayments', paymentDocId);
+        if (dup.exists) {
+          return res.status(200).json({
+            success: true,
+            receiptNumber: dup.data.receiptNumber,
+            paymentId: paymentDocId,
+            idempotent: true,
+          });
+        }
+      }
+      throw commitErr;
     }
 
     // Auto WhatsApp — fire-and-forget, never blocks payment success
@@ -232,8 +417,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('[verify-payment] WhatsApp non-fatal:', waErr);
     }
 
-    return res.status(200).json({ success: true, receiptNumber, paymentId });
+    return res.status(200).json({
+      success: true,
+      receiptNumber,
+      paymentId: paymentDocId,
+      fineAmount,
+      newStatus,
+    });
   } catch (err: any) {
+    if (txId && db) await db.rollback(txId);
     const msg = err?.message || String(err);
     console.error(`[verify-payment] FAILED step="${step}":`, msg);
     return res.status(500).json({
