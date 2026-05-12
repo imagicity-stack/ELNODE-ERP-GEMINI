@@ -302,13 +302,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           </div>
         </div>
 
-        {/* FAB */}
-        <Link
-          to="/superadmin/admissions"
-          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-        >
-          <UserPlus className="w-6 h-6" strokeWidth={2.5} />
-        </Link>
       </div>
 
       {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
