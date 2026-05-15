@@ -43,6 +43,7 @@ export default function StaffManagement({ user }: { user: any }) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     role: 'accounts',
     joiningDate: '',
     salary: '',
@@ -192,6 +193,7 @@ export default function StaffManagement({ user }: { user: any }) {
     setFormData({
       name: member.name,
       email: member.email,
+      phone: member.phone || '',
       role: member.role,
       joiningDate: member.joiningDate,
       salary: member.salary.toString(),
@@ -208,7 +210,7 @@ export default function StaffManagement({ user }: { user: any }) {
   const openAddModal = () => {
     setIsEditMode(false);
     setEditingStaff(null);
-    setFormData({ name: '', email: '', role: 'accounts', joiningDate: '', salary: '' });
+    setFormData({ name: '', email: '', phone: '', role: 'accounts', joiningDate: '', salary: '' });
     setIsModalOpen(true);
   };
 
@@ -281,7 +283,7 @@ export default function StaffManagement({ user }: { user: any }) {
               onClick={() => {
                 setIsEditMode(false);
                 setEditingStaff(null);
-                setFormData({ name: '', email: '', role: 'accounts', joiningDate: '', salary: '' });
+                setFormData({ name: '', email: '', phone: '', role: 'accounts', joiningDate: '', salary: '' });
                 setIsModalOpen(true);
               }}
             >
@@ -391,14 +393,25 @@ export default function StaffManagement({ user }: { user: any }) {
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             />
           </FormField>
-          <FormField label="Email Address" required>
-            <Input
-              type="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            />
-          </FormField>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Email Address" required>
+              <Input
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+            </FormField>
+            <FormField label="Phone Number" required>
+              <Input
+                type="tel"
+                required
+                placeholder="10-digit number"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+              />
+            </FormField>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Role" required>
               <Select

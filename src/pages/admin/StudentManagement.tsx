@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, where, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, doc, setDoc, deleteDoc, orderBy, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { createUserWithEmailAndPassword, getAuth, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { initializeApp, getApp } from 'firebase/app';
@@ -98,6 +98,11 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
   useEffect(() => {
     fetchData();
+    // Real-time class list so newly added classes appear instantly in dropdowns/filters
+    const unsubClasses = onSnapshot(collection(db, 'classes'), (snap) => {
+      setClasses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Class)));
+    });
+    return () => unsubClasses();
   }, []);
 
   const getClassName = (id: string) => {
@@ -240,7 +245,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         schoolNumber: schoolNumber,
         admissionNumber: admissionNumber,
         parentId: parentUid,
-        feeStatus: 'pending',
+        // feeStatus intentionally omitted — set only when a fee request is created
         createdAt: new Date().toISOString(),
       });
 
@@ -447,7 +452,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           medicalNotes: row.medicalnotes || '',
           academicHistory: row.academichistory || '',
           parentId: parentUid,
-          feeStatus: 'pending',
+          // feeStatus intentionally omitted — set only when a fee request is created
           photoURL: '',
           parentDetails: {
             fatherName: row.fathername,
@@ -557,7 +562,6 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         { label: 'School No', value: student.schoolNumber || '-' },
         { label: 'Class & Section', value: `${getClassName(student.classId)} – ${student.section}` },
         { label: 'House', value: student.houseId || 'N/A' },
-        { label: 'Fee Status', value: student.feeStatus.toUpperCase() },
       ],
       y,
       pageWidth,
@@ -734,16 +738,33 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Please upload an image file', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Image must be under 5MB', 'error');
+      return;
+    }
+
     setLoading(true);
     try {
-      const storageRef = ref(storage, `profiles/${formData.schoolNumber || 'temp'}/${Date.now()}_${file.name}`);
+      // Use editing student's uid when available so the path lines up with storage rules.
+      // For new students, store under the admin's uid as scratch space; the URL is what matters.
+      const folderId = editingStudent?.id || (user as any)?.uid || 'admin';
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storageRef = ref(storage, `profiles/${folderId}/${Date.now()}_${safeName}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       setFormData(prev => ({ ...prev, photoURL: url }));
-    } catch (err) {
+      showToast('Photo uploaded', 'success');
+    } catch (err: any) {
       console.error('Error uploading photo:', err);
-      showToast('Failed to upload photo', 'error');
+      const msg = err?.code === 'storage/unauthorized'
+        ? 'Storage permission denied. Check Firebase Storage rules for the profiles/ path.'
+        : (err?.message || 'Failed to upload photo');
+      showToast(msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -816,9 +837,6 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                     <span className="text-[10px] text-slate-500 font-mono">{student.admissionNumber}</span>
                   </div>
                 </div>
-                <Badge variant={student.feeStatus === 'paid' ? 'success' : student.feeStatus === 'pending' ? 'warning' : 'error'} className="text-[9px] shrink-0">
-                  {student.feeStatus}
-                </Badge>
               </button>
             ))
           )}
@@ -883,7 +901,6 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
               <Th className="hidden sm:table-cell">Admission / School No.</Th>
               <Th className="hidden md:table-cell">Class & Section</Th>
               <Th className="hidden lg:table-cell">Parent Details</Th>
-              <Th>Fee Status</Th>
               <Th className="text-right">Actions</Th>
             </tr>
           </Thead>
@@ -911,11 +928,6 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                   </div>
                 </Td>
                 <Td>
-                  <Badge variant={student.feeStatus === 'paid' ? 'success' : student.feeStatus === 'pending' ? 'warning' : 'error'} dot>
-                    {student.feeStatus}
-                  </Badge>
-                </Td>
-                <Td>
                   {!readOnly && (
                     <div className="flex items-center justify-end gap-1">
                       <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(student)} title="Edit" />
@@ -926,7 +938,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
               </Tr>
             )) : (
               <Tr>
-                <td colSpan={6}>
+                <td colSpan={5}>
                   <EmptyState icon={Users} title="No students found" description="Try adjusting your search or filter" />
                 </td>
               </Tr>

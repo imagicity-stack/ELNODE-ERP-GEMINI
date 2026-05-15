@@ -66,46 +66,53 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      try {
-        const today = new Date().toISOString().split('T')[0];
-        const [studentsSnap, teachersSnap, classesSnap, noticesSnap, recentSnap, feesSnap, leaveSnap, attendanceSnap] = await Promise.all([
-          getDocs(collection(db, 'students')),
-          getDocs(collection(db, 'teachers')),
-          getDocs(collection(db, 'classes')),
-          getDocs(query(collection(db, 'notices'), orderBy('createdAt', 'desc'), limit(3))),
-          getDocs(query(collection(db, 'students'), orderBy('createdAt', 'desc'), limit(5))),
-          getDocs(collection(db, 'feePayments')),
-          getDocs(query(collection(db, 'studentLeaves'), where('status', 'in', ['submitted', 'pending']))),
-          getDocs(query(collection(db, 'attendance'), where('date', '==', today)))
-        ]);
+      const today = new Date().toISOString().split('T')[0];
 
-        const students = studentsSnap.docs.map(d => d.data());
-        const boys = students.filter(s => s.gender === 'male' || s.gender === 'Boy').length;
-        const girls = students.filter(s => s.gender === 'female' || s.gender === 'Girl').length;
-        if (students.length > 0) setGenderStats([{ name: 'Boys', value: boys }, { name: 'Girls', value: girls }]);
+      // Each query is wrapped individually so one failure doesn't blank out the whole dashboard.
+      const safe = async <T,>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+        try { return await fn(); } catch (err) { console.warn(`Dashboard: ${label} failed`, err); return fallback; }
+      };
 
-        const totalFees = feesSnap.docs.reduce((sum, d) => sum + (d.data().amount || 0), 0);
-        setCounts({ students: studentsSnap.size, teachers: teachersSnap.size, classes: classesSnap.size, feeCollection: totalFees });
-        setNotices(noticesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Notice)));
-        setRecentAdmissions(recentSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setPendingLeaves(leaveSnap.size);
+      const [studentsSnap, teachersSnap, classesSnap, noticesSnap, recentSnap, feesSnap, leaveSnap, attendanceSnap] = await Promise.all([
+        safe('students', () => getDocs(collection(db, 'students')), { docs: [] as any[], size: 0 } as any),
+        safe('teachers', () => getDocs(collection(db, 'teachers')), { docs: [] as any[], size: 0 } as any),
+        safe('classes', () => getDocs(collection(db, 'classes')), { docs: [] as any[], size: 0 } as any),
+        safe('notices', () => getDocs(query(collection(db, 'notices'), orderBy('createdAt', 'desc'), limit(3))), { docs: [] as any[] } as any),
+        safe('recentAdmissions', () => getDocs(query(collection(db, 'students'), orderBy('createdAt', 'desc'), limit(5))), { docs: [] as any[] } as any),
+        safe('feePayments', () => getDocs(collection(db, 'feePayments')), { docs: [] as any[] } as any),
+        safe('studentLeaves', () => getDocs(query(collection(db, 'studentLeaves'), where('status', 'in', ['submitted', 'pending']))), { size: 0 } as any),
+        safe('attendance', () => getDocs(query(collection(db, 'attendance'), where('date', '==', today))), { docs: [] as any[] } as any),
+      ]);
 
-        // Real attendance for today
-        const presentToday = attendanceSnap.docs.filter(d => d.data().status === 'present').length;
-        const totalPossible = studentsSnap.size;
-        const attendRate = totalPossible > 0 ? Math.round((presentToday / totalPossible) * 100) : 0;
+      const students = studentsSnap.docs.map((d: any) => d.data());
+      const boys = students.filter((s: any) => s.gender === 'male' || s.gender === 'Boy').length;
+      const girls = students.filter((s: any) => s.gender === 'female' || s.gender === 'Girl').length;
+      // Always set, even with zeros — PieChart needs non-undefined data to render the legend.
+      setGenderStats([{ name: 'Boys', value: boys }, { name: 'Girls', value: girls }]);
 
-        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-        setAttendanceStats(days.map(day => ({
-          name: day,
-          students: day === 'Fri' ? attendRate : Math.floor(Math.random() * 5) + 90, // Real for today, mock for past
-          staff: 98,
-        })));
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-        setFeeTrendData(months.map(month => ({ month, amount: Math.floor(Math.random() * 50000) + 10000 })));
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      }
+      const totalFees = feesSnap.docs.reduce((sum: number, d: any) => sum + (d.data().amount || 0), 0);
+      setCounts({
+        students: studentsSnap.size || 0,
+        teachers: teachersSnap.size || 0,
+        classes: classesSnap.size || 0,
+        feeCollection: totalFees,
+      });
+      setNotices(noticesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Notice)));
+      setRecentAdmissions(recentSnap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+      setPendingLeaves(leaveSnap.size || 0);
+
+      const presentToday = attendanceSnap.docs.filter((d: any) => d.data().status === 'present').length;
+      const totalPossible = studentsSnap.size || 0;
+      const attendRate = totalPossible > 0 ? Math.round((presentToday / totalPossible) * 100) : 0;
+
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+      setAttendanceStats(days.map(day => ({
+        name: day,
+        students: day === 'Fri' ? attendRate : Math.floor(Math.random() * 5) + 90,
+        staff: 98,
+      })));
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+      setFeeTrendData(months.map(month => ({ month, amount: Math.floor(Math.random() * 50000) + 10000 })));
     };
     fetchDashboardData();
   }, []);
@@ -507,16 +514,22 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         {/* Gender Distribution */}
         <Card>
           <h2 className="font-bold text-slate-900 mb-4">Student Distribution</h2>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={genderStats} cx="50%" cy="50%" innerRadius={55} outerRadius={75} paddingAngle={4} dataKey="value">
-                {genderStats.map((_, i) => (
-                  <Cell key={i} fill={GENDER_COLORS[i % GENDER_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: 12 }} />
-            </PieChart>
-          </ResponsiveContainer>
+          {genderStats.reduce((s, e) => s + e.value, 0) === 0 ? (
+            <div className="h-[180px] flex items-center justify-center text-xs text-slate-400">
+              No student data yet
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie data={genderStats} cx="50%" cy="50%" innerRadius={55} outerRadius={75} paddingAngle={4} dataKey="value">
+                  {genderStats.map((_, i) => (
+                    <Cell key={i} fill={GENDER_COLORS[i % GENDER_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
           <div className="space-y-3 mt-4">
             {genderStats.map((entry, i) => (
               <div key={entry.name} className="flex items-center justify-between">
