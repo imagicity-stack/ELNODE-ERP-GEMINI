@@ -364,7 +364,6 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         if (!row.fathername) errors.push(`Row ${rowNum}: fatherName is required`);
         if (!row.mothername) errors.push(`Row ${rowNum}: motherName is required`);
         if (!row.phone) errors.push(`Row ${rowNum}: phone is required`);
-        if (!row.email) errors.push(`Row ${rowNum}: email is required`);
       });
       setImportRows(rows);
       setImportErrors(errors);
@@ -750,11 +749,11 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
     setLoading(true);
     try {
-      // Use editing student's uid when available so the path lines up with storage rules.
-      // For new students, store under the admin's uid as scratch space; the URL is what matters.
-      const folderId = editingStudent?.id || (user as any)?.uid || 'admin';
+      // Always upload under the admin's own uid so request.auth.uid == userId in storage rules.
+      const adminUid = (user as any)?.uid;
+      const studentFolder = editingStudent?.id || 'new';
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const storageRef = ref(storage, `profiles/${folderId}/${Date.now()}_${safeName}`);
+      const storageRef = ref(storage, `profiles/${adminUid}/students/${studentFolder}/${Date.now()}_${safeName}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       setFormData(prev => ({ ...prev, photoURL: url }));
@@ -1040,8 +1039,8 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                   <FormField label="Phone" required>
                     <Input type="tel" required value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
                   </FormField>
-                  <FormField label="Email" required>
-                    <Input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                  <FormField label="Email">
+                    <Input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="Optional" />
                   </FormField>
                 </div>
               </div>
