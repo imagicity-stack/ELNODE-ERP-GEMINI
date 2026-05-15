@@ -20,17 +20,18 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
-import { 
-  collection, 
-  getDocs, 
-  query, 
-  where, 
-  addDoc, 
-  updateDoc, 
-  doc, 
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  addDoc,
+  updateDoc,
+  doc,
   getDoc,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  onSnapshot
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
@@ -114,16 +115,45 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
     phone: '',
   });
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [teachersSnap, staffSnap, salariesSnap, configSnap] = await Promise.all([
-        getDocs(collection(db, 'teachers')),
-        getDocs(collection(db, 'staff')),
-        getDocs(query(collection(db, 'salaries'), orderBy('month', 'desc'))),
-        getDoc(doc(db, 'payroll-config', 'global'))
-      ]);
+  const fetchData = () => {
+    // No-op: live data is wired via onSnapshot below. Kept for callers in the file.
+  };
 
+  useEffect(() => {
+    setLoading(true);
+    let teachersData: UnifiedStaff[] = [];
+    let otherStaffData: UnifiedStaff[] = [];
+    const onErr = (err: any) => { handleFirestoreError(err, OperationType.LIST, 'salaries'); setLoading(false); };
+
+    const mergeStaff = () => setStaffList([...teachersData, ...otherStaffData]);
+
+    const unsubTeachers = onSnapshot(collection(db, 'teachers'), (snap) => {
+      teachersData = snap.docs.map(doc => {
+        const data = doc.data() as Teacher;
+        return { ...data, id: doc.id, staffCategory: 'Teacher', baseSalary: data.salaryStructure || 0 } as UnifiedStaff;
+      });
+      mergeStaff();
+    }, onErr);
+
+    const unsubStaff = onSnapshot(collection(db, 'staff'), (snap) => {
+      otherStaffData = snap.docs.map(doc => {
+        const data = doc.data() as StaffMember;
+        let cat: UnifiedStaff['staffCategory'] = 'Other Staff';
+        if (data.role === 'principal') cat = 'Principal';
+        else if (data.role === 'accounts') cat = 'Accounts';
+        else if (data.role === 'admin') cat = 'Admin';
+        return { ...data, id: doc.id, staffCategory: cat, baseSalary: data.salary || 0 } as UnifiedStaff;
+      });
+      mergeStaff();
+    }, onErr);
+
+    const unsubSalaries = onSnapshot(query(collection(db, 'salaries'), orderBy('month', 'desc')), (snap) => {
+      setSalaries(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Salary)));
+      setLoading(false);
+    }, onErr);
+
+    // payroll-config is rarely changed — one-time read is fine
+    getDoc(doc(db, 'payroll-config', 'global')).then(configSnap => {
       if (configSnap.exists()) {
         setPayrollConfig(configSnap.data() as PayrollConfig);
       } else {
@@ -136,43 +166,9 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
           updatedAt: ''
         });
       }
+    }).catch(onErr);
 
-      const teachersData = teachersSnap.docs.map(doc => {
-        const data = doc.data() as Teacher;
-        return {
-          ...data,
-          id: doc.id,
-          staffCategory: 'Teacher',
-          baseSalary: data.salaryStructure || 0,
-        } as UnifiedStaff;
-      });
-
-      const otherStaffData = staffSnap.docs.map(doc => {
-        const data = doc.data() as StaffMember;
-        let cat: UnifiedStaff['staffCategory'] = 'Other Staff';
-        if (data.role === 'principal') cat = 'Principal';
-        else if (data.role === 'accounts') cat = 'Accounts';
-        else if (data.role === 'admin') cat = 'Admin';
-
-        return {
-          ...data,
-          id: doc.id,
-          staffCategory: cat,
-          baseSalary: data.salary || 0,
-        } as UnifiedStaff;
-      });
-
-      setStaffList([...teachersData, ...otherStaffData]);
-      setSalaries(salariesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Salary)));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.LIST, 'salaries');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
+    return () => { unsubTeachers(); unsubStaff(); unsubSalaries(); };
   }, []);
 
   const handleOpenCreatePayroll = (staff: UnifiedStaff) => {
@@ -274,9 +270,10 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
       const newBalance = processingSalary.netAmount - newPaidAmount;
       const status = newBalance <= 0 ? 'paid' : 'partially_paid';
 
+      const paymentTimestamp = new Date().toISOString();
       const payment = {
         amount: paymentData.paidAmount,
-        date: new Date().toISOString(),
+        date: paymentTimestamp,
         method: paymentData.method,
         transactionId: paymentData.transactionId
       };
@@ -287,20 +284,22 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
         paidAmount: newPaidAmount,
         balanceAmount: Math.max(0, newBalance),
         status,
-        paidAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        paidAt: paymentTimestamp,
+        updatedAt: paymentTimestamp,
         paymentHistory: [...history, payment]
       });
 
-      // Record in expenses
+      // Record in expenses with linkage so deletes stay consistent
       await addDoc(collection(db, 'expenses'), {
         category: 'salary',
         biller: processingSalary.employeeName,
         amount: paymentData.paidAmount,
-        date: new Date().toISOString().split('T')[0],
+        date: paymentTimestamp.split('T')[0],
         status: 'paid',
         paymentMethod: paymentData.method,
-        description: `Salary Payment - ${processingSalary.month} (${processingSalary.employeeRole})`
+        description: `Salary Payment - ${processingSalary.month} (${processingSalary.employeeRole})`,
+        salaryId: processingSalary.id,
+        salaryPaymentDate: paymentTimestamp,
       });
 
       logActivity(user, 'Processed Salary Payment', 'Accounts', `Paid ₹${paymentData.paidAmount.toLocaleString()} to ${processingSalary.employeeName}`);

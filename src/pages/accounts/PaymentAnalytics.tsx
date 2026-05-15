@@ -290,8 +290,6 @@ export default function PaymentAnalytics({ user }: PaymentAnalyticsProps) {
           label="Total Collected"
           value={`₹${(stats.totalCollected || 0).toLocaleString()}`}
           icon={DollarSign}
-          change="12.5%"
-          changePositive={true}
           gradient="bg-blue-600"
           index={0}
         />

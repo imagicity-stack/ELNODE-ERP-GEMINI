@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, Expense, FeePayment, Fee, Student, FeeRequest, Class } from '../../types';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useNavigate } from 'react-router-dom';
@@ -70,29 +70,15 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [expSnap, paySnap, requestSnap, studentSnap, classesSnap] = await Promise.all([
-          getDocs(collection(db, 'expenses')),
-          getDocs(query(collection(db, 'feePayments'), orderBy('date', 'desc'), limit(15))),
-          getDocs(collection(db, 'feeRequests')),
-          getDocs(collection(db, 'students')),
-          getDocs(collection(db, 'classes'))
-        ]);
-
-        setExpenses(expSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
-        setPayments(paySnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeePayment)));
-        setFeeRequests(requestSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
-        setStudents(studentSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student)));
-        setClasses(classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class)));
-      } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, 'accounts_dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+    const onErr = (err: any) => handleFirestoreError(err, OperationType.LIST, 'accounts_dashboard');
+    const unsubs = [
+      onSnapshot(collection(db, 'expenses'), (s) => setExpenses(s.docs.map(d => ({ id: d.id, ...d.data() } as Expense))), onErr),
+      onSnapshot(query(collection(db, 'feePayments'), orderBy('date', 'desc'), limit(15)), (s) => setPayments(s.docs.map(d => ({ id: d.id, ...d.data() } as FeePayment))), onErr),
+      onSnapshot(collection(db, 'feeRequests'), (s) => setFeeRequests(s.docs.map(d => ({ id: d.id, ...d.data() } as FeeRequest))), onErr),
+      onSnapshot(collection(db, 'students'), (s) => { setStudents(s.docs.map(d => ({ id: d.id, ...d.data() } as Student))); setLoading(false); }, onErr),
+      onSnapshot(collection(db, 'classes'), (s) => setClasses(s.docs.map(d => ({ id: d.id, ...d.data() } as Class))), onErr),
+    ];
+    return () => unsubs.forEach(u => u());
   }, []);
 
   const filteredStudents = students.filter(s =>
@@ -342,10 +328,10 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Total Collection" value={`₹${(totalCollection || 0).toLocaleString()}`} icon={Wallet} gradient="gradient-amber" change="+12%" changePositive={true} index={0} />
-        <StatCard label="Pending Fees" value={`₹${(totalPending || 0).toLocaleString()}`} icon={CreditCard} gradient="gradient-amber" change="-5%" changePositive={false} index={1} />
-        <StatCard label="Monthly Expenses" value={`₹${(monthlyExpenses || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" change="+2%" changePositive={true} index={2} />
-        <StatCard label="Net Profit" value={`₹${(netProfit || 0).toLocaleString()}`} icon={TrendingUp} gradient="gradient-amber" change="+8%" changePositive={true} index={3} />
+        <StatCard label="Total Collection" value={`₹${(totalCollection || 0).toLocaleString()}`} icon={Wallet} gradient="gradient-amber" index={0} />
+        <StatCard label="Pending Fees" value={`₹${(totalPending || 0).toLocaleString()}`} icon={CreditCard} gradient="gradient-amber" index={1} />
+        <StatCard label="Monthly Expenses" value={`₹${(monthlyExpenses || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" index={2} />
+        <StatCard label="Net Profit" value={`₹${(netProfit || 0).toLocaleString()}`} icon={TrendingUp} gradient="gradient-amber" index={3} />
       </div>
 
       <UpdatesSection user={user} className="mb-8" />
