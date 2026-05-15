@@ -112,6 +112,16 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
 
   const netProfit = totalCollection - expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
+  const getStudentFeeStatus = (studentId: string): 'paid' | 'overdue' | 'pending' | null => {
+    const requests = feeRequests.filter(r => r.studentId === studentId);
+    if (requests.length === 0) return null;
+    const unpaid = requests.filter(r => r.status !== 'paid');
+    if (unpaid.length === 0) return 'paid';
+    const today = new Date().toISOString().split('T')[0];
+    const hasOverdue = unpaid.some(r => r.dueDate && r.dueDate < today);
+    return hasOverdue ? 'overdue' : 'pending';
+  };
+
   const exportReport = async () => {
     const today = new Date().toLocaleDateString('en-IN');
     const { doc, contentY, pageWidth } = await createPdf(
@@ -472,14 +482,15 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
                   <Td>{student.schoolNumber}</Td>
                   <Td>{classes.find(c => c.id === student.classId)?.name || student.classId} - {student.section}</Td>
                   <Td>
-                    <Badge
-                      variant={
-                        student.feeStatus === 'paid' ? 'success' :
-                          student.feeStatus === 'overdue' ? 'error' : 'warning'
-                      }
-                    >
-                      {student.feeStatus}
-                    </Badge>
+                    {(() => {
+                      const status = getStudentFeeStatus(student.id);
+                      if (!status) return <span className="text-xs text-slate-400">No fees</span>;
+                      return (
+                        <Badge variant={status === 'paid' ? 'success' : status === 'overdue' ? 'error' : 'warning'}>
+                          {status}
+                        </Badge>
+                      );
+                    })()}
                   </Td>
                   <Td className="text-right">
                     <button
