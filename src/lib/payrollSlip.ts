@@ -10,7 +10,10 @@ const DARK: [number, number, number] = [15, 23, 42];
 const LIGHT: [number, number, number] = [245, 248, 252];
 const SLATE: [number, number, number] = [100, 116, 139];
 const GREEN: [number, number, number] = [5, 150, 105];
-const RED: [number, number, number] = [220, 38, 38];
+const RED: [number, number, number] = [185, 28, 28];
+const BORDER: [number, number, number] = [203, 213, 225];
+
+const INR = (n: number) => `Rs. ${(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function toWords(n: number): string {
   const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine',
@@ -56,44 +59,6 @@ async function fetchLogo(): Promise<string | null> {
   } catch { return null; }
 }
 
-function drawHeader(pdf: jsPDF, logo: string | null, PW: number, ML: number, MR: number): number {
-  pdf.setDrawColor(...NAVY);
-  pdf.setLineWidth(0.8); pdf.line(ML, 8, PW - MR, 8);
-  pdf.setLineWidth(0.2); pdf.line(ML, 10, PW - MR, 10);
-
-  if (logo) {
-    try { pdf.addImage(logo, 'JPEG', ML, 13, 22, 22); } catch { /* skip */ }
-  } else {
-    pdf.setFillColor(...NAVY);
-    pdf.roundedRect(ML, 13, 22, 22, 2, 2, 'F');
-    pdf.setFontSize(11); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...WHITE);
-    pdf.text('EH', ML + 11, 26, { align: 'center' });
-  }
-
-  pdf.setFontSize(9); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...NAVY);
-  pdf.text('SALARY SLIP', PW - MR, 19, { align: 'right' });
-  pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
-  pdf.text('OFFICIAL DOCUMENT', PW - MR, 24, { align: 'right' });
-
-  pdf.setFontSize(17); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...NAVY);
-  pdf.text('THE ELDEN HEIGHTS SCHOOL', PW / 2, 19, { align: 'center' });
-
-  pdf.setFontSize(8); pdf.setFont('helvetica', 'italic'); pdf.setTextColor(...GOLD);
-  pdf.text('Towards Eternal Glory', PW / 2, 25, { align: 'center' });
-
-  pdf.setFontSize(6.5); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
-  pdf.text(
-    'Hazaribagh, Jharkhand · 825301   ·   +91 9431904333 / 9288483677   ·   contact@eldenheights.org   ·   eldenheights.org',
-    PW / 2, 31, { align: 'center' },
-  );
-
-  pdf.setDrawColor(...NAVY);
-  pdf.setLineWidth(0.2); pdf.line(ML, 35, PW - MR, 35);
-  pdf.setLineWidth(0.8); pdf.line(ML, 37, PW - MR, 37);
-
-  return 46;
-}
-
 export async function generatePayrollSlip(salary: Salary): Promise<void> {
   const [logo, schoolSettings] = await Promise.all([fetchLogo(), getSchoolSettings()]);
   const academicYear = schoolSettings.academicYear || '2026-27';
@@ -101,196 +66,283 @@ export async function generatePayrollSlip(salary: Salary): Promise<void> {
   const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = pdf.internal.pageSize.width;
   const PH = pdf.internal.pageSize.height;
-  const ML = 12, MR = 12;
+  const ML = 14, MR = 14;
   const CW = PW - ML - MR;
 
-  let y = drawHeader(pdf, logo, PW, ML, MR);
+  // ═════════════════════════════════════════════════════════════════════════
+  //  HEADER
+  // ═════════════════════════════════════════════════════════════════════════
+  pdf.setDrawColor(...NAVY);
+  pdf.setLineWidth(0.8); pdf.line(ML, 10, PW - MR, 10);
+  pdf.setLineWidth(0.2); pdf.line(ML, 12, PW - MR, 12);
 
-  // ── TITLE ────────────────────────────────────────────────────────────────────
-  const titleText = 'EMPLOYEE SALARY SLIP';
-  const titleW = pdf.getTextWidth(titleText) * (13 / 10);
-  const titleX = PW / 2;
-  pdf.setDrawColor(...NAVY); pdf.setLineWidth(0.4);
-  pdf.line(ML, y + 0.5, titleX - titleW / 2 - 4, y + 0.5);
-  pdf.line(titleX + titleW / 2 + 4, y + 0.5, PW - MR, y + 0.5);
-  pdf.setFontSize(13); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...DARK);
-  pdf.text(titleText, PW / 2, y, { align: 'center' });
-
-  y += 5;
-  const monthLabel = new Date(salary.month + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }).toUpperCase();
-  pdf.setFontSize(8); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
-  pdf.text(`PAY PERIOD: ${monthLabel}   ·   ACADEMIC SESSION ${academicYear}`, PW / 2, y, { align: 'center' });
-  y += 6;
-
-  // ── EMPLOYEE DETAILS ─────────────────────────────────────────────────────────
-  const boxW = (CW - 4) / 3;
-  const metaFields = [
-    { label: 'EMPLOYEE NAME', value: salary.employeeName },
-    { label: 'DESIGNATION',   value: salary.employeeRole },
-    { label: 'PAY MONTH',     value: monthLabel },
-  ];
-  metaFields.forEach((f, i) => {
-    const bx = ML + i * (boxW + 2);
-    pdf.setFillColor(...LIGHT);
-    pdf.rect(bx, y, boxW, 14, 'F');
-    pdf.setFontSize(6.5); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
-    pdf.text(f.label, bx + 3, y + 5);
-    pdf.setFontSize(9); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...DARK);
-    const maxW = boxW - 6;
-    const val = pdf.splitTextToSize(f.value, maxW)[0] || f.value;
-    pdf.text(val, bx + 3, y + 11);
-  });
-  y += 18;
-
-  // ── EARNINGS TABLE ───────────────────────────────────────────────────────────
-  const earningsRows = [
-    ['Basic / Monthly Salary', `₹ ${(salary.baseAmount || 0).toLocaleString('en-IN')}`],
-    ['Incentives / Allowances', `₹ ${(salary.allowances || 0).toLocaleString('en-IN')}`],
-  ];
-  const totalEarnings = (salary.baseAmount || 0) + (salary.allowances || 0);
-
-  const deductionsList: [string, number][] = [
-    ['EPF / Provident Fund', salary.deductions?.pf || 0],
-    ['Professional Tax / TDS', salary.deductions?.tax || 0],
-    ['Leave Deduction', salary.deductions?.leaveDeduction || 0],
-    ['Other Deductions', salary.deductions?.other || 0],
-  ].filter(([, amt]) => amt > 0) as [string, number][];
-
-  const totalDeductions = deductionsList.reduce((s, [, a]) => s + a, 0);
-
-  const maxRows = Math.max(earningsRows.length, deductionsList.length);
-  const tableBody: any[][] = [];
-  for (let i = 0; i < maxRows; i++) {
-    tableBody.push([
-      earningsRows[i]?.[0] ?? '',
-      earningsRows[i]?.[1] ?? '',
-      deductionsList[i]?.[0] ?? '',
-      deductionsList[i] ? `₹ ${deductionsList[i][1].toLocaleString('en-IN')}` : '',
-    ]);
+  if (logo) {
+    try { pdf.addImage(logo, 'JPEG', ML, 15, 20, 20); } catch { /* skip */ }
   }
 
-  autoTable(pdf, {
-    startY: y,
-    head: [['EARNINGS', 'AMOUNT', 'DEDUCTIONS', 'AMOUNT']],
-    body: tableBody,
-    foot: [[
-      { content: 'GROSS EARNINGS', styles: { fontStyle: 'bold', halign: 'right', fillColor: LIGHT as any, textColor: DARK as any } },
-      { content: `₹ ${totalEarnings.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold', halign: 'right', fillColor: LIGHT as any, textColor: DARK as any } },
-      { content: 'TOTAL DEDUCTIONS', styles: { fontStyle: 'bold', halign: 'right', fillColor: LIGHT as any, textColor: RED as any } },
-      { content: `₹ ${totalDeductions.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold', halign: 'right', fillColor: LIGHT as any, textColor: RED as any } },
-    ]],
-    headStyles: { fillColor: NAVY as any, textColor: WHITE as any, fontStyle: 'bold', fontSize: 8.5, cellPadding: 3.5 },
-    bodyStyles: { fontSize: 9, cellPadding: 3 },
-    alternateRowStyles: { fillColor: LIGHT as any },
-    footStyles: { fontSize: 9, cellPadding: 3 },
-    columnStyles: {
-      0: { cellWidth: (CW / 2 - 10) },
-      1: { halign: 'right', cellWidth: 28, fontStyle: 'bold' },
-      2: { cellWidth: (CW / 2 - 10) },
-      3: { halign: 'right', cellWidth: 28, fontStyle: 'bold' },
-    },
-    theme: 'grid',
-    tableLineColor: [200, 210, 225] as any,
-    tableLineWidth: 0.15,
-    margin: { left: ML, right: MR },
+  pdf.setFontSize(16); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...NAVY);
+  pdf.text('THE ELDEN HEIGHTS SCHOOL', PW / 2, 20, { align: 'center' });
+  pdf.setFontSize(8); pdf.setFont('helvetica', 'italic'); pdf.setTextColor(...GOLD);
+  pdf.text('Towards Eternal Glory', PW / 2, 25, { align: 'center' });
+  pdf.setFontSize(6.5); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
+  pdf.text('Hazaribagh, Jharkhand 825301  ·  +91 9431904333  ·  contact@eldenheights.org', PW / 2, 30, { align: 'center' });
+
+  pdf.setDrawColor(...NAVY);
+  pdf.setLineWidth(0.2); pdf.line(ML, 37, PW - MR, 37);
+  pdf.setLineWidth(0.8); pdf.line(ML, 39, PW - MR, 39);
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  TITLE BANNER
+  // ═════════════════════════════════════════════════════════════════════════
+  const monthLabel = new Date(salary.month + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  pdf.setFillColor(...NAVY);
+  pdf.rect(ML, 44, CW, 11, 'F');
+  pdf.setFontSize(12); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...WHITE);
+  pdf.text('SALARY SLIP', ML + 4, 51);
+  pdf.setFontSize(9); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...GOLD);
+  pdf.text(monthLabel.toUpperCase(), PW - MR - 4, 51, { align: 'right' });
+
+  let y = 60;
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  EMPLOYEE DETAILS — two-column key/value
+  // ═════════════════════════════════════════════════════════════════════════
+  const slipNo = `PS-${salary.month.replace('-', '')}-${(salary.id || '').slice(-6).toUpperCase() || Date.now().toString().slice(-6)}`;
+  const issueDate = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+  const empRows: [string, string, string, string][] = [
+    ['Employee Name', salary.employeeName,           'Pay Slip No.',  slipNo],
+    ['Designation',   salary.employeeRole || '-',    'Pay Period',    monthLabel],
+    ['Employee ID',   (salary.employeeId || '-').slice(0, 14), 'Date of Issue', issueDate],
+    ['Academic Year', academicYear,                  'Status',        salary.status.replace('_', ' ').toUpperCase()],
+  ];
+
+  pdf.setFillColor(...LIGHT);
+  pdf.rect(ML, y, CW, empRows.length * 7 + 4, 'F');
+  pdf.setDrawColor(...BORDER); pdf.setLineWidth(0.2);
+  pdf.rect(ML, y, CW, empRows.length * 7 + 4);
+
+  const half = CW / 2;
+  empRows.forEach(([l1, v1, l2, v2], i) => {
+    const ry = y + 6 + i * 7;
+    pdf.setFontSize(7.5); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
+    pdf.text(l1, ML + 3, ry);
+    pdf.text(':', ML + 32, ry);
+    pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...DARK);
+    pdf.text(v1, ML + 35, ry);
+
+    pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
+    pdf.text(l2, ML + half + 3, ry);
+    pdf.text(':', ML + half + 32, ry);
+    pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...DARK);
+    pdf.text(v2, ML + half + 35, ry);
   });
 
-  y = (pdf as any).lastAutoTable.finalY + 4;
+  y += empRows.length * 7 + 8;
 
-  // ── NET PAY BANNER ───────────────────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════════════════
+  //  EARNINGS & DEDUCTIONS — side-by-side tables
+  // ═════════════════════════════════════════════════════════════════════════
+  const earnings: [string, number][] = [
+    ['Basic Salary', salary.baseAmount || 0],
+    ['Allowances / Bonus', salary.allowances || 0],
+  ];
+  const totalEarnings = earnings.reduce((s, [, a]) => s + a, 0);
+
+  const deductions: [string, number][] = [
+    ['Provident Fund (EPF)', salary.deductions?.pf || 0],
+    ['Professional Tax / TDS', salary.deductions?.tax || 0],
+    [`Leave Deduction (${salary.deductions?.leaves || 0} days)`, salary.deductions?.leaveDeduction || 0],
+    ['Other Deductions', salary.deductions?.other || 0],
+  ];
+  const totalDeductions = deductions.reduce((s, [, a]) => s + a, 0);
+
+  const colW = (CW - 4) / 2;
+  const tableStartY = y;
+
+  // Left: Earnings
+  autoTable(pdf, {
+    startY: tableStartY,
+    head: [['EARNINGS', 'AMOUNT (INR)']],
+    body: earnings.map(([label, amt]) => [label, INR(amt)]),
+    foot: [[
+      { content: 'GROSS EARNINGS', styles: { fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } },
+      { content: INR(totalEarnings), styles: { fontStyle: 'bold', fillColor: LIGHT as any, textColor: GREEN as any, halign: 'right' } },
+    ]],
+    headStyles: { fillColor: GREEN as any, textColor: WHITE as any, fontStyle: 'bold', fontSize: 8.5, cellPadding: 3 },
+    bodyStyles: { fontSize: 9, cellPadding: 3 },
+    footStyles: { fontSize: 9, cellPadding: 3 },
+    columnStyles: { 1: { halign: 'right', cellWidth: 36 } },
+    theme: 'grid',
+    tableLineColor: BORDER as any,
+    tableLineWidth: 0.15,
+    margin: { left: ML, right: PW - ML - colW },
+    tableWidth: colW,
+  });
+  const leftEndY = (pdf as any).lastAutoTable.finalY;
+
+  // Right: Deductions
+  autoTable(pdf, {
+    startY: tableStartY,
+    head: [['DEDUCTIONS', 'AMOUNT (INR)']],
+    body: deductions.map(([label, amt]) => [label, INR(amt)]),
+    foot: [[
+      { content: 'TOTAL DEDUCTIONS', styles: { fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } },
+      { content: INR(totalDeductions), styles: { fontStyle: 'bold', fillColor: LIGHT as any, textColor: RED as any, halign: 'right' } },
+    ]],
+    headStyles: { fillColor: RED as any, textColor: WHITE as any, fontStyle: 'bold', fontSize: 8.5, cellPadding: 3 },
+    bodyStyles: { fontSize: 9, cellPadding: 3 },
+    footStyles: { fontSize: 9, cellPadding: 3 },
+    columnStyles: { 1: { halign: 'right', cellWidth: 36 } },
+    theme: 'grid',
+    tableLineColor: BORDER as any,
+    tableLineWidth: 0.15,
+    margin: { left: ML + colW + 4, right: MR },
+    tableWidth: colW,
+  });
+  const rightEndY = (pdf as any).lastAutoTable.finalY;
+
+  y = Math.max(leftEndY, rightEndY) + 6;
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  NET PAY — large emphasised banner
+  // ═════════════════════════════════════════════════════════════════════════
   pdf.setFillColor(...NAVY);
-  pdf.rect(ML, y, CW, 18, 'F');
-  pdf.setFontSize(9); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...WHITE);
-  pdf.text('NET PAY (TAKE HOME)', ML + 4, y + 7);
-  pdf.setFontSize(16); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...GOLD);
-  pdf.text(`₹ ${(salary.netAmount || 0).toLocaleString('en-IN')}`, PW - MR - 4, y + 12, { align: 'right' });
+  pdf.rect(ML, y, CW, 22, 'F');
+  pdf.setFillColor(...GOLD);
+  pdf.rect(ML, y, 3, 22, 'F');
+
+  pdf.setFontSize(8); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(255, 255, 255, 0.85 as any);
+  pdf.setTextColor(200, 215, 235);
+  pdf.text('NET PAY (TAKE HOME)', ML + 8, y + 8);
+  pdf.setFontSize(7); pdf.setFont('helvetica', 'italic'); pdf.setTextColor(180, 195, 215);
+  pdf.text('Gross Earnings minus Total Deductions', ML + 8, y + 14);
+
+  pdf.setFontSize(18); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...GOLD);
+  pdf.text(INR(salary.netAmount || 0), PW - MR - 5, y + 14, { align: 'right' });
+
+  y += 26;
+
+  // Amount in words
+  pdf.setFillColor(...LIGHT);
+  pdf.rect(ML, y, CW, 10, 'F');
+  pdf.setDrawColor(...BORDER); pdf.setLineWidth(0.2);
+  pdf.rect(ML, y, CW, 10);
+  pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
+  pdf.text('IN WORDS:', ML + 3, y + 6.5);
+  pdf.setFontSize(8.5); pdf.setFont('helvetica', 'bolditalic'); pdf.setTextColor(...DARK);
+  pdf.text(toWords(salary.netAmount || 0), ML + 22, y + 6.5);
+  y += 14;
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  PAYMENT SUMMARY
+  // ═════════════════════════════════════════════════════════════════════════
+  const summaryY = y;
+  const sumColW = (CW - 4) / 3;
+  const summaryItems: [string, string, [number, number, number]][] = [
+    ['Net Payable',  INR(salary.netAmount || 0),  NAVY],
+    ['Amount Paid',  INR(salary.paidAmount || 0), GREEN],
+    ['Balance Due',  INR(salary.balanceAmount || 0), salary.balanceAmount > 0 ? RED : SLATE],
+  ];
+  summaryItems.forEach(([label, value, color], i) => {
+    const bx = ML + i * (sumColW + 2);
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(...BORDER); pdf.setLineWidth(0.3);
+    pdf.rect(bx, summaryY, sumColW, 18);
+    pdf.setFillColor(...color);
+    pdf.rect(bx, summaryY, sumColW, 2, 'F');
+
+    pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
+    pdf.text(label.toUpperCase(), bx + 3, summaryY + 8);
+    pdf.setFontSize(11); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...color);
+    pdf.text(value, bx + 3, summaryY + 15);
+  });
   y += 22;
 
-  // ── AMOUNT IN WORDS ──────────────────────────────────────────────────────────
-  pdf.setFillColor(...LIGHT);
-  pdf.rect(ML, y, CW, 14, 'F');
-  pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
-  pdf.text('NET AMOUNT IN WORDS', ML + 3, y + 5);
-  pdf.setFontSize(9); pdf.setFont('helvetica', 'bolditalic'); pdf.setTextColor(...DARK);
-  pdf.text(toWords(salary.netAmount || 0), ML + 3, y + 11);
-  y += 18;
-
-  // ── PAYMENT HISTORY ──────────────────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════════════════
+  //  PAYMENT HISTORY
+  // ═════════════════════════════════════════════════════════════════════════
   const history = salary.paymentHistory || [];
   if (history.length > 0) {
-    pdf.setFontSize(8.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...DARK);
+    pdf.setFontSize(9); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...DARK);
     pdf.text('PAYMENT HISTORY', ML, y);
-    pdf.setDrawColor(...SLATE); pdf.setLineWidth(0.2);
-    pdf.line(ML, y + 1.5, PW - MR, y + 1.5);
-    y += 6;
+    pdf.setDrawColor(...NAVY); pdf.setLineWidth(0.3);
+    pdf.line(ML, y + 1.5, ML + 35, y + 1.5);
+    y += 4;
 
     autoTable(pdf, {
       startY: y,
-      head: [['DATE', 'AMOUNT PAID', 'METHOD', 'TRANSACTION ID', 'STATUS']],
-      body: history.map(h => [
+      head: [['#', 'DATE', 'METHOD', 'TRANSACTION REF', 'AMOUNT']],
+      body: history.map((h, i) => [
+        String(i + 1).padStart(2, '0'),
         new Date(h.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-        `₹ ${h.amount.toLocaleString('en-IN')}`,
         (h.method || '').replace(/_/g, ' ').toUpperCase(),
         h.transactionId || '-',
-        'PAID',
+        INR(h.amount),
       ]),
-      headStyles: { fillColor: NAVY as any, textColor: WHITE as any, fontStyle: 'bold', fontSize: 8, cellPadding: 3 },
-      bodyStyles: { fontSize: 8.5, cellPadding: 3 },
+      headStyles: { fillColor: NAVY as any, textColor: WHITE as any, fontStyle: 'bold', fontSize: 8, cellPadding: 2.5 },
+      bodyStyles: { fontSize: 8.5, cellPadding: 2.5 },
       alternateRowStyles: { fillColor: LIGHT as any },
       columnStyles: {
-        1: { halign: 'right', fontStyle: 'bold' },
-        4: { textColor: GREEN as any, fontStyle: 'bold' },
+        0: { halign: 'center', cellWidth: 10 },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 32 },
+        4: { halign: 'right', fontStyle: 'bold', cellWidth: 36 },
       },
       theme: 'grid',
-      tableLineColor: [200, 210, 225] as any,
+      tableLineColor: BORDER as any,
       tableLineWidth: 0.15,
       margin: { left: ML, right: MR },
     });
-
     y = (pdf as any).lastAutoTable.finalY + 6;
-  } else {
-    // Payment status box when no history
-    pdf.setFillColor(255, 251, 235);
-    pdf.rect(ML, y, CW, 14, 'F');
-    pdf.setDrawColor(251, 191, 36);
-    pdf.setLineWidth(0.3);
-    pdf.rect(ML, y, CW, 14);
-    pdf.setFontSize(8.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(180, 120, 0);
-    pdf.text('PAYMENT STATUS: PENDING — No disbursements recorded for this month.', ML + 4, y + 8.5);
-    y += 18;
   }
 
-  // ── REMARKS ──────────────────────────────────────────────────────────────────
+  // Remarks
   if (salary.remarks) {
-    pdf.setFontSize(7.5); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
-    pdf.text(`Remarks: ${salary.remarks}`, ML, y);
-    y += 7;
+    pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...DARK);
+    pdf.text('Remarks:', ML, y);
+    pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
+    const remarkLines = pdf.splitTextToSize(salary.remarks, CW - 20);
+    pdf.text(remarkLines, ML + 18, y);
+    y += remarkLines.length * 4 + 4;
   }
 
-  // ── SIGNATORY ────────────────────────────────────────────────────────────────
-  const sigY = y + 4;
-  const sigX = PW - MR - 62;
-  pdf.setDrawColor(...SLATE); pdf.setLineWidth(0.3);
-  pdf.rect(sigX, sigY, 62, 30);
-  pdf.line(sigX, sigY + 20, sigX + 62, sigY + 20);
-  pdf.setFontSize(8); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...DARK);
-  pdf.text('AUTHORISED SIGNATORY', sigX + 31, sigY + 14, { align: 'center' });
-  pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
-  pdf.text('Accounts & Finance Office', sigX + 31, sigY + 26, { align: 'center' });
+  // ═════════════════════════════════════════════════════════════════════════
+  //  SIGNATORIES
+  // ═════════════════════════════════════════════════════════════════════════
+  const sigY = Math.min(y + 6, PH - 50);
+  const sigColW = (CW - 8) / 2;
 
-  // ── FOOTER ───────────────────────────────────────────────────────────────────
+  // Employee
+  pdf.setDrawColor(...SLATE); pdf.setLineWidth(0.3);
+  pdf.line(ML, sigY + 14, ML + sigColW - 6, sigY + 14);
+  pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...DARK);
+  pdf.text('Employee Signature', ML, sigY + 19);
+  pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
+  pdf.text(salary.employeeName, ML, sigY + 24);
+
+  // Authorised
+  const ax = ML + sigColW + 8;
+  pdf.line(ax, sigY + 14, ax + sigColW - 6, sigY + 14);
+  pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...DARK);
+  pdf.text('Authorised Signatory', ax, sigY + 19);
+  pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
+  pdf.text('Accounts & Finance Office', ax, sigY + 24);
+
+  // ═════════════════════════════════════════════════════════════════════════
+  //  FOOTER
+  // ═════════════════════════════════════════════════════════════════════════
   const footY = PH - 14;
   pdf.setDrawColor(...NAVY); pdf.setLineWidth(0.2); pdf.line(ML, footY - 2, PW - MR, footY - 2);
   pdf.setLineWidth(0.6); pdf.line(ML, footY, PW - MR, footY);
 
-  pdf.setFontSize(7.5); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...NAVY);
+  pdf.setFontSize(7); pdf.setFont('helvetica', 'bold'); pdf.setTextColor(...NAVY);
   pdf.text('EHS  ·  THE ELDEN HEIGHTS SCHOOL', ML, footY + 4);
-
   pdf.setFont('helvetica', 'italic'); pdf.setTextColor(...GOLD);
-  pdf.text('Thank you for your dedicated service', PW / 2, footY + 4, { align: 'center' });
-
+  pdf.text('This is a computer-generated salary slip and does not require a signature.', PW / 2, footY + 4, { align: 'center' });
   pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...SLATE);
-  pdf.text('System Generated  ·  Page 1 of 1', PW - MR, footY + 4, { align: 'right' });
+  pdf.text('Page 1 of 1', PW - MR, footY + 4, { align: 'right' });
 
   pdf.setFontSize(6.5); pdf.setFont('helvetica', 'italic'); pdf.setTextColor(...SLATE);
   pdf.text('A unit of Bhagwati Educational And Charitable Trust', PW / 2, footY + 9, { align: 'center' });
