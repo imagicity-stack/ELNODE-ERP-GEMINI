@@ -450,16 +450,29 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
                           <Eye className="w-3 h-3 mr-1" /> View
                         </Button>
                           {!readOnly && (leave.status === 'submitted' || leave.status === 'pending' || leave.status === 'document_required') && (
-                            <Button 
-                              variant="primary" 
-                              size="xs"
-                              onClick={() => {
-                                setSelectedLeave(leave);
-                                setProcessModalOpen(true);
-                              }}
-                            >
-                              <ClipboardCheck className="w-3 h-3 mr-1" /> Process
-                            </Button>
+                            <>
+                              <Button
+                                variant="primary"
+                                size="xs"
+                                onClick={() => {
+                                  setSelectedLeave(leave);
+                                  setProcessModalOpen(true);
+                                }}
+                              >
+                                <ClipboardCheck className="w-3 h-3 mr-1" /> Process
+                              </Button>
+                              <Button
+                                variant="danger"
+                                size="xs"
+                                onClick={() => {
+                                  setSelectedLeave(leave);
+                                  setRemarks('');
+                                  setProcessModalOpen(true);
+                                }}
+                              >
+                                Reject
+                              </Button>
+                            </>
                           )}
                       </div>
                     </td>

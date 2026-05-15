@@ -308,20 +308,26 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
                       </div>
                     )}
                   </div>
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="absolute -bottom-2 -right-2 p-2 bg-white rounded-xl shadow-lg border border-slate-100 text-slate-400 hover:text-indigo-600 hover:scale-110 transition-all active:scale-95"
-                    title="Change Photo"
-                  >
-                    <Camera className="w-4 h-4" />
-                  </button>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handlePhotoUpload} 
-                    accept="image/*" 
-                    className="hidden" 
-                  />
+                  {/* Photo upload restricted to admin/principal/office_staff — students/parents/teachers
+                       have their photo set from the admin portal to keep records authoritative */}
+                  {(user.role === 'super_admin' || user.role === 'principal' || user.role === 'office_staff') && (
+                    <>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="absolute -bottom-2 -right-2 p-2 bg-white rounded-xl shadow-lg border border-slate-100 text-slate-400 hover:text-indigo-600 hover:scale-110 transition-all active:scale-95"
+                        title="Change Photo"
+                      >
+                        <Camera className="w-4 h-4" />
+                      </button>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handlePhotoUpload}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                    </>
+                  )}
                 </div>
                 <div className="mt-4 text-center">
                   <h2 className="text-xl font-bold text-slate-900">{user.name}</h2>
