@@ -15,6 +15,7 @@ import AcademicCalendar from '../admin/AcademicCalendar';
 import NoticeBoard from '../admin/NoticeBoard';
 import LessonLogs from '../shared/LessonLogs';
 import ProfileSettings from '../shared/ProfileSettings';
+import TeacherLeaves from './TeacherLeaves';
 
 export default function TeacherPortal({ user }: { user: UserProfile }) {
   return (
@@ -29,6 +30,7 @@ export default function TeacherPortal({ user }: { user: UserProfile }) {
         <Route path="/timetable" element={<TeacherTimetable user={user} />} />
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />
         <Route path="/diary" element={<LessonLogs user={user} />} />
+        <Route path="/leaves" element={<TeacherLeaves user={user} />} />
         <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="*" element={<Navigate to="/teacher" />} />
       </Routes>

@@ -480,6 +480,47 @@ export interface StudentLeaveRequest {
   attendanceConnectionStatus: 'pending' | 'connected' | 'not_applicable';
 }
 
+// ─── Teacher Leave Management ─────────────────────────────────────────────────
+
+export type TeacherLeaveType = 'casual' | 'medical' | 'emergency' | 'half_day' | 'comp_off' | 'earned';
+export type TeacherLeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface TeacherLeaveRequest {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  leaveType: TeacherLeaveType;
+  startDate: string;          // ISO date  e.g. '2025-12-01'
+  endDate: string;            // ISO date
+  totalDays: number;
+  reason: string;
+  substitutePreference?: string; // teacher-suggested substitute name/note
+  status: TeacherLeaveStatus;
+  principalRemarks?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  submittedAt: string;
+  updatedAt: string;
+  // Set by principal during approval:
+  substituteAssigned?: boolean; // true once substitute periods are created in Firestore
+  attendanceSynced?: boolean;   // true once attendance docs are written for leave days
+}
+
+export interface SubstituteAssignment {
+  id: string;
+  leaveId: string;
+  date: string;               // ISO date — one doc per day per period
+  slotId: string;
+  classId: string;
+  originalTeacherId: string;
+  substituteTeacherId?: string; // undefined = TBD
+  substituteTeacherName?: string;
+  status: 'assigned' | 'unassigned'; // unassigned = period marked free
+  assignedBy: string;         // principal uid
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ActivitySection = 'Super Admin' | 'Accounts' | 'Parents' | 'Students' | 'Academic' | 'Teachers' | 'Exam' | 'Staff' | 'Principal';
 
 export interface ActivityLog {

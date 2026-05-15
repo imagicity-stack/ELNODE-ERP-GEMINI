@@ -12,6 +12,7 @@ import SubjectManagement from './SubjectManagement';
 import HouseManagement from './HouseManagement';
 import FeeStructure from './FeeStructure';
 import LeaveManagement from './LeaveManagement';
+import TeacherLeaveApproval from './TeacherLeaveApproval';
 import StaffManagement from './StaffManagement';
 import AdmissionManagement from './AdmissionManagement';
 import ExamManagement from './ExamManagement';
@@ -47,6 +48,7 @@ export default function AdminPortal({ user }: { user: UserProfile }) {
         <Route path="/houses" element={<HouseManagement user={user} />} />
         <Route path="/fees" element={<FeeStructure user={user} />} />
         <Route path="/leaves" element={<LeaveManagement user={user} />} />
+        <Route path="/teacher-leaves" element={<TeacherLeaveApproval user={user} />} />
         <Route path="/fee-collection" element={<FeeCollection user={user} />} />
         <Route path="/payment-history" element={<PaymentHistory user={user} />} />
         <Route path="/analytics" element={<PaymentAnalytics user={user} />} />
