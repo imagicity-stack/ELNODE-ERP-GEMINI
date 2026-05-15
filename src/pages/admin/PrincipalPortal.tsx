@@ -20,6 +20,7 @@ import GradingScaleManagement from './GradingScaleManagement';
 import TimetableManagement from './TimetableManagement';
 import ActivityTracker from './ActivityTracker';
 import ProfileSettings from '../shared/ProfileSettings';
+import GrievanceTracker from '../grievance/GrievanceTracker';
 
 export default function PrincipalPortal({ user }: { user: UserProfile }) {
   return (
@@ -43,6 +44,7 @@ export default function PrincipalPortal({ user }: { user: UserProfile }) {
         <Route path="/diary" element={<LessonLogs user={user} />} />
         <Route path="/activity-logs" element={<ActivityTracker user={user} />} />
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />
+        <Route path="/tracker" element={<GrievanceTracker user={user} />} />
         <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="*" element={<Navigate to="/principal" />} />
       </Routes>

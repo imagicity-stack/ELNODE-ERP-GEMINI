@@ -17,6 +17,7 @@ import ParentPortal from './pages/parent/ParentPortal';
 import AccountsPortal from './pages/accounts/AccountsPortal';
 import TeacherPortal from './pages/teacher/TeacherPortal';
 import PrincipalPortal from './pages/admin/PrincipalPortal';
+import GrievancePortal from './pages/grievance/GrievancePortal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
 import { DataProvider } from './contexts/DataContext';
@@ -25,6 +26,7 @@ const normalizeUserRole = (role: string): UserProfile['role'] => {
   if (['admin', 'staff', 'security', 'transport', 'office_staff'].includes(role)) {
     return 'office_staff';
   }
+  if (role === 'grievance_officer') return 'grievance_officer';
   return role as UserProfile['role'];
 };
 
@@ -207,6 +209,7 @@ export default function App() {
       case 'student': return '/student';
       case 'parent': return '/parent';
       case 'accounts': return '/accounts';
+      case 'grievance_officer': return '/grievance';
       default: return '/login';
     }
   };
@@ -234,6 +237,7 @@ export default function App() {
               <Route path="/accounts/*" element={user?.role === 'accounts' ? <AccountsPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/teacher/*" element={user?.role === 'teacher' ? <TeacherPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/principal/*" element={user?.role === 'principal' ? <PrincipalPortal user={user} /> : <Navigate to="/login" />} />
+              <Route path="/grievance/*" element={user?.role === 'grievance_officer' || user?.role === 'super_admin' || user?.role === 'principal' ? <GrievancePortal user={user} /> : <Navigate to="/login" />} />
               
               <Route path="/" element={<Navigate to={user ? getPortalPath(user.role) : "/login"} />} />
               <Route path="*" element={<Navigate to="/" />} />

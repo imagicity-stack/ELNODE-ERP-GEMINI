@@ -110,6 +110,14 @@ const roleConfig: Record<UserRole, {
     accentBorder: 'border-cyan-500/30',
     gradient: 'from-cyan-600 to-blue-600',
   },
+  grievance_officer: {
+    label: 'Grievance Portal',
+    accent: 'bg-teal-500',
+    accentLight: 'bg-teal-500/15',
+    accentText: 'text-teal-400',
+    accentBorder: 'border-teal-500/30',
+    gradient: 'from-teal-600 to-emerald-600',
+  },
 };
 
 // ─── Nav Items ────────────────────────────────────────────────────────────────
@@ -165,6 +173,13 @@ const navItems: NavItem[] = [
   { label: 'WhatsApp Notify', icon: MessageSquare, path: '/whatsapp', roles: ['super_admin', 'accounts'], section: 'Settings' },
   { label: 'Role Permissions', icon: ShieldCheck, path: '/permissions', roles: ['super_admin'], section: 'Settings' },
 
+  // Grievance Officer specific
+  { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['grievance_officer'], section: 'Overview' },
+  { label: 'Grievances', icon: MessageSquare, path: '/tracker', roles: ['grievance_officer', 'principal', 'super_admin'], section: 'Grievance' },
+  { label: 'Fee Follow-up', icon: Wallet, path: '/fee-followup', roles: ['grievance_officer', 'super_admin'], section: 'Grievance' },
+  { label: 'Broadcast', icon: Megaphone, path: '/broadcast', roles: ['grievance_officer', 'super_admin'], section: 'Communication' },
+  { label: 'Profile', icon: User, path: '/profile', roles: ['grievance_officer'], section: 'Settings' },
+
   // Teacher specific (already mostly covered by Overview)
   { label: 'My Classes', icon: GraduationCap, path: '/classes', roles: ['teacher'], section: 'Academic' },
   { label: 'Attendance', icon: ClipboardCheck, path: '/attendance', roles: ['teacher'], section: 'Academic' },
@@ -197,7 +212,8 @@ const navItems: NavItem[] = [
   { label: 'Exams', icon: FileText, path: '/exams', roles: ['parent'], section: 'Academic' },
   { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['parent'], section: 'Communication' },
   { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['parent'], section: 'Academic' },
-  { label: 'Profile', icon: User, path: '/profile', roles: ['super_admin', 'accounts', 'teacher', 'student', 'parent', 'principal'], section: 'Settings' },
+  { label: 'Grievances', icon: MessageSquare, path: '/grievances', roles: ['parent'], section: 'Communication' },
+  { label: 'Profile', icon: User, path: '/profile', roles: ['super_admin', 'accounts', 'teacher', 'student', 'parent', 'principal', 'grievance_officer'], section: 'Settings' },
 ];
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -237,6 +253,7 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
       case 'student': return '/student';
       case 'parent': return '/parent';
       case 'accounts': return '/accounts';
+      case 'grievance_officer': return '/grievance';
       default: return `/${r.replace('_', '')}`;
     }
   };
