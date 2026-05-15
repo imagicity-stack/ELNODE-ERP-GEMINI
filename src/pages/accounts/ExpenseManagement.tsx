@@ -3,7 +3,7 @@ import { generateExpenseAcknowledgement } from '../../lib/expenseReceipt';
 import { Plus, Download, Receipt, Wallet, TrendingDown, Edit2, FileText, FileDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import {
   PageHeader,
@@ -159,6 +159,35 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
   const performDelete = async () => {
     if (!deletingId) return;
     try {
+      // If this expense was created from a salary payment, reverse the salary record
+      // so the salary section reflects the deletion.
+      const expense = expenses.find(e => e.id === deletingId) as any;
+      if (expense?.salaryId) {
+        try {
+          const salaryRef = doc(db, 'salaries', expense.salaryId);
+          const salarySnap = await getDoc(salaryRef);
+          if (salarySnap.exists()) {
+            const salary = salarySnap.data() as any;
+            const history: any[] = salary.paymentHistory || [];
+            const filteredHistory = expense.salaryPaymentDate
+              ? history.filter(h => h.date !== expense.salaryPaymentDate)
+              : history.slice(0, -1);
+            const newPaid = Math.max(0, (salary.paidAmount || 0) - expense.amount);
+            const newBalance = Math.max(0, (salary.netAmount || 0) - newPaid);
+            const newStatus = newPaid <= 0 ? 'pending' : (newBalance <= 0 ? 'paid' : 'partially_paid');
+            await updateDoc(salaryRef, {
+              paidAmount: newPaid,
+              balanceAmount: newBalance,
+              status: newStatus,
+              paymentHistory: filteredHistory,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `salaries/${expense.salaryId}`);
+        }
+      }
+
       await deleteDoc(doc(db, 'expenses', deletingId));
       fetchExpenses();
       setIsDeleteModalOpen(false);
@@ -355,10 +384,10 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
 
       {/* Expense Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Total Expenses" value={`₹${(totalExpenses || 0).toLocaleString()}`} icon={TrendingDown} gradient="gradient-amber" change="+5.2%" changePositive={false} index={0} />
-        <StatCard label="Pending Bills" value={`₹${(pendingBills || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" change="-2.4%" changePositive={true} index={1} />
-        <StatCard label="Utilities" value={`₹${(expenses.filter(e => e.category === 'utilities').reduce((sum, e) => sum + e.amount, 0) || 0).toLocaleString()}`} icon={Wallet} gradient="gradient-amber" change="+1.5%" changePositive={false} index={2} />
-        <StatCard label="Maintenance" value={`₹${(expenses.filter(e => e.category === 'maintenance').reduce((sum, e) => sum + e.amount, 0) || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" change="+12.3%" changePositive={false} index={3} />
+        <StatCard label="Total Expenses" value={`₹${(totalExpenses || 0).toLocaleString()}`} icon={TrendingDown} gradient="gradient-amber" index={0} />
+        <StatCard label="Pending Bills" value={`₹${(pendingBills || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" index={1} />
+        <StatCard label="Utilities" value={`₹${(expenses.filter(e => e.category === 'utilities').reduce((sum, e) => sum + e.amount, 0) || 0).toLocaleString()}`} icon={Wallet} gradient="gradient-amber" index={2} />
+        <StatCard label="Maintenance" value={`₹${(expenses.filter(e => e.category === 'maintenance').reduce((sum, e) => sum + e.amount, 0) || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" index={3} />
       </div>
 
       {/* Expenses Table */}

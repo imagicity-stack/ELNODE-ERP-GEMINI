@@ -274,9 +274,10 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
       const newBalance = processingSalary.netAmount - newPaidAmount;
       const status = newBalance <= 0 ? 'paid' : 'partially_paid';
 
+      const paymentTimestamp = new Date().toISOString();
       const payment = {
         amount: paymentData.paidAmount,
-        date: new Date().toISOString(),
+        date: paymentTimestamp,
         method: paymentData.method,
         transactionId: paymentData.transactionId
       };
@@ -287,20 +288,22 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
         paidAmount: newPaidAmount,
         balanceAmount: Math.max(0, newBalance),
         status,
-        paidAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        paidAt: paymentTimestamp,
+        updatedAt: paymentTimestamp,
         paymentHistory: [...history, payment]
       });
 
-      // Record in expenses
+      // Record in expenses with linkage so deletes stay consistent
       await addDoc(collection(db, 'expenses'), {
         category: 'salary',
         biller: processingSalary.employeeName,
         amount: paymentData.paidAmount,
-        date: new Date().toISOString().split('T')[0],
+        date: paymentTimestamp.split('T')[0],
         status: 'paid',
         paymentMethod: paymentData.method,
-        description: `Salary Payment - ${processingSalary.month} (${processingSalary.employeeRole})`
+        description: `Salary Payment - ${processingSalary.month} (${processingSalary.employeeRole})`,
+        salaryId: processingSalary.id,
+        salaryPaymentDate: paymentTimestamp,
       });
 
       logActivity(user, 'Processed Salary Payment', 'Accounts', `Paid ₹${paymentData.paidAmount.toLocaleString()} to ${processingSalary.employeeName}`);

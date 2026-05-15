@@ -342,10 +342,10 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Total Collection" value={`₹${(totalCollection || 0).toLocaleString()}`} icon={Wallet} gradient="gradient-amber" change="+12%" changePositive={true} index={0} />
-        <StatCard label="Pending Fees" value={`₹${(totalPending || 0).toLocaleString()}`} icon={CreditCard} gradient="gradient-amber" change="-5%" changePositive={false} index={1} />
-        <StatCard label="Monthly Expenses" value={`₹${(monthlyExpenses || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" change="+2%" changePositive={true} index={2} />
-        <StatCard label="Net Profit" value={`₹${(netProfit || 0).toLocaleString()}`} icon={TrendingUp} gradient="gradient-amber" change="+8%" changePositive={true} index={3} />
+        <StatCard label="Total Collection" value={`₹${(totalCollection || 0).toLocaleString()}`} icon={Wallet} gradient="gradient-amber" index={0} />
+        <StatCard label="Pending Fees" value={`₹${(totalPending || 0).toLocaleString()}`} icon={CreditCard} gradient="gradient-amber" index={1} />
+        <StatCard label="Monthly Expenses" value={`₹${(monthlyExpenses || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" index={2} />
+        <StatCard label="Net Profit" value={`₹${(netProfit || 0).toLocaleString()}`} icon={TrendingUp} gradient="gradient-amber" index={3} />
       </div>
 
       <UpdatesSection user={user} className="mb-8" />
