@@ -162,7 +162,7 @@ export interface StaffMember {
 }
 
 export type UnifiedStaff = (Teacher | StaffMember) & {
-  staffCategory: 'Teacher' | 'Principal' | 'Accounts' | 'Admin' | 'Other Staff';
+  staffCategory: 'Teacher' | 'Principal' | 'Accounts' | 'Grievance' | 'Admin' | 'Other Staff';
   baseSalary: number;
 };
 

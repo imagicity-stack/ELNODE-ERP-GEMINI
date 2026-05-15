@@ -51,6 +51,7 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: 'office_staff', label: 'Office Staff' },
   { value: 'teacher', label: 'Teacher' },
   { value: 'accounts', label: 'Accountant' },
+  { value: 'grievance_officer', label: 'Grievance Officer' },
 ];
 
 export default function RolePermissionsManager({ user }: { user: UserProfile }) {

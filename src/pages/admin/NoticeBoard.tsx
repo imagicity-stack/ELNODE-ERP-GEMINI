@@ -46,7 +46,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
     expiresAt: '',
   });
 
-  const roles: UserRole[] = ['super_admin', 'teacher', 'student', 'parent', 'accounts', 'principal'];
+  const roles: UserRole[] = ['super_admin', 'teacher', 'student', 'parent', 'accounts', 'principal', 'grievance_officer'];
 
   useEffect(() => {
     fetchNotices();

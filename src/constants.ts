@@ -11,6 +11,7 @@ export const USER_ROLES = {
   ACCOUNTS: 'accounts',
   TEACHER: 'teacher',
   PRINCIPAL: 'principal',
+  GRIEVANCE_OFFICER: 'grievance_officer',
 } as const;
 
 export const DAYS_OF_WEEK = [
