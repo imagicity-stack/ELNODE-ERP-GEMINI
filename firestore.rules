@@ -125,7 +125,7 @@ service cloud.firestore {
 
     // Staff
     match /staff/{staffId} {
-      allow read: if isAnyAdmin() || isTeacher();
+      allow read: if isAnyAdmin() || isTeacher() || isAccountant();
       allow write: if isAnyAdmin();
     }
 
@@ -210,10 +210,10 @@ service cloud.firestore {
       allow delete: if isAdmin() || isAccountant();
     }
 
-    // Activity logs — admins see all; students/parents/teachers can query their own feed
+    // Activity logs — admins see all; students/parents/teachers/accounts can query their own feed
     match /activityLogs/{id} {
-      allow get: if isAnyAdmin();
-      allow list: if isAnyAdmin() || isTeacher() || isParent() || isStudent();
+      allow get: if isAnyAdmin() || isAccountant();
+      allow list: if isAnyAdmin() || isTeacher() || isParent() || isStudent() || isAccountant();
       allow create: if isSignedIn();
     }
 
