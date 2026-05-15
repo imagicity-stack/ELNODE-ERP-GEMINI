@@ -6,6 +6,7 @@ import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { useToast } from '../../components/Toast';
+import { fmtMonthYear } from '../../lib/utils';
 import {
   PageHeader,
   Card,
@@ -94,7 +95,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
       p.studentId,
       p.feeHead || '-',
       (p.method || '').replace('_', ' ').toUpperCase(),
-      `₹${(p.amount || 0).toLocaleString('en-IN')}`,
+      `Rs. ${(p.amount || 0).toLocaleString('en-IN')}`,
     ]);
 
     (doc as any).autoTable({
@@ -103,7 +104,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
       body: rows,
       foot: [[
         { content: `Total Collections: ${filtered.length} entries`, colSpan: 5, styles: { fontStyle: 'bold', halign: 'right' } },
-        { content: `₹${total.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold', textColor: [5, 150, 105] } },
+        { content: `Rs. ${total.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold', textColor: [5, 150, 105] } },
       ]],
       ...TABLE_STYLES,
       footStyles: { fillColor: [209, 250, 229], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 9 },
@@ -130,7 +131,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
       e.biller,
       e.description || '-',
       e.status.toUpperCase(),
-      `₹${(e.amount || 0).toLocaleString('en-IN')}`,
+      `Rs. ${(e.amount || 0).toLocaleString('en-IN')}`,
     ]);
 
     (doc as any).autoTable({
@@ -139,7 +140,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
       body: rows,
       foot: [[
         { content: `Total Expenses: ${filtered.length} entries`, colSpan: 5, styles: { fontStyle: 'bold', halign: 'right' } },
-        { content: `₹${total.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold', textColor: [220, 38, 38] } },
+        { content: `Rs. ${total.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold', textColor: [220, 38, 38] } },
       ]],
       ...TABLE_STYLES,
       footStyles: { fillColor: [254, 226, 226], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 9 },
@@ -165,11 +166,11 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
     const rows = filtered.map((s) => [
       s.employeeName,
       s.employeeRole,
-      s.month,
-      `₹${(s.baseAmount || 0).toLocaleString('en-IN')}`,
-      `₹${(s.allowances || 0).toLocaleString('en-IN')}`,
-      `₹${((s.deductions?.pf || 0) + (s.deductions?.tax || 0) + (s.deductions?.leaveDeduction || 0) + (s.deductions?.other || 0)).toLocaleString('en-IN')}`,
-      `₹${(s.netAmount || 0).toLocaleString('en-IN')}`,
+      fmtMonthYear(s.month),
+      `Rs. ${(s.baseAmount || 0).toLocaleString('en-IN')}`,
+      `Rs. ${(s.allowances || 0).toLocaleString('en-IN')}`,
+      `Rs. ${((s.deductions?.pf || 0) + (s.deductions?.tax || 0) + (s.deductions?.leaveDeduction || 0) + (s.deductions?.other || 0)).toLocaleString('en-IN')}`,
+      `Rs. ${(s.netAmount || 0).toLocaleString('en-IN')}`,
       s.status.toUpperCase(),
     ]);
 
@@ -179,9 +180,9 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
       body: rows,
       foot: [[
         { content: `${filtered.length} employees`, colSpan: 3, styles: { fontStyle: 'bold' } },
-        { content: `₹${totalBase.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } },
+        { content: `Rs. ${totalBase.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } },
         { content: '', colSpan: 2 },
-        { content: `₹${totalNet.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold', textColor: [5, 150, 105] } },
+        { content: `Rs. ${totalNet.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold', textColor: [5, 150, 105] } },
         { content: '' },
       ]],
       ...TABLE_STYLES,
@@ -209,11 +210,11 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
     );
 
     const summaryRows = [
-      ['Fee Collections (Income)', `₹${totalIncome.toLocaleString('en-IN')}`, ''],
-      ['Operating Expenses', `₹${totalExpenses.toLocaleString('en-IN')}`, ''],
-      ['Salary Disbursements', `₹${totalSalaries.toLocaleString('en-IN')}`, ''],
-      ['Total Costs', `₹${totalCosts.toLocaleString('en-IN')}`, ''],
-      ['Net Profit / (Loss)', `₹${Math.abs(netProfit).toLocaleString('en-IN')}`, netProfit >= 0 ? 'PROFIT' : 'LOSS'],
+      ['Fee Collections (Income)', `Rs. ${totalIncome.toLocaleString('en-IN')}`, ''],
+      ['Operating Expenses', `Rs. ${totalExpenses.toLocaleString('en-IN')}`, ''],
+      ['Salary Disbursements', `Rs. ${totalSalaries.toLocaleString('en-IN')}`, ''],
+      ['Total Costs', `Rs. ${totalCosts.toLocaleString('en-IN')}`, ''],
+      ['Net Profit / (Loss)', `Rs. ${Math.abs(netProfit).toLocaleString('en-IN')}`, netProfit >= 0 ? 'PROFIT' : 'LOSS'],
     ];
 
     (doc as any).autoTable({

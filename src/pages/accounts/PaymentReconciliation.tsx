@@ -19,6 +19,7 @@ import {
   Spinner,
 } from '../../components/ui';
 import { useData } from '../../contexts/DataContext';
+import { fmtMonthYear } from '../../lib/utils';
 
 interface Props {
   user: UserProfile;
@@ -352,7 +353,7 @@ export default function PaymentReconciliation({ user: _user }: Props) {
                 {drift.map(d => (
                   <Tr key={d.request.id}>
                     <Td>{d.studentName || d.request.studentId}</Td>
-                    <Td>{d.request.month}</Td>
+                    <Td>{fmtMonthYear(d.request.month)}</Td>
                     <Td>₹{d.recordedPaid.toLocaleString('en-IN')}</Td>
                     <Td>₹{d.paymentsSum.toLocaleString('en-IN')}</Td>
                     <Td className={d.delta > 0 ? 'text-rose-600 font-bold' : 'text-amber-600 font-bold'}>
@@ -398,7 +399,7 @@ export default function PaymentReconciliation({ user: _user }: Props) {
                   return (
                     <Tr key={m.request.id}>
                       <Td>{m.studentName || m.request.studentId}</Td>
-                      <Td>{m.request.month}</Td>
+                      <Td>{fmtMonthYear(m.request.month)}</Td>
                       <Td className="capitalize">
                         <Badge variant="warning">{m.request.status.replace(/_/g, ' ')}</Badge>
                       </Td>

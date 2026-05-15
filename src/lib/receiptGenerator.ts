@@ -4,6 +4,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FeePayment, FeeRequest, Student } from '../types';
 import { getSchoolSettings } from '../services/settingsService';
+import { fmtMonthYear } from './utils';
 
 const NAVY: [number, number, number] = [26, 45, 80];
 const GOLD: [number, number, number] = [180, 145, 45];
@@ -161,7 +162,7 @@ export const generateFeeReceipt = async (
   const metaFields = [
     { label: 'RECEIPT NO.',    value: payment.receiptNumber },
     { label: 'DATE OF ISSUE',  value: new Date(payment.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) },
-    { label: 'TERM / QUARTER', value: request.month || '-' },
+    { label: 'TERM / QUARTER', value: fmtMonthYear(request.month) || '-' },
   ];
   metaFields.forEach((f, i) => {
     const bx = ML + i * (boxW + 2);
@@ -217,7 +218,7 @@ export const generateFeeReceipt = async (
   const tableRows = request.heads.map((head, i) => [
     String(i + 1).padStart(2, '0'),
     head.name,
-    request.month || 'Annual',
+    fmtMonthYear(request.month) || 'Annual',
     (head.finalAmount ?? head.amount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
   ]);
 

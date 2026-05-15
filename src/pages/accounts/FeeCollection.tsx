@@ -6,6 +6,7 @@ import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
+import { fmtMonthYear } from '../../lib/utils';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import {
@@ -419,7 +420,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           user,
           'UPDATE_FEE_REQUEST',
           'Accounts',
-          `Updated fee request for ${selectedStudent.name} (${requestData.month})`,
+          `Updated fee request for ${selectedStudent.name} (${fmtMonthYear(requestData.month)})`,
           { studentId: selectedStudent.id, month: requestData.month }
         );
       } else {
@@ -435,7 +436,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           user,
           'GENERATE_FEE_REQUEST',
           'Accounts',
-          `Generated fee request for ${selectedStudent.name} (${requestData.month})`,
+          `Generated fee request for ${selectedStudent.name} (${fmtMonthYear(requestData.month)})`,
           { studentId: selectedStudent.id, month: requestData.month }
         );
       }

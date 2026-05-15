@@ -144,7 +144,7 @@ export async function generateExpenseAcknowledgement(expense: Expense): Promise<
 
   doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
-  doc.text(`₹${(expense.amount || 0).toLocaleString('en-IN')}`, pageWidth / 2, y + 22, { align: 'center' });
+  doc.text(`Rs. ${(expense.amount || 0).toLocaleString('en-IN')}`, pageWidth / 2, y + 22, { align: 'center' });
 
   y += 34;
 
