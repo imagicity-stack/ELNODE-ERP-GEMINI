@@ -3,7 +3,7 @@ import { generateExpenseAcknowledgement } from '../../lib/expenseReceipt';
 import { Plus, Download, Receipt, Wallet, TrendingDown, Edit2, FileText, FileDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, getDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import {
   PageHeader,
@@ -56,18 +56,18 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
     paymentMode: 'cash' as 'cash' | 'bank_transfer' | 'upi' | 'cheque' | 'card' | 'other',
   });
 
-  const fetchExpenses = async () => {
-    try {
-      const q = query(collection(db, 'expenses'), orderBy('date', 'desc'));
-      const snapshot = await getDocs(q);
-      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.LIST, 'expenses');
-    }
+  const fetchExpenses = () => {
+    // No-op: expenses are live via onSnapshot.
   };
 
   useEffect(() => {
-    fetchExpenses();
+    const q = query(collection(db, 'expenses'), orderBy('date', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'expenses');
+    });
+    return () => unsub();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -14,7 +14,7 @@ import {
   ExternalLink,
   Receipt,
 } from 'lucide-react';
-import { collection, getDocs, query, orderBy, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where, Timestamp, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useData } from '../../contexts/DataContext';
 import { useToast } from '../../components/Toast';
@@ -58,21 +58,21 @@ export default function PaymentHistory({ user }: PaymentHistoryProps) {
   const [endDate, setEndDate] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  const fetchPayments = async () => {
-    setLoading(true);
-    try {
-      const q = query(collection(db, 'feePayments'), orderBy('date', 'desc'));
-      const snap = await getDocs(q);
-      setPayments(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.LIST, 'feePayments');
-    } finally {
-      setLoading(false);
-    }
+  const fetchPayments = () => {
+    // No-op: payments are live via onSnapshot. Kept for the manual "refresh" button.
   };
 
   useEffect(() => {
-    fetchPayments();
+    setLoading(true);
+    const q = query(collection(db, 'feePayments'), orderBy('date', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      setPayments(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
+      setLoading(false);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'feePayments');
+      setLoading(false);
+    });
+    return () => unsub();
   }, []);
 
   const filteredPayments = useMemo(() => {

@@ -1,7 +1,7 @@
 import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure, PaymentMethod, FeeHead, FineConfig } from '../../types';
 import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale, MessageSquare, Search, Users } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc, runTransaction } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc, runTransaction, onSnapshot } from 'firebase/firestore';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
@@ -80,43 +80,36 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     heads: [],
   });
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [studentsSnap, requestsSnap, paymentsSnap, structuresSnap, classesSnap, headsSnap, fineSnap] = await Promise.all([
-        getDocs(collection(db, 'students')),
-        getDocs(collection(db, 'feeRequests')),
-        getDocs(query(collection(db, 'feePayments'), orderBy('date', 'desc'))),
-        getDocs(collection(db, 'feeStructures')),
-        getDocs(collection(db, 'classes')),
-        getDocs(collection(db, 'feeHeads')),
-        getDoc(doc(db, 'fine-config', 'global'))
-      ]);
-
-      setStudents(studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student)));
-      setFeeRequests(requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
-      setPayments(paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeePayment)));
-      setFeeStructures(structuresSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeStructure)));
-      setClasses(classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class)));
-      setGlobalHeads(headsSnap.docs.map(doc => ({ ...doc.data() } as FeeHead)));
-      if (fineSnap.exists()) {
-        setFineConfig(fineSnap.data() as FineConfig);
-      }
-    } catch (err) {
-      handleFirestoreError(err, OperationType.LIST, 'feeRequests');
-    } finally {
-      setLoading(false);
-    }
+  const fetchData = () => {
+    // No-op: live data via onSnapshot. Kept so existing call sites still type-check.
   };
 
   useEffect(() => {
-    fetchData();
+    setLoading(true);
+    const onErr = (err: any) => { handleFirestoreError(err, OperationType.LIST, 'feeRequests'); setLoading(false); };
+
+    const unsubs = [
+      onSnapshot(collection(db, 'students'), (s) => setStudents(s.docs.map(d => ({ id: d.id, ...d.data() } as Student))), onErr),
+      onSnapshot(collection(db, 'feeRequests'), (s) => { setFeeRequests(s.docs.map(d => ({ id: d.id, ...d.data() } as FeeRequest))); setLoading(false); }, onErr),
+      onSnapshot(query(collection(db, 'feePayments'), orderBy('date', 'desc')), (s) => setPayments(s.docs.map(d => ({ id: d.id, ...d.data() } as FeePayment))), onErr),
+      onSnapshot(collection(db, 'feeStructures'), (s) => setFeeStructures(s.docs.map(d => ({ id: d.id, ...d.data() } as FeeStructure))), onErr),
+      onSnapshot(collection(db, 'classes'), (s) => setClasses(s.docs.map(d => ({ id: d.id, ...d.data() } as Class))), onErr),
+      onSnapshot(collection(db, 'feeHeads'), (s) => setGlobalHeads(s.docs.map(d => ({ ...d.data() } as FeeHead))), onErr),
+    ];
+
+    // fine-config is a static singleton — one-time read is sufficient
+    getDoc(doc(db, 'fine-config', 'global')).then(fineSnap => {
+      if (fineSnap.exists()) setFineConfig(fineSnap.data() as FineConfig);
+    }).catch(onErr);
+
     // Check for search param in URL
     const params = new URLSearchParams(window.location.search);
     const searchParam = params.get('search');
     if (searchParam) {
       setSearchTerm(searchParam);
     }
+
+    return () => unsubs.forEach(u => u());
   }, []);
 
   const exportCollectionReport = async () => {
