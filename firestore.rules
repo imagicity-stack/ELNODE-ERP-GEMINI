@@ -299,6 +299,65 @@ service cloud.firestore {
       allow delete: if isAnyAdmin();
     }
 
+    // Teacher Leave Requests
+    // Teachers can read/create their own; principal/admin can read all and update (approve/reject/revoke)
+    match /teacherLeaves/{leaveId} {
+      function isValidTeacherLeave(data) {
+        return data.teacherId is string && data.teacherId.size() <= 128 &&
+               data.teacherName is string && data.teacherName.size() <= 100 &&
+               data.leaveType in ['casual', 'medical', 'emergency', 'half_day', 'comp_off', 'earned'] &&
+               data.startDate is string &&
+               data.endDate is string &&
+               data.totalDays is number && data.totalDays > 0 && data.totalDays <= 365 &&
+               data.reason is string && data.reason.size() <= 2000 &&
+               data.status in ['pending', 'approved', 'rejected', 'cancelled'];
+      }
+
+      // Teachers read their own; principal/admin read all
+      allow get: if isSignedIn() && (
+        isPrincipal() || isAdmin() ||
+        (isTeacher() && resource.data.teacherId == request.auth.uid)
+      );
+      allow list: if isPrincipal() || isAdmin() || isTeacher();
+
+      // Teachers submit their own leaves (status must start as 'pending')
+      allow create: if isTeacher() &&
+        isValidTeacherLeave(request.resource.data) &&
+        request.resource.data.teacherId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+
+      allow update: if isSignedIn() && (
+        // Principal/admin can approve, reject, revoke — update any approval fields
+        (isPrincipal() || isAdmin()) ||
+        // Teacher can only cancel their own pending leave
+        (isTeacher() &&
+         resource.data.teacherId == request.auth.uid &&
+         resource.data.status == 'pending' &&
+         request.resource.data.status == 'cancelled' &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']))
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // Substitute Assignments — created by principal on leave approval, read by teachers
+    match /substituteAssignments/{assignmentId} {
+      // Any signed-in teacher can read (they need to see if they are a substitute)
+      allow read: if isSignedIn() && (isTeacher() || isPrincipal() || isAdmin());
+      // Only principal/admin can create, update, or delete substitute assignments
+      allow create, update, delete: if isPrincipal() || isAdmin();
+    }
+
+    // Timetable Archive — written by admin during "Save as New Version"; readable by all staff
+    match /timetableArchive/{id} {
+      allow read: if isSignedIn() && (isAnyAdmin() || isTeacher());
+      allow create, update: if isAnyAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Attendance — extend existing rule to allow principal to write staff attendance
+    // (existing rule already covers this via isAnyAdmin(); no change needed there)
+
     match /rolePermissions/{roleId} {
       allow read: if isSignedIn();
       allow write: if isSuperAdminByEmail();
