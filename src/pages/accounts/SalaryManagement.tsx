@@ -1,15 +1,16 @@
 import { UserProfile, Teacher, Salary, StaffMember, UnifiedStaff, PayrollConfig } from '../../types';
-import { 
-  Download, 
-  Users, 
+import { generatePayrollSlip } from '../../lib/payrollSlip';
+import {
+  Download,
+  Users,
   Settings,
-  Calendar, 
-  CheckCircle2, 
-  Clock, 
-  CreditCard, 
-  Wallet, 
-  Banknote, 
-  History, 
+  Calendar,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Wallet,
+  Banknote,
+  History,
   Filter,
   Plus,
   ArrowRight,
@@ -512,7 +513,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                     </div>
                   </div>
 
-                  <div className="mt-3">
+                  <div className="mt-3 space-y-2">
                     {!salary ? (
                       <button
                         onClick={() => handleOpenCreatePayroll(staff)}
@@ -531,6 +532,14 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                       <div className="w-full py-2 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-bold flex items-center justify-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5" /> Paid
                       </div>
+                    )}
+                    {salary && (
+                      <button
+                        onClick={() => generatePayrollSlip(salary)}
+                        className="w-full py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Download Pay Slip
+                      </button>
                     )}
                   </div>
                 </div>
@@ -711,19 +720,31 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                           </div>
                         </Td>
                         <Td className="text-right">
-                          {!salary ? (
-                            <Button size="sm" onClick={() => handleOpenCreatePayroll(staff)} icon={Plus}>
-                              Generate
-                            </Button>
-                          ) : salary.status !== 'paid' ? (
-                            <Button size="sm" variant="primary" onClick={() => handleOpenPayment(salary)} icon={CreditCard}>
-                              Pay
-                            </Button>
-                          ) : (
-                            <Button size="sm" variant="ghost" className="text-emerald-600 font-bold" disabled icon={CheckCircle2}>
-                              Paid
-                            </Button>
-                          )}
+                          <div className="flex items-center justify-end gap-2">
+                            {!salary ? (
+                              <Button size="sm" onClick={() => handleOpenCreatePayroll(staff)} icon={Plus}>
+                                Generate
+                              </Button>
+                            ) : salary.status !== 'paid' ? (
+                              <Button size="sm" variant="primary" onClick={() => handleOpenPayment(salary)} icon={CreditCard}>
+                                Pay
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="ghost" className="text-emerald-600 font-bold" disabled icon={CheckCircle2}>
+                                Paid
+                              </Button>
+                            )}
+                            {salary && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-slate-500"
+                                onClick={() => generatePayrollSlip(salary)}
+                                icon={Download}
+                                title="Download Payslip PDF"
+                              />
+                            )}
+                          </div>
                         </Td>
                       </Tr>
                     );
