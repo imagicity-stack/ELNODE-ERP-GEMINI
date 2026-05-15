@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Salary } from '../types';
 import { getSchoolSettings } from '../services/settingsService';
+import { fmtMonthYear } from './utils';
 
 const NAVY: [number, number, number] = [26, 45, 80];
 const GOLD: [number, number, number] = [180, 145, 45];
@@ -94,7 +95,7 @@ export async function generatePayrollSlip(salary: Salary): Promise<void> {
   // ═════════════════════════════════════════════════════════════════════════
   //  TITLE BANNER
   // ═════════════════════════════════════════════════════════════════════════
-  const monthLabel = new Date(salary.month + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const monthLabel = fmtMonthYear(salary.month);
 
   pdf.setFillColor(...NAVY);
   pdf.rect(ML, 44, CW, 11, 'F');
@@ -155,6 +156,7 @@ export async function generatePayrollSlip(salary: Salary): Promise<void> {
     ['Professional Tax / TDS', salary.deductions?.tax || 0],
     [`Leave Deduction (${salary.deductions?.leaves || 0} days)`, salary.deductions?.leaveDeduction || 0],
     ['Other Deductions', salary.deductions?.other || 0],
+    ['Advance Adjustment', (salary.deductions as any)?.advanceAdjusted || 0],
   ];
   const totalDeductions = deductions.reduce((s, [, a]) => s + a, 0);
 
@@ -347,6 +349,7 @@ export async function generatePayrollSlip(salary: Salary): Promise<void> {
   pdf.setFontSize(6.5); pdf.setFont('helvetica', 'italic'); pdf.setTextColor(...SLATE);
   pdf.text('A unit of Bhagwati Educational And Charitable Trust', PW / 2, footY + 9, { align: 'center' });
 
-  const fileName = `PaySlip_${salary.employeeName.replace(/\s+/g, '_')}_${salary.month}.pdf`;
+  const fileSafeMonth = monthLabel.replace(/\s+/g, '_');
+  const fileName = `PaySlip_${salary.employeeName.replace(/\s+/g, '_')}_${fileSafeMonth}.pdf`;
   pdf.save(fileName);
 }
