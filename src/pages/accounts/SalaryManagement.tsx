@@ -32,7 +32,8 @@ import {
   getDoc,
   orderBy,
   serverTimestamp,
-  onSnapshot
+  onSnapshot,
+  writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
@@ -89,6 +90,8 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyStaff, setHistoryStaff] = useState<UnifiedStaff | null>(null);
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [targetMonth, setTargetMonth] = useState(selectedMonth); // For specific generation
@@ -205,8 +208,33 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
 
   const generatePayroll = async () => {
     if (!processingStaff) return;
+
+    // Validation: non-negative inputs
+    const { bonus, pf, tax, leaves, leaveDeductionRate, otherDeductions } = payrollForm;
+    if ([bonus, pf, tax, leaves, leaveDeductionRate, otherDeductions].some(v => v < 0)) {
+      showToast('Negative values are not allowed', 'error');
+      return;
+    }
+    if (!processingStaff.baseSalary || processingStaff.baseSalary <= 0) {
+      showToast(`Base salary is not set for ${processingStaff.name}. Update in HR before generating payroll.`, 'error');
+      return;
+    }
+
     setLoading(true);
     try {
+      // Duplicate guard — block creating two payrolls for same employee/month
+      const dupQuery = query(
+        collection(db, 'salaries'),
+        where('employeeId', '==', processingStaff.id),
+        where('month', '==', targetMonth)
+      );
+      const dupSnap = await getDocs(dupQuery);
+      if (!dupSnap.empty) {
+        showToast(`Payroll already exists for ${processingStaff.name} for ${targetMonth}. Delete the existing record to regenerate.`, 'error');
+        setLoading(false);
+        return;
+      }
+
       const leaveDeduction = payrollForm.leaves * payrollForm.leaveDeductionRate;
       const netAmount = calculateNetAmount(processingStaff);
 
@@ -229,16 +257,16 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
         balanceAmount: Math.round(netAmount),
         status: 'pending',
         remarks: payrollForm.remarks,
+        paymentHistory: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
       await addDoc(collection(db, 'salaries'), salaryRecord);
-      
+
       logActivity(user, 'Generated Payroll', 'Accounts', `Generated monthly payroll for ${processingStaff.name} for ${targetMonth}`);
       showToast(`Payroll generated for ${processingStaff.name}`, 'success');
       setIsCreateModalOpen(false);
-      fetchData();
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'salaries');
     } finally {
@@ -260,62 +288,92 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
 
   const processPayment = async () => {
     if (!processingSalary) return;
-    if (paymentData.paidAmount <= 0) {
+    if (loading) return; // Re-entrancy guard against rapid double-click
+
+    const amt = Number(paymentData.paidAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
       showToast('Amount must be greater than 0', 'error');
+      return;
+    }
+    const balance = processingSalary.balanceAmount || 0;
+    if (amt > balance) {
+      showToast(`Amount exceeds outstanding balance of Rs. ${balance.toLocaleString('en-IN')}`, 'error');
       return;
     }
 
     setLoading(true);
     try {
-      const newPaidAmount = (processingSalary.paidAmount || 0) + paymentData.paidAmount;
-      const newBalance = processingSalary.netAmount - newPaidAmount;
+      const paymentTimestamp = new Date().toISOString();
+      const newPaidAmount = (processingSalary.paidAmount || 0) + amt;
+      const newBalance = Math.max(0, processingSalary.netAmount - newPaidAmount);
       const status = newBalance <= 0 ? 'paid' : 'partially_paid';
 
-      const paymentTimestamp = new Date().toISOString();
       const payment = {
-        amount: paymentData.paidAmount,
+        amount: amt,
         date: paymentTimestamp,
         method: paymentData.method,
-        transactionId: paymentData.transactionId
+        transactionId: paymentData.transactionId || '',
+        recordedBy: (user as any)?.email || 'system',
       };
+      const history = [...((processingSalary as any).paymentHistory || []), payment];
 
-      const history = (processingSalary as any).paymentHistory || [];
+      // Atomic write: salary update + expense creation must both succeed or both fail
+      const batch = writeBatch(db);
+      const salaryRef = doc(db, 'salaries', processingSalary.id);
+      const expenseRef = doc(collection(db, 'expenses'));
 
-      await updateDoc(doc(db, 'salaries', processingSalary.id), {
+      batch.update(salaryRef, {
         paidAmount: newPaidAmount,
-        balanceAmount: Math.max(0, newBalance),
+        balanceAmount: newBalance,
         status,
         paidAt: paymentTimestamp,
         updatedAt: paymentTimestamp,
-        paymentHistory: [...history, payment]
+        paymentHistory: history,
       });
 
-      // Record in expenses with linkage so deletes stay consistent
-      await addDoc(collection(db, 'expenses'), {
+      batch.set(expenseRef, {
         category: 'salary',
         biller: processingSalary.employeeName,
-        amount: paymentData.paidAmount,
+        amount: amt,
         date: paymentTimestamp.split('T')[0],
         status: 'paid',
         paymentMethod: paymentData.method,
         description: `Salary Payment - ${processingSalary.month} (${processingSalary.employeeRole})`,
         salaryId: processingSalary.id,
         salaryPaymentDate: paymentTimestamp,
+        createdAt: paymentTimestamp,
       });
 
-      logActivity(user, 'Processed Salary Payment', 'Accounts', `Paid ₹${paymentData.paidAmount.toLocaleString()} to ${processingSalary.employeeName}`);
-      showToast('Payment processed successfully', 'success');
+      await batch.commit();
 
-      // Persist phone back to staff record if changed, and fire WhatsApp
+      logActivity(
+        user,
+        'Processed Salary Payment',
+        'Accounts',
+        `Paid Rs. ${amt.toLocaleString('en-IN')} to ${processingSalary.employeeName} (${status === 'paid' ? 'Full' : 'Partial'} - ${processingSalary.month})`
+      );
+      showToast(
+        status === 'paid'
+          ? 'Full payment processed successfully'
+          : `Partial payment recorded. Balance: Rs. ${newBalance.toLocaleString('en-IN')}`,
+        'success'
+      );
+
+      // Side effects after the atomic write succeeds — phone update + WhatsApp
+      const enteredPhone = (paymentData.phone || '').trim();
       try {
         const staff = staffList.find(s => s.id === processingSalary.employeeId);
-        const enteredPhone = (paymentData.phone || '').trim();
         if (enteredPhone && staff && (staff as any).phone !== enteredPhone) {
           const collectionName = staff.staffCategory === 'Teacher' ? 'teachers' : 'staff';
           await updateDoc(doc(db, collectionName, processingSalary.employeeId), { phone: enteredPhone });
         }
-        if (enteredPhone) {
-          await fetch('/api/whatsapp/send-template', {
+      } catch (e) {
+        console.warn('Phone update failed:', e);
+      }
+
+      if (enteredPhone) {
+        try {
+          const res = await fetch('/api/whatsapp/send-template', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -323,7 +381,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
               templateName: 'salary_disbursed',
               parameters: [
                 processingSalary.employeeName,
-                `₹${paymentData.paidAmount.toLocaleString('en-IN')}`,
+                `Rs. ${amt.toLocaleString('en-IN')}`,
                 processingSalary.month,
                 processingSalary.employeeRole,
                 (paymentData.method || '').replace(/_/g, ' '),
@@ -332,16 +390,24 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
               ],
             }),
           });
+          if (!res.ok) throw new Error(`status ${res.status}`);
+        } catch (e) {
+          console.warn('WhatsApp notification failed:', e);
+          showToast('Payment saved, but WhatsApp notification could not be sent.', 'warning' as any);
         }
-      } catch { /* non-fatal */ }
+      }
 
       setIsPayModalOpen(false);
-      fetchData();
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `salaries/${processingSalary.id}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenHistory = (staff: UnifiedStaff) => {
+    setHistoryStaff(staff);
+    setIsHistoryModalOpen(true);
   };
 
   const exportPayroll = () => {
@@ -533,14 +599,26 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                         <CheckCircle2 className="w-3.5 h-3.5" /> Paid
                       </div>
                     )}
-                    {salary && (
+                    <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={() => generatePayrollSlip(salary)}
-                        className="w-full py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
+                        onClick={() => handleOpenHistory(staff)}
+                        className="py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
                       >
-                        <Download className="w-3.5 h-3.5" /> Download Pay Slip
+                        <History className="w-3.5 h-3.5" /> History
                       </button>
-                    )}
+                      {salary ? (
+                        <button
+                          onClick={() => generatePayrollSlip(salary)}
+                          className="py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Pay Slip
+                        </button>
+                      ) : (
+                        <div className="py-2 rounded-xl bg-slate-50 text-slate-400 text-xs font-bold flex items-center justify-center gap-1">
+                          <Download className="w-3.5 h-3.5" /> No Slip
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -734,6 +812,14 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                                 Paid
                               </Button>
                             )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-slate-500"
+                              onClick={() => handleOpenHistory(staff)}
+                              icon={History}
+                              title="View Payment History"
+                            />
                             {salary && (
                               <Button
                                 size="sm"
@@ -1103,6 +1189,134 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
             </div>
           </div>
         </div>
+      </Modal>
+
+      {/* Payment History Modal — full audit trail per employee */}
+      <Modal
+        isOpen={isHistoryModalOpen && !!historyStaff}
+        onClose={() => setIsHistoryModalOpen(false)}
+        title="Salary & Payment History"
+        subtitle={historyStaff ? `${historyStaff.name} · ${historyStaff.staffCategory}` : ''}
+        size="xl"
+      >
+        {historyStaff && (() => {
+          const employeeSalaries = salaries
+            .filter(s => s.employeeId === historyStaff.id)
+            .sort((a, b) => (b.month || '').localeCompare(a.month || ''));
+
+          const totalEarned = employeeSalaries.reduce((sum, s) => sum + (s.netAmount || 0), 0);
+          const totalPaid = employeeSalaries.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
+          const totalDue = employeeSalaries.reduce((sum, s) => sum + (s.balanceAmount || 0), 0);
+          const allPayments = employeeSalaries.flatMap(s =>
+            (s.paymentHistory || []).map(p => ({ ...p, month: s.month, netAmount: s.netAmount, salaryId: s.id }))
+          );
+
+          return (
+            <div className="space-y-6">
+              {/* Summary cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Total Earned (All Months)</p>
+                  <p className="text-2xl font-black text-slate-900 mt-2">Rs. {totalEarned.toLocaleString('en-IN')}</p>
+                  <p className="text-[11px] text-slate-400 mt-1">{employeeSalaries.length} payroll record(s)</p>
+                </div>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">Total Disbursed</p>
+                  <p className="text-2xl font-black text-emerald-700 mt-2">Rs. {totalPaid.toLocaleString('en-IN')}</p>
+                  <p className="text-[11px] text-emerald-600 mt-1">{allPayments.length} payment(s) made</p>
+                </div>
+                <div className={`rounded-2xl border p-4 ${totalDue > 0 ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-slate-50'}`}>
+                  <p className={`text-[10px] font-bold uppercase tracking-widest ${totalDue > 0 ? 'text-rose-700' : 'text-slate-500'}`}>Outstanding Balance</p>
+                  <p className={`text-2xl font-black mt-2 ${totalDue > 0 ? 'text-rose-700' : 'text-slate-900'}`}>Rs. {totalDue.toLocaleString('en-IN')}</p>
+                  <p className={`text-[11px] mt-1 ${totalDue > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                    {totalDue > 0 ? 'Pending disbursement' : 'All settled'}
+                  </p>
+                </div>
+              </div>
+
+              {employeeSalaries.length === 0 ? (
+                <EmptyState icon={History} title="No payroll records" description="Generate a payroll first to start tracking payments." />
+              ) : (
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Monthly Payroll Breakdown</h4>
+                  {employeeSalaries.map((s) => {
+                    const monthLabel = new Date(s.month + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+                    const history = s.paymentHistory || [];
+                    const statusColor =
+                      s.status === 'paid' ? 'success' :
+                      s.status === 'partially_paid' ? 'info' : 'warning';
+
+                    return (
+                      <div key={s.id} className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                        {/* Header strip */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-slate-50 border-b border-slate-100">
+                          <div className="flex items-center gap-3">
+                            <Calendar className="w-4 h-4 text-slate-400" />
+                            <div>
+                              <p className="text-sm font-bold text-slate-900 leading-none">{monthLabel}</p>
+                              <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-bold">
+                                Net Rs. {(s.netAmount || 0).toLocaleString('en-IN')} · Paid Rs. {(s.paidAmount || 0).toLocaleString('en-IN')} · Balance Rs. {(s.balanceAmount || 0).toLocaleString('en-IN')}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={statusColor as any}>{s.status.replace('_', ' ').toUpperCase()}</Badge>
+                            <Button size="sm" variant="ghost" icon={Download} onClick={() => generatePayrollSlip(s)} title="Download Pay Slip" />
+                          </div>
+                        </div>
+
+                        {/* Payments list */}
+                        {history.length === 0 ? (
+                          <div className="px-4 py-6 text-center text-xs text-slate-400 italic">
+                            No payments disbursed yet for this month.
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-slate-100">
+                            {history.map((p: any, idx: number) => {
+                              const cumulative = history.slice(0, idx + 1).reduce((sum: number, x: any) => sum + (x.amount || 0), 0);
+                              const isFinalPayment = cumulative >= (s.netAmount || 0);
+                              const paymentLabel = history.length === 1 && isFinalPayment ? 'Full Payment' :
+                                                   isFinalPayment ? `Final Installment (#${idx + 1})` :
+                                                   `Partial Installment #${idx + 1}`;
+                              return (
+                                <div key={idx} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50/70">
+                                  <div className="flex items-center gap-3">
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isFinalPayment && history.length === 1 ? 'bg-emerald-100 text-emerald-700' : isFinalPayment ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                                      <Banknote className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-bold text-slate-900 leading-none">
+                                        Rs. {(p.amount || 0).toLocaleString('en-IN')}
+                                        <span className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                                          {paymentLabel}
+                                        </span>
+                                      </p>
+                                      <p className="text-[10px] text-slate-500 mt-1 font-medium">
+                                        {new Date(p.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        {' · '}
+                                        <span className="uppercase">{(p.method || '').replace(/_/g, ' ')}</span>
+                                        {p.transactionId ? ` · TXN ${p.transactionId}` : ''}
+                                        {p.recordedBy ? ` · by ${p.recordedBy}` : ''}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Running Total</p>
+                                    <p className="text-xs font-black text-slate-700">Rs. {cumulative.toLocaleString('en-IN')} / Rs. {(s.netAmount || 0).toLocaleString('en-IN')}</p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </Modal>
     </>
   );
