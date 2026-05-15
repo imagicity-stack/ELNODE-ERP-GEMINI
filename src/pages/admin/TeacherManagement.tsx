@@ -11,6 +11,7 @@ import {
   Edit2,
   GraduationCap,
   Mail,
+  Phone,
   DollarSign,
   Calendar,
   UserPlus,
@@ -43,6 +44,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     subjects: [] as string[],
     classes: [] as string[],
     salaryStructure: '',
@@ -109,6 +111,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
           if (!teacherDocs.empty) {
             await setDoc(doc(db, 'users', teacherDocs.docs[0].id), {
               name: formData.name,
+              phone: formData.phone,
               teacherId: editingTeacher.id,
               photoURL: formData.photoURL,
             }, { merge: true });
@@ -150,6 +153,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
             uid: teacherUid,
             email: formData.email,
             name: formData.name,
+            phone: formData.phone,
             role: 'teacher',
             teacherId: teacherRef.id,
             photoURL: formData.photoURL,
@@ -181,6 +185,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
     setFormData({
       name: '',
       email: '',
+      phone: '',
       subjects: [],
       classes: [],
       salaryStructure: '',
@@ -201,6 +206,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
     setFormData({
       name: teacher.name,
       email: teacher.email,
+      phone: teacher.phone || '',
       subjects: teacher.subjects || [],
       classes: teacher.classes || [],
       salaryStructure: teacher.salaryStructure.toString(),
@@ -300,6 +306,11 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
                     <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
                       <Mail className="w-3 h-3 shrink-0" />{teacher.email}
                     </p>
+                    {teacher.phone && (
+                      <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                        <Phone className="w-3 h-3 shrink-0" />{teacher.phone}
+                      </p>
+                    )}
                   </div>
                   {teacher.classTeacherOf?.classId && <Badge variant="info" className="text-[9px] shrink-0">CT</Badge>}
                 </div>
@@ -367,6 +378,9 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
                 </div>
                 <h3 className="font-bold text-slate-900 text-base">{teacher.name}</h3>
                 <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><Mail className="w-3 h-3" />{teacher.email}</p>
+                {teacher.phone && (
+                  <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><Phone className="w-3 h-3" />{teacher.phone}</p>
+                )}
                 <div className="mt-4 flex flex-wrap gap-1.5">
                   {teacher.subjects?.map(subId => {
                     const subject = subjects.find(s => s.id === subId);
@@ -433,6 +447,15 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
 
               <FormField label="Full Name" required><Input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></FormField>
               <FormField label="Email Address" required><Input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /></FormField>
+              <FormField label="Phone Number" required hint="Used for WhatsApp salary notifications">
+                <Input
+                  type="tel"
+                  required
+                  placeholder="10-digit mobile number"
+                  value={formData.phone}
+                  onChange={e => setFormData({...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10)})}
+                />
+              </FormField>
               <FormField label="Monthly Salary" required><Input type="number" required value={formData.salaryStructure} onChange={e => setFormData({...formData, salaryStructure: e.target.value})} /></FormField>
               <FormField label="Joining Date" required><Input type="date" required value={formData.joiningDetails} onChange={e => setFormData({...formData, joiningDetails: e.target.value})} /></FormField>
             </div>
