@@ -1,7 +1,7 @@
-import { UserProfile, Timetable, LessonLog } from '../../types';
-import { Calendar, Users, Clock, Edit3, BookOpen, CheckSquare, Upload, File, X, Save } from 'lucide-react';
+import { UserProfile, Timetable, LessonLog, SubstituteAssignment } from '../../types';
+import { Calendar, Users, Clock, Edit3, BookOpen, CheckSquare, Upload, File, X, Save, AlertTriangle, UserCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, doc, getDoc, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc, setDoc, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { useData } from '../../contexts/DataContext';
@@ -33,6 +33,78 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
 
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
   const [mobileDay, setMobileDay] = useState<string>(todayName);
+
+  // ─── Leave + Substitute awareness ────────────────────────────────────────
+  // ISO dates on which this teacher has an approved leave
+  const [approvedLeaveDays, setApprovedLeaveDays] = useState<Set<string>>(new Set());
+  // substituteAssignments where this teacher is the cover teacher, keyed by ISO date
+  const [substituteByDate, setSubstituteByDate] = useState<Record<string, SubstituteAssignment[]>>({});
+
+  useEffect(() => {
+    const tid = teacherData?.id || user.uid;
+    if (!tid) return;
+
+    const loadLeaveData = async () => {
+      try {
+        const today = new Date();
+        const ninetyDaysAgo = new Date(today); ninetyDaysAgo.setDate(today.getDate() - 90);
+        const ninetyDaysOut = new Date(today); ninetyDaysOut.setDate(today.getDate() + 90);
+        const fromIso = ninetyDaysAgo.toISOString().split('T')[0];
+        const toIso = ninetyDaysOut.toISOString().split('T')[0];
+
+        // Fetch approved leaves for this teacher
+        const leavesQ = query(
+          collection(db, 'teacherLeaves'),
+          where('teacherId', '==', tid),
+          where('status', '==', 'approved')
+        );
+        const leavesSnap = await getDocs(leavesQ);
+        const leaveDays = new Set<string>();
+        leavesSnap.docs.forEach(d => {
+          const data = d.data();
+          // Enumerate every day in the leave range
+          const start = new Date(data.startDate);
+          const end = new Date(data.endDate);
+          for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
+            leaveDays.add(dt.toISOString().split('T')[0]);
+          }
+        });
+        setApprovedLeaveDays(leaveDays);
+
+        // Fetch substitute assignments where I'm the substitute
+        const subQ = query(
+          collection(db, 'substituteAssignments'),
+          where('substituteTeacherId', '==', tid),
+          where('date', '>=', fromIso),
+          where('date', '<=', toIso)
+        );
+        const subSnap = await getDocs(subQ);
+        const byDate: Record<string, SubstituteAssignment[]> = {};
+        subSnap.docs.forEach(d => {
+          const sa = { id: d.id, ...d.data() } as SubstituteAssignment;
+          if (!byDate[sa.date]) byDate[sa.date] = [];
+          byDate[sa.date].push(sa);
+        });
+        setSubstituteByDate(byDate);
+      } catch {
+        // Non-fatal: leave awareness is best-effort
+      }
+    };
+    loadLeaveData();
+  }, [teacherData?.id, user.uid]);
+
+  // Returns the ISO date for a given weekday name in the current week (Mon=start)
+  const getIsoForWeekday = (dayName: string): string => {
+    const today = new Date();
+    const dayMap: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+    const targetDay = dayMap[dayName] ?? today.getDay();
+    const diff = targetDay - today.getDay();
+    const target = new Date(today);
+    target.setDate(today.getDate() + diff);
+    return target.toISOString().split('T')[0];
+  };
+
+  const isOnLeaveDay = (dayName: string) => approvedLeaveDays.has(getIsoForWeekday(dayName));
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<any>(null);
@@ -269,6 +341,14 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
           </div>
         ) : (
           <div className="px-4 pt-4 space-y-2">
+            {/* Leave banner for mobile */}
+            {isOnLeaveDay(mobileDay) && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <p className="text-xs font-bold text-amber-800">You are on approved leave today. Your classes have been covered.</p>
+              </div>
+            )}
+
             {config.slots.map((slot) => {
               if (slot.type === 'break') {
                 return (
@@ -298,6 +378,19 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
                   </div>
                 );
               }
+              // On leave: show period as "On Leave" — no log entry allowed
+              if (isOnLeaveDay(mobileDay)) {
+                return (
+                  <div key={slot.id} className="bg-amber-50 border border-l-4 border-l-amber-400 border-amber-100 rounded-xl px-4 py-3 flex items-center justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">{slot.label} · {slot.startTime}</p>
+                      <p className="text-sm font-bold text-amber-900 truncate mt-0.5">{subjects[period.subjectId] || period.subjectId}</p>
+                      <p className="text-[11px] text-amber-700 mt-0.5">Class {classes[period.classId] || period.classId}</p>
+                    </div>
+                    <span className="text-[10px] font-bold text-amber-500 uppercase">On Leave</span>
+                  </div>
+                );
+              }
               return (
                 <button
                   key={slot.id}
@@ -315,6 +408,30 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
                 </button>
               );
             })}
+
+            {/* Substitute coverage today (mobile) */}
+            {(() => {
+              const isoDay = getIsoForWeekday(mobileDay);
+              const subs = substituteByDate[isoDay] || [];
+              if (subs.length === 0) return null;
+              return (
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5" /> Covering for absent teacher
+                  </p>
+                  {subs.map(sa => {
+                    const slot = config.slots.find(s => s.id === sa.slotId);
+                    return (
+                      <div key={sa.id} className="bg-indigo-50 border border-l-4 border-l-indigo-400 border-indigo-100 rounded-xl px-4 py-3 mb-2">
+                        <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">{slot?.label || sa.slotId} · {slot?.startTime || ''}</p>
+                        <p className="text-sm font-bold text-indigo-900 mt-0.5">Class {classes[sa.classId] || sa.classId}</p>
+                        <p className="text-[11px] text-indigo-600 mt-0.5">Substitute cover</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -338,6 +455,21 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
           description="The school timetable settings haven't been initialized yet. Please contact the administrator."
         />
       ) : (
+        <>
+          {/* Leave banner (desktop) */}
+          {approvedLeaveDays.size > 0 && (() => {
+            const today = new Date().toISOString().split('T')[0];
+            if (approvedLeaveDays.has(today)) {
+              return (
+                <div className="flex items-center gap-3 px-5 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <p className="text-sm font-semibold text-amber-800">You are on approved leave today. Your classes have been assigned to substitutes — no lesson logs required.</p>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
         <Card padding="none">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
@@ -346,11 +478,18 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
                   <th className="px-6 py-4 border-r border-slate-100 text-left text-xs font-bold text-slate-400 uppercase tracking-widest w-40">
                     Time Slot
                   </th>
-                  {config.days.map(day => (
-                    <th key={day} className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-widest min-w-[180px]">
-                      {day}
-                    </th>
-                  ))}
+                  {config.days.map(day => {
+                    const onLeave = isOnLeaveDay(day);
+                    return (
+                      <th key={day} className={cn(
+                        "px-6 py-4 text-left text-xs font-bold uppercase tracking-widest min-w-[180px]",
+                        onLeave ? "text-amber-500 bg-amber-50/40" : "text-slate-500"
+                      )}>
+                        {day}
+                        {onLeave && <span className="ml-2 text-[9px] font-bold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full normal-case">On Leave</span>}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -383,10 +522,35 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
                       const period = getPeriod(day, slot.id);
                       const subjectName = period ? subjects[period.subjectId] : null;
                       const className = period ? classes[period.classId] : null;
+                      const onLeave = isOnLeaveDay(day);
+
+                      // Check if I'm a substitute on this day+slot
+                      const isoDay = getIsoForWeekday(day);
+                      const subForSlot = (substituteByDate[isoDay] || []).find(s => s.slotId === slot.id);
 
                       return (
-                        <td key={`${day}-${slot.id}`} className="px-4 py-2 border-r border-slate-50/50">
-                          {period ? (
+                        <td key={`${day}-${slot.id}`} className={cn("px-4 py-2 border-r border-slate-50/50", onLeave && "bg-amber-50/20")}>
+                          {/* Show substitute coverage if assigned */}
+                          {subForSlot && !period && (
+                            <div className="p-3 rounded-xl bg-indigo-50 border border-l-4 border-l-indigo-400 border-indigo-100 min-h-[60px]">
+                              <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1">Covering</p>
+                              <p className="text-xs font-bold text-indigo-900">Class {classes[subForSlot.classId] || subForSlot.classId}</p>
+                              <div className="flex items-center gap-1 mt-1 text-[10px] text-indigo-500">
+                                <UserCheck className="w-3 h-3" />
+                                <span>Substitute duty</span>
+                              </div>
+                            </div>
+                          )}
+                          {period && onLeave ? (
+                            // Teacher is on leave — show period as covered
+                            <div className="p-3 rounded-xl bg-amber-50 border border-l-4 border-l-amber-400 border-amber-100 min-h-[60px]">
+                              <p className="text-xs font-bold text-amber-700 truncate">{subjectName || period.subjectId}</p>
+                              <div className="flex items-center gap-1 mt-1 text-[10px] text-amber-500">
+                                <Users className="w-3 h-3" />
+                                <span>Class {className || period.classId} · On Leave</span>
+                              </div>
+                            </div>
+                          ) : period ? (
                             <button
                               onClick={() => handleOpenLog(period, slot)}
                               className="w-full text-left p-3 rounded-xl bg-blue-50/50 border border-blue-100 group-hover:bg-white group-hover:shadow-sm transition-all border-l-4 border-l-blue-500 hover:border-blue-400"
@@ -400,11 +564,11 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
                                 <span>Class {className || period.classId}</span>
                               </div>
                             </button>
-                          ) : (
+                          ) : !subForSlot ? (
                             <div className="p-3 rounded-xl bg-slate-50/10 border border-dashed border-slate-100 flex items-center justify-center min-h-[60px]">
                               <span className="text-[10px] font-bold text-slate-300 uppercase">Free</span>
                             </div>
-                          )}
+                          ) : null}
                         </td>
                       );
                     })}
@@ -414,6 +578,7 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
             </table>
           </div>
         </Card>
+        </>
       )}
       </div>
 

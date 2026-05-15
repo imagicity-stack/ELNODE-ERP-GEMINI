@@ -139,7 +139,8 @@ const navItems: NavItem[] = [
   { label: 'Admissions', icon: UserPlus, path: '/admissions', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'admissions' },
   { label: 'Exams', icon: FileText, path: '/exams', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'exams' },
   { label: 'Timetable', icon: Clock, path: '/timetable', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'timetable' },
-  { label: 'Leave Requests', icon: ClipboardCheck, path: '/leaves', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'leaves' },
+  { label: 'Student Leaves', icon: ClipboardCheck, path: '/leaves', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'leaves' },
+  { label: 'Teacher Leaves', icon: ClipboardCheck, path: '/teacher-leaves', roles: ['principal', 'super_admin'], section: 'Academic', moduleId: 'teacher-leaves' },
   { label: 'Grading', icon: CheckSquare, path: '/grading-scales', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'grading-scales' },
   { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'calendar' },
   { label: 'Class Diary', icon: BookOpen, path: '/diary', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'diary' },
@@ -173,6 +174,7 @@ const navItems: NavItem[] = [
   { label: 'Exams', icon: FileText, path: '/exams', roles: ['teacher'], section: 'Academic' },
   { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['teacher'], section: 'Communication' },
   { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['teacher'], section: 'Academic' },
+  { label: 'My Leaves', icon: ClipboardCheck, path: '/leaves', roles: ['teacher'], section: 'Academic' },
 
   // Student specific
   { label: 'My Subjects', icon: BookOpen, path: '/subjects', roles: ['student'], section: 'Academic' },

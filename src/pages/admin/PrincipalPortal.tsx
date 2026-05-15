@@ -12,6 +12,7 @@ import AdmissionManagement from './AdmissionManagement';
 import ExamManagement from './ExamManagement';
 import ResultEntry from '../teacher/ResultEntry';
 import LeaveManagement from './LeaveManagement';
+import TeacherLeaveApproval from './TeacherLeaveApproval';
 import NoticeBoard from './NoticeBoard';
 import LessonLogs from '../shared/LessonLogs';
 import AcademicCalendar from './AcademicCalendar';
@@ -35,6 +36,7 @@ export default function PrincipalPortal({ user }: { user: UserProfile }) {
         <Route path="/exams" element={<ExamManagement user={user} />} />
         <Route path="/exams/:examId/marks" element={<ResultEntry user={user} />} />
         <Route path="/leaves" element={<LeaveManagement user={user} />} />
+        <Route path="/teacher-leaves" element={<TeacherLeaveApproval user={user} />} />
         <Route path="/timetable" element={<TimetableManagement user={user} />} />
         <Route path="/grading-scales" element={<GradingScaleManagement user={user} />} />
         <Route path="/notices" element={<NoticeBoard user={user} />} />
