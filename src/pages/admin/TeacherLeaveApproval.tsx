@@ -48,6 +48,7 @@ import { useToast } from '../../components/Toast';
 import { format, addDays, parseISO, isWithinInterval, startOfMonth, endOfMonth, isSunday } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { logActivity } from '../../services/activityService';
+import { fmtDate } from '../../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -421,7 +422,7 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
         user,
         'Teacher Leave Approved',
         'Principal',
-        `Approved leave for ${selectedLeave.teacherName} (${selectedLeave.startDate} to ${selectedLeave.endDate})` +
+        `Approved leave for ${selectedLeave.teacherName} (${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)})` +
         (tbdCount > 0 ? ` — ${tbdCount} period(s) still TBD` : ''),
         { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId, tbdCount },
       );
@@ -465,7 +466,7 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
         user,
         'Teacher Leave Rejected',
         'Principal',
-        `Rejected leave for ${selectedLeave.teacherName} (${selectedLeave.startDate} to ${selectedLeave.endDate})`,
+        `Rejected leave for ${selectedLeave.teacherName} (${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)})`,
         { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId }
       );
 
@@ -522,7 +523,7 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
         user,
         'Teacher Leave Revoked',
         'Principal',
-        `Revoked approved leave for ${selectedLeave.teacherName} (${selectedLeave.startDate} to ${selectedLeave.endDate})`,
+        `Revoked approved leave for ${selectedLeave.teacherName} (${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)})`,
         { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId }
       );
 
@@ -638,8 +639,8 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
                         </p>
                         <p className="text-[10px] text-slate-500">
                           {leave.startDate === leave.endDate
-                            ? leave.startDate
-                            : `${leave.startDate} → ${leave.endDate}`}{' '}
+                            ? fmtDate(leave.startDate)
+                            : `${fmtDate(leave.startDate)} → ${fmtDate(leave.endDate)}`}{' '}
                           · {leave.totalDays}d
                         </p>
                       </div>
@@ -853,9 +854,9 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
                           <div className="space-y-0.5">
                             <p className="text-xs font-bold text-slate-900 flex items-center gap-1">
                               <Calendar className="w-3 h-3 text-violet-500" />
-                              {format(parseISO(leave.startDate), 'MMM d')}
+                              {format(parseISO(leave.startDate), 'd MMM')}
                               {leave.endDate !== leave.startDate
-                                ? ` – ${format(parseISO(leave.endDate), 'MMM d')}`
+                                ? ` – ${format(parseISO(leave.endDate), 'd MMM')}`
                                 : ''}
                             </p>
                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
@@ -869,7 +870,7 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
                         <td className="py-3.5 px-4">{getStatusBadge(leave.status)}</td>
                         <td className="py-3.5 px-4">
                           <p className="text-xs text-slate-500">
-                            {format(parseISO(leave.submittedAt), 'MMM d, yyyy')}
+                            {format(parseISO(leave.submittedAt), 'd MMM yyyy')}
                           </p>
                         </td>
                         <td className="py-3.5 px-4 text-right">
@@ -962,9 +963,9 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
                 <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Dates</p>
                   <p className="text-sm font-bold text-slate-900">
-                    {format(parseISO(selectedLeave.startDate), 'MMM d')}
+                    {format(parseISO(selectedLeave.startDate), 'd MMM')}
                     {selectedLeave.endDate !== selectedLeave.startDate
-                      ? ` – ${format(parseISO(selectedLeave.endDate), 'MMM d')}`
+                      ? ` – ${format(parseISO(selectedLeave.endDate), 'd MMM')}`
                       : ''}
                   </p>
                 </div>
@@ -1047,7 +1048,7 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
                         {substituteRows.map((row, idx) => (
                           <tr key={idx} className="border-t border-slate-100 hover:bg-slate-50">
                             <td className="px-3 py-2 font-bold text-slate-700 whitespace-nowrap">
-                              {format(parseISO(row.date), 'EEE, MMM d')}
+                              {format(parseISO(row.date), 'EEE, d MMM')}
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap">
                               <span className="font-bold text-slate-800">{row.slotLabel}</span>
@@ -1126,9 +1127,9 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
             <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-sm">
               <p className="font-bold text-slate-800">{selectedLeave.teacherName}</p>
               <p className="text-slate-500 mt-0.5">
-                {format(parseISO(selectedLeave.startDate), 'MMM d')}
+                {format(parseISO(selectedLeave.startDate), 'd MMM')}
                 {selectedLeave.endDate !== selectedLeave.startDate
-                  ? ` – ${format(parseISO(selectedLeave.endDate), 'MMM d')}`
+                  ? ` – ${format(parseISO(selectedLeave.endDate), 'd MMM')}`
                   : ''}{' '}
                 · {selectedLeave.totalDays}d ·{' '}
                 <span className="capitalize">{selectedLeave.leaveType.replace('_', ' ')}</span>

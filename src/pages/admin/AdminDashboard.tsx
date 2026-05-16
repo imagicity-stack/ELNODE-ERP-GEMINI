@@ -383,7 +383,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                   <Badge variant={noticePriorityVariant(notice.priority)} dot>{notice.priority}</Badge>
                 </div>
                 <p className="text-sm text-slate-500 line-clamp-2 mb-2">{notice.content}</p>
-                <p className="text-xs text-slate-400 font-medium">{notice.authorName} · {new Date(notice.createdAt).toLocaleDateString()}</p>
+                <p className="text-xs text-slate-400 font-medium">{notice.authorName} · {new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
               </div>
             )) : (
               <div className="px-6 py-12 text-center text-slate-400 text-sm">No recent notices.</div>
@@ -494,7 +494,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-slate-500">{s.classId} {s.section && `- ${s.section}`}</td>
-                    <td className="px-6 py-4 text-slate-500">{s.createdAt ? new Date(s.createdAt).toLocaleDateString() : 'N/A'}</td>
+                    <td className="px-6 py-4 text-slate-500">{s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A'}</td>
                     <td className="px-6 py-4">
                       <Badge variant={s.feeStatus === 'paid' ? 'success' : 'warning'} dot>
                         {s.feeStatus || 'Pending'}

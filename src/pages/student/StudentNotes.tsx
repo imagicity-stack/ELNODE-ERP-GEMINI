@@ -130,7 +130,7 @@ export default function StudentNotes({ user }: StudentNotesProps) {
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-bold text-slate-900 leading-tight">{note.title}</h4>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {subjects.find(s => s.id === note.subjectId)?.name || note.subjectId} · {new Date(note.createdAt).toLocaleDateString()}
+                      {subjects.find(s => s.id === note.subjectId)?.name || note.subjectId} · {new Date(note.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </p>
                     {note.description && (
                       <p className="text-xs text-slate-600 mt-1.5 line-clamp-2">{note.description}</p>
@@ -237,7 +237,7 @@ export default function StudentNotes({ user }: StudentNotesProps) {
                     </div>
                     <h4 className="font-bold text-slate-900 group-hover:text-emerald-600 transition-all mb-1">{note.title}</h4>
                     <p className="text-xs text-slate-500 mb-3">
-                      {subjects.find(s => s.id === note.subjectId)?.name || note.subjectId} • {new Date(note.createdAt).toLocaleDateString()}
+                      {subjects.find(s => s.id === note.subjectId)?.name || note.subjectId} • {new Date(note.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </p>
 
                     {note.description && (

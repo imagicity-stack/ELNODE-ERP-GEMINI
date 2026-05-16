@@ -347,7 +347,7 @@ export default function TeacherNotes({ user }: TeacherNotesProps) {
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-slate-400">
                   <Clock className="w-3 h-3" />
-                  {new Date(item.createdAt).toLocaleDateString()}
+                  {new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </div>
               </div>
             </Card>

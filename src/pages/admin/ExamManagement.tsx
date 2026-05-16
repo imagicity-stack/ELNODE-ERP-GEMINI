@@ -312,7 +312,7 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
             <div className="space-y-2 mb-5">
               <div className="flex items-center gap-2 text-xs text-slate-600">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
-                <span>{new Date(exam.startDate).toLocaleDateString()} – {new Date(exam.endDate).toLocaleDateString()}</span>
+                <span>{new Date(exam.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })} – {new Date(exam.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-600">
                 <CheckSquare className="w-3.5 h-3.5 text-slate-400" />

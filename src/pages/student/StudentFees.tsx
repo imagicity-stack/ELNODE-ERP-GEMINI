@@ -278,7 +278,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-900">₹{(tx.amount || 0).toLocaleString()}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">{tx.receiptNumber} · {tx.date}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">{tx.receiptNumber} · {fmtDate(tx.date)}</p>
                           <p className="text-xs text-slate-400 capitalize">{tx.method.replace('_', ' ')}</p>
                         </div>
                         <button
@@ -417,7 +417,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
                   {payments.map((tx) => (
                     <Tr key={tx.id}>
                       <Td><span className="font-bold text-slate-900">{tx.receiptNumber}</span></Td>
-                      <Td>{tx.date}</Td>
+                      <Td>{fmtDate(tx.date)}</Td>
                       <Td><span className="font-bold text-emerald-600">₹{(tx.amount || 0).toLocaleString()}</span></Td>
                       <Td className="capitalize">{tx.method.replace('_', ' ')}</Td>
                       <Td>
@@ -451,7 +451,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
                 {currentRequest ? (
                   <>
                     <p className="text-xs opacity-70 leading-relaxed mb-6">
-                      Your fee for {currentRequest.month} is due by {new Date(currentRequest.dueDate).toLocaleDateString()}.
+                      Your fee for {currentRequest.month} is due by {new Date(currentRequest.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}.
                     </p>
                     <button
                       onClick={() => handlePayNow(currentRequest)}

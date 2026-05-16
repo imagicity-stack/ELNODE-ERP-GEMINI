@@ -427,7 +427,7 @@ export default function PaymentHistory({ user }: PaymentHistoryProps) {
                         </Badge>
                       </Td>
                       <Td className="text-slate-600 font-medium">
-                        {new Date(p.date).toLocaleDateString()}
+                        {new Date(p.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </Td>
                       <Td>
                         <p className="font-black text-emerald-600">₹{(p.amount || 0).toLocaleString()}</p>

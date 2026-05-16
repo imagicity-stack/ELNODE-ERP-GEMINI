@@ -401,7 +401,7 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-500 font-medium">Last Updated</span>
                   <span className="font-bold text-slate-900">
-                    {feeStructure?.updatedAt ? new Date(feeStructure.updatedAt).toLocaleDateString() : 'Never'}
+                    {feeStructure?.updatedAt ? new Date(feeStructure.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Never'}
                   </span>
                 </div>
               </div>

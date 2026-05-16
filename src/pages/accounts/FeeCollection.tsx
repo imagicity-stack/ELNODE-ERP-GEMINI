@@ -8,7 +8,7 @@ import { getNextReceiptNumber } from '../../services/receiptCounterService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
-import { fmtMonthYear } from '../../lib/utils';
+import { fmtMonthYear, fmtDate } from '../../lib/utils';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import {
@@ -821,7 +821,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                           <div key={p.id} className="flex items-center justify-between px-1 py-1">
                             <div>
                               <p className="text-xs font-bold text-slate-800">₹{(p.amount || 0).toLocaleString()}</p>
-                              <p className="text-[10px] text-slate-400">{p.head} · {p.method} · {p.date}</p>
+                              <p className="text-[10px] text-slate-400">{p.head} · {p.method} · {fmtDate(p.date)}</p>
                             </div>
                             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700">PAID</span>
                           </div>
@@ -1081,7 +1081,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                               </div>
                             </div>
                           </Td>
-                          <Td className="text-xs text-slate-500">{p.date}</Td>
+                          <Td className="text-xs text-slate-500">{fmtDate(p.date)}</Td>
                           <Td className="font-bold text-emerald-600 text-xs">₹{(p.amount || 0).toLocaleString()}</Td>
                           <Td colSpan={3} className="text-[10px] text-slate-400 italic">{p.remarks || '—'}</Td>
                         </Tr>
@@ -1124,7 +1124,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                   <Tr key={tx.id}>
                     <Td className="font-bold text-slate-900">{tx.receiptNumber}</Td>
                     <Td>{student?.name || 'Unknown'}</Td>
-                    <Td>{tx.date}</Td>
+                    <Td>{fmtDate(tx.date)}</Td>
                     <Td className="font-bold text-emerald-600">₹{(tx.amount || 0).toLocaleString()}</Td>
                     <Td className="capitalize">{tx.method.replace('_', ' ')}</Td>
                     <Td className="text-right">

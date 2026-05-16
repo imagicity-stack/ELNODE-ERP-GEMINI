@@ -9,6 +9,7 @@ import { UserProfile, Student, FeeRequest, Class } from '../../types';
 import { useToast } from '../../components/Toast';
 import { PageHeader, Card, Button, FormField, Select, StatCard } from '../../components/ui';
 import { logActivity } from '../../services/activityService';
+import { fmtDate } from '../../lib/utils';
 
 const PAYMENT_LINK = 'https://ehs.elnode.in/parent/fees';
 
@@ -280,7 +281,7 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-black text-slate-800">{r.amount}</p>
-                    <p className="text-[10px] text-slate-400">Due {r.dueDate}</p>
+                    <p className="text-[10px] text-slate-400">Due {fmtDate(r.dueDate)}</p>
                   </div>
                 </div>
               ))}
@@ -438,7 +439,7 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
                       <td className="px-4 py-3 text-slate-600">{r.studentName}</td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{r.classSection}</td>
                       <td className="px-4 py-3 text-right font-bold text-slate-800">{r.amount}</td>
-                      <td className="px-4 py-3 text-slate-500 text-xs">{r.dueDate}</td>
+                      <td className="px-4 py-3 text-slate-500 text-xs">{fmtDate(r.dueDate)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -1,4 +1,5 @@
 import { UserProfile, Homework } from '../../types';
+import { fmtDate } from '../../lib/utils';
 import { CheckSquare, Download, Upload, Clock, ExternalLink, BookOpen } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy, updateDoc, doc, arrayUnion } from 'firebase/firestore';
@@ -150,7 +151,7 @@ export default function StudentHomework({ user }: StudentHomeworkProps) {
                         </div>
                         <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase mt-0.5">
                           <Clock className="w-3 h-3" />
-                          Due: {hw.dueDate}
+                          Due: {fmtDate(hw.dueDate)}
                         </div>
                       </div>
                     </div>
@@ -213,7 +214,7 @@ export default function StudentHomework({ user }: StudentHomeworkProps) {
                         <div className="flex items-center gap-4 mb-3">
                           <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                             <Clock className="w-3 h-3" />
-                            Due: {hw.dueDate}
+                            Due: {fmtDate(hw.dueDate)}
                           </div>
                           {hw.attachmentName && (
                             <div className="flex items-center gap-1 text-[10px] text-slate-400">

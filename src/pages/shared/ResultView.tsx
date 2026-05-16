@@ -189,7 +189,7 @@ export default function ResultView({ student }: ResultViewProps) {
                       </div>
                       <div>
                         <h3 className="text-lg font-bold text-slate-900">{exam.name}</h3>
-                        <p className="text-xs text-slate-500 font-medium">{exam.term} • Published on {new Date(result.updatedAt).toLocaleDateString()}</p>
+                        <p className="text-xs text-slate-500 font-medium">{exam.term} • Published on {new Date(result.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
                       </div>
                     </div>
 

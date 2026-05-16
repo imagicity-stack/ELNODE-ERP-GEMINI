@@ -1,6 +1,6 @@
 import { UserProfile, Student, Attendance } from '../../types';
 import { ClipboardCheck, Calendar, Clock, CheckCircle2, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn, fmtDate } from '../../lib/utils';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -124,7 +124,7 @@ export default function ParentAttendance({ user, selectedStudent }: ParentAttend
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="text-sm font-bold text-slate-900">{record.date}</span>
+                      <span className="text-sm font-bold text-slate-900">{fmtDate(record.date)}</span>
                     </div>
                     {record.remarks && (
                       <p className="text-xs text-slate-500 italic mt-0.5 truncate">{record.remarks}</p>
@@ -229,7 +229,7 @@ export default function ParentAttendance({ user, selectedStudent }: ParentAttend
                   <Tbody>
                     {attendance.filter(a => a.status === 'absent').slice(0, 5).map((abs, i) => (
                       <Tr key={i}>
-                        <Td className="font-bold text-slate-900">{new Date(abs.date).toLocaleDateString()}</Td>
+                        <Td className="font-bold text-slate-900">{new Date(abs.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Td>
                         <Td><Badge variant="error">Absent</Badge></Td>
                       </Tr>
                     ))}

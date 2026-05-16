@@ -146,7 +146,7 @@ export function startNotificationListeners(
           const hw = change.doc.data();
           handleNotify(
             'New Homework Assigned', 
-            `Homework for ${hw.subjectId} due on ${new Date(hw.dueDate).toLocaleDateString()}.`,
+            `Homework for ${hw.subjectId} due on ${new Date(hw.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}.`,
             'info',
             'new-homework'
           );

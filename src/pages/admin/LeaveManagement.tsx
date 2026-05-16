@@ -42,6 +42,7 @@ import {
 } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { format } from 'date-fns';
+import { fmtDate } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePermissions } from '../../hooks/usePermissions';
 import { logActivity } from '../../services/activityService';
@@ -261,7 +262,7 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
                   {getStatusBadge(leave.status)}
                 </div>
                 <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-500">
-                  <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{leave.startDate}{leave.endDate !== leave.startDate ? ` → ${leave.endDate}` : ''}</span>
+                  <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{fmtDate(leave.startDate)}{leave.endDate !== leave.startDate ? ` → ${fmtDate(leave.endDate)}` : ''}</span>
                   {leave.isEmergency && <span className="text-red-600 font-bold">EMERGENCY</span>}
                 </div>
                 {!readOnly && (leave.status === 'submitted' || leave.status === 'pending') && (
@@ -422,7 +423,7 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
                       <div className="space-y-1">
                         <p className="text-xs font-bold text-slate-900 flex items-center gap-1">
                           <Calendar className="w-3 h-3 text-indigo-500" />
-                          {format(new Date(leave.startDate), 'MMM d')} - {format(new Date(leave.endDate), 'MMM d')}
+                          {format(new Date(leave.startDate), 'd MMM')} - {format(new Date(leave.endDate), 'd MMM')}
                         </p>
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none">
                           {leave.totalDays} {leave.totalDays === 1 ? 'Day' : 'Days'}
@@ -511,7 +512,7 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-900 leading-none">
-                      {format(new Date(selectedLeave.startDate), 'MMM dd')} - {format(new Date(selectedLeave.endDate), 'MMM dd')}
+                      {format(new Date(selectedLeave.startDate), 'dd MMM')} - {format(new Date(selectedLeave.endDate), 'dd MMM')}
                     </h4>
                     <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase">
                       {selectedLeave.totalDays} Total Days
