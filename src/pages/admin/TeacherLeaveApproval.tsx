@@ -17,12 +17,11 @@ import {
   getDocs,
   doc,
   updateDoc,
-  addDoc,
   query,
   where,
   orderBy,
   getDoc,
-  writeBatch,
+  runTransaction,
   deleteDoc,
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -341,77 +340,103 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
 
   const handleApprove = async () => {
     if (!selectedLeave) return;
+
+    const tbdCount = substituteRows.filter(
+      r => !r.substituteTeacherId || r.substituteTeacherId === 'TBD',
+    ).length;
+    if (tbdCount > 0) {
+      const proceed = window.confirm(
+        `${tbdCount} period(s) still have no substitute assigned (TBD). ` +
+        `These classes will be unattended unless you assign substitutes later.\n\nApprove anyway?`,
+      );
+      if (!proceed) return;
+    }
+
     try {
       setIsApproving(true);
       const now = new Date().toISOString();
-      const batch = writeBatch(db);
-
-      // 1. Update leave doc
-      const leaveRef = doc(db, 'teacherLeaves', selectedLeave.id);
-      batch.update(leaveRef, {
-        status: 'approved',
-        approvedBy: user.uid,
-        approvedAt: now,
-        principalRemarks: principalRemarks.trim() || null,
-        substituteAssigned: true,
-        attendanceSynced: true,
-        updatedAt: now,
-      });
-
-      // 2. Create attendance records (one per leave day)
       const dates = getDatesInRange(selectedLeave.startDate, selectedLeave.endDate);
-      for (const dateStr of dates) {
-        const attendanceRef = doc(collection(db, 'attendance'));
-        batch.set(attendanceRef, {
-          date: dateStr,
-          employeeId: selectedLeave.teacherId,
-          type: 'staff',
-          status: 'approved_leave',
-          leaveId: selectedLeave.id,
-          remarks: 'Teacher leave approved by principal',
-          classId: null,
-          createdAt: now,
-        });
-      }
 
-      // 3. Create substitute assignment docs
-      for (const row of substituteRows) {
-        const subRef = doc(collection(db, 'substituteAssignments'));
-        const isTBD = !row.substituteTeacherId || row.substituteTeacherId === 'TBD';
-        const assignment: Omit<SubstituteAssignment, 'id'> = {
-          leaveId: selectedLeave.id,
-          date: row.date,
-          slotId: row.slotId,
-          classId: row.classId,
-          originalTeacherId: row.originalTeacherId,
-          substituteTeacherId: isTBD ? undefined : row.substituteTeacherId,
-          substituteTeacherName: isTBD ? undefined : row.substituteTeacherName,
-          status: isTBD ? 'unassigned' : 'assigned',
-          assignedBy: user.uid,
-          createdAt: now,
+      // Pre-build all new doc refs outside the transaction so Firestore
+      // doesn't complain about addDoc inside a transaction.
+      const attendanceRefs = dates.map(() => doc(collection(db, 'attendance')));
+      const subRefs = substituteRows.map(() => doc(collection(db, 'substituteAssignments')));
+
+      await runTransaction(db, async (tx) => {
+        // Guard: re-read the leave and ensure it's still pending.
+        const leaveSnap = await tx.get(doc(db, 'teacherLeaves', selectedLeave.id));
+        if (!leaveSnap.exists()) throw new Error('Leave request no longer exists');
+        if (leaveSnap.data().status !== 'pending') {
+          throw new Error(`Leave is already ${leaveSnap.data().status}. Reload the page.`);
+        }
+
+        // 1. Update leave doc
+        tx.update(doc(db, 'teacherLeaves', selectedLeave.id), {
+          status: 'approved',
+          approvedBy: user.uid,
+          approvedAt: now,
+          principalRemarks: principalRemarks.trim() || null,
+          substituteAssigned: true,
+          attendanceSynced: true,
           updatedAt: now,
-        };
-        // Strip undefined fields for Firestore
-        batch.set(subRef, JSON.parse(JSON.stringify(assignment)));
-      }
+        });
 
-      await batch.commit();
+        // 2. Create attendance records (one per leave day)
+        dates.forEach((dateStr, i) => {
+          tx.set(attendanceRefs[i], {
+            date: dateStr,
+            employeeId: selectedLeave.teacherId,
+            type: 'staff',
+            status: 'approved_leave',
+            leaveId: selectedLeave.id,
+            remarks: 'Teacher leave approved by principal',
+            classId: null,
+            createdAt: now,
+          });
+        });
+
+        // 3. Create substitute assignment docs
+        substituteRows.forEach((row, i) => {
+          const isTBD = !row.substituteTeacherId || row.substituteTeacherId === 'TBD';
+          const assignment: Record<string, any> = {
+            leaveId: selectedLeave.id,
+            date: row.date,
+            slotId: row.slotId,
+            classId: row.classId,
+            originalTeacherId: row.originalTeacherId,
+            status: isTBD ? 'unassigned' : 'assigned',
+            assignedBy: user.uid,
+            createdAt: now,
+            updatedAt: now,
+          };
+          if (!isTBD) {
+            assignment.substituteTeacherId = row.substituteTeacherId;
+            assignment.substituteTeacherName = row.substituteTeacherName;
+          }
+          tx.set(subRefs[i], assignment);
+        });
+      });
 
       await logActivity(
         user,
         'Teacher Leave Approved',
         'Principal',
-        `Approved leave for ${selectedLeave.teacherName} (${selectedLeave.startDate} to ${selectedLeave.endDate})`,
-        { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId }
+        `Approved leave for ${selectedLeave.teacherName} (${selectedLeave.startDate} to ${selectedLeave.endDate})` +
+        (tbdCount > 0 ? ` — ${tbdCount} period(s) still TBD` : ''),
+        { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId, tbdCount },
       );
 
-      showToast(`Leave approved for ${selectedLeave.teacherName}`, 'success');
+      showToast(
+        `Leave approved for ${selectedLeave.teacherName}` +
+        (tbdCount > 0 ? ` (${tbdCount} TBD periods need substitutes)` : ''),
+        tbdCount > 0 ? 'info' : 'success',
+      );
       setApprovalModalOpen(false);
       setSelectedLeave(null);
       loadAll();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error approving leave:', error);
-      showToast('Failed to approve leave', 'error');
+      showToast(error?.message || 'Failed to approve leave', 'error');
     } finally {
       setIsApproving(false);
     }

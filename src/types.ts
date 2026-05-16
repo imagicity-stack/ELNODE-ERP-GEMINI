@@ -145,6 +145,11 @@ export interface Teacher {
     section: string;
   };
   photoURL?: string;
+  // Optimistic-concurrency token incremented on every update.
+  version?: number;
+  updatedAt?: string;
+  // Per-teacher casual leave quota override (falls back to the policy default if absent).
+  casualLeaveQuota?: number;
 }
 
 export interface StaffMember {
@@ -159,6 +164,8 @@ export interface StaffMember {
   category?: 'Staff' | 'Management' | 'Administration';
   updatedAt?: string;
   photoURL?: string;
+  // Optimistic-concurrency token incremented on every update.
+  version?: number;
 }
 
 export type UnifiedStaff = (Teacher | StaffMember) & {

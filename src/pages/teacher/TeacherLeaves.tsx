@@ -14,6 +14,7 @@ import {
   addDoc,
   updateDoc,
   doc,
+  getDoc,
   query,
   where,
   getDocs,
@@ -35,21 +36,20 @@ import {
   Textarea,
 } from '../../components/ui';
 import { useToast } from '../../components/Toast';
-import { format } from 'date-fns';
+import { format, differenceInCalendarDays, parseISO } from 'date-fns';
 import { logActivity } from '../../services/activityService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const CASUAL_LEAVE_QUOTA = 12;
+// Default casual leave quota; individual teachers may have `casualLeaveQuota`
+// set on their teacher doc (loaded at runtime and stored in teacherQuota state).
+const DEFAULT_CASUAL_LEAVE_QUOTA = 12;
 
 function countDays(startDate: string, endDate: string): number {
   if (!startDate || !endDate) return 0;
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  if (end < start) return 0;
-  // Simple calendar day count (inclusive)
-  const msPerDay = 1000 * 60 * 60 * 24;
-  return Math.round((end.getTime() - start.getTime()) / msPerDay) + 1;
+  // differenceInCalendarDays is DST-safe (date-fns operates on midnight UTC)
+  const diff = differenceInCalendarDays(parseISO(endDate), parseISO(startDate));
+  return diff < 0 ? 0 : diff + 1; // inclusive
 }
 
 function currentYearStart(): string {
@@ -118,6 +118,7 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
   const [viewLeave, setViewLeave] = useState<TeacherLeaveRequest | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [casualLeaveQuota, setCasualLeaveQuota] = useState(DEFAULT_CASUAL_LEAVE_QUOTA);
 
   // Form state
   const [leaveType, setLeaveType] = useState<TeacherLeaveType>('casual');
@@ -134,10 +135,22 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
     try {
       setLoading(true);
       const teacherId = user.teacherId ?? user.uid;
+
+      // Load per-teacher casual leave quota if set on the teacher doc
+      if (user.teacherId) {
+        const teacherSnap = await getDoc(doc(db, 'teachers', user.teacherId));
+        if (teacherSnap.exists()) {
+          const quota = teacherSnap.data().casualLeaveQuota;
+          if (typeof quota === 'number' && quota >= 0) {
+            setCasualLeaveQuota(quota);
+          }
+        }
+      }
+
       const q = query(
         collection(db, 'teacherLeaves'),
         where('teacherId', '==', teacherId),
-        orderBy('submittedAt', 'desc')
+        orderBy('submittedAt', 'desc'),
       );
       const snap = await getDocs(q);
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as TeacherLeaveRequest));
@@ -167,7 +180,7 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
   const usedCasualDays = thisYearLeaves
     .filter(l => l.leaveType === 'casual' && l.status === 'approved')
     .reduce((sum, l) => sum + l.totalDays, 0);
-  const availableCasual = Math.max(0, CASUAL_LEAVE_QUOTA - usedCasualDays);
+  const availableCasual = Math.max(0, casualLeaveQuota - usedCasualDays);
 
   // ─── Apply Leave ────────────────────────────────────────────────────────────
 
