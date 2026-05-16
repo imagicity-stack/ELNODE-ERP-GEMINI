@@ -121,7 +121,7 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
         <PageHeader
           title="School Settings"
           subtitle="Configure global settings that apply across all portals and documents"
-          icon={<Settings2 className="w-5 h-5" />}
+          icon={Settings2}
         />
 
         <Card className="p-6 space-y-6">
@@ -156,13 +156,13 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
             <FormField label="Address">
               <Input value={settings.address || ''} onChange={set('address')} placeholder="Hazaribagh, Jharkhand · 825301" />
             </FormField>
-            <FormField label={<span className="flex items-center gap-1"><Phone className="w-3 h-3" /> Phone</span>}>
+            <FormField label="Phone">
               <Input value={settings.phone || ''} onChange={set('phone')} placeholder="9431904333 / 9288483677" />
             </FormField>
-            <FormField label={<span className="flex items-center gap-1"><Globe className="w-3 h-3" /> Website</span>}>
+            <FormField label="Website">
               <Input value={settings.website || ''} onChange={set('website')} placeholder="eldenheights.org" />
             </FormField>
-            <FormField label={<span className="flex items-center gap-1"><Mail className="w-3 h-3" /> Email</span>}>
+            <FormField label="Email">
               <Input value={settings.email || ''} onChange={set('email')} placeholder="contact@eldenheights.org" />
             </FormField>
           </div>
