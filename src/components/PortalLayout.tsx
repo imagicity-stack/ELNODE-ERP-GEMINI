@@ -35,6 +35,7 @@ import {
   History as HistoryIcon,
   Settings2,
   MessageSquare,
+  IndianRupee,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
@@ -177,8 +178,8 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['grievance_officer'], section: 'Overview' },
   { label: 'Grievances', icon: MessageSquare, path: '/tracker', roles: ['grievance_officer', 'principal', 'super_admin'], section: 'Grievance' },
   { label: 'Fee Follow-up', icon: Wallet, path: '/fee-followup', roles: ['grievance_officer', 'super_admin'], section: 'Grievance' },
+  { label: 'Fee Collection', icon: IndianRupee, path: '/fee-collection', roles: ['grievance_officer'], section: 'Finance' },
   { label: 'Broadcast', icon: Megaphone, path: '/broadcast', roles: ['grievance_officer', 'super_admin'], section: 'Communication' },
-  { label: 'Profile', icon: User, path: '/profile', roles: ['grievance_officer'], section: 'Settings' },
 
   // Teacher specific (already mostly covered by Overview)
   { label: 'My Classes', icon: GraduationCap, path: '/classes', roles: ['teacher'], section: 'Academic' },
