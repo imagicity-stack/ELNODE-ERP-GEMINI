@@ -129,6 +129,7 @@ export interface Student {
 
 export interface Teacher {
   id: string;
+  employeeId?: string; // Human-readable ID assigned at onboarding (e.g. TCH001)
   name: string;
   email: string;
   phone?: string;
@@ -154,6 +155,7 @@ export interface Teacher {
 
 export interface StaffMember {
   id: string;
+  employeeId?: string; // Human-readable ID assigned at onboarding (e.g. EMP001)
   name: string;
   email: string;
   phone?: string;

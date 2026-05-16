@@ -55,6 +55,7 @@ export default function StaffManagement({ user }: { user: any }) {
   const readOnly = isReadOnly('staff');
 
   const [formData, setFormData] = useState({
+    employeeId: '',
     name: '',
     email: '',
     phone: '',
@@ -112,6 +113,7 @@ export default function StaffManagement({ user }: { user: any }) {
             docId: editingStaff.id,
             expectedVersion: editingStaff.version ?? 0,
             updates: {
+              employeeId: formData.employeeId.trim(),
               name: formData.name.trim(),
               email: normalizedEmail,
               phone: formData.phone,
@@ -152,6 +154,7 @@ export default function StaffManagement({ user }: { user: any }) {
       let staffRef;
       try {
         staffRef = await addDoc(collection(db, 'staff'), {
+          employeeId: formData.employeeId.trim(),
           name: formData.name.trim(),
           email: normalizedEmail,
           phone: formData.phone,
@@ -185,6 +188,7 @@ export default function StaffManagement({ user }: { user: any }) {
       setIsModalOpen(false);
       fetchStaff();
       setFormData({
+        employeeId: '',
         name: '',
         email: '',
         phone: '',
@@ -209,6 +213,7 @@ export default function StaffManagement({ user }: { user: any }) {
     setEditingStaff(member);
     setIsEditMode(true);
     setFormData({
+      employeeId: member.employeeId || '',
       name: member.name,
       email: member.email,
       phone: member.phone || '',
@@ -403,14 +408,25 @@ export default function StaffManagement({ user }: { user: any }) {
         }
       >
         <form id="staff-form" onSubmit={handleSubmit} className="space-y-4">
-          <FormField label="Full Name" required>
-            <Input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            />
-          </FormField>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Employee ID" required hint="e.g. EMP001 — used on payslips">
+              <Input
+                type="text"
+                required
+                placeholder="EMP001"
+                value={formData.employeeId}
+                onChange={(e) => setFormData({ ...formData, employeeId: e.target.value.toUpperCase() })}
+              />
+            </FormField>
+            <FormField label="Full Name" required>
+              <Input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+            </FormField>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Email Address" required>
               <Input

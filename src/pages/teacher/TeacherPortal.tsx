@@ -29,6 +29,7 @@ export default function TeacherPortal({ user }: { user: UserProfile }) {
         <Route path="/exams/:examId/marks" element={<ResultEntry user={user} />} />
         <Route path="/timetable" element={<TeacherTimetable user={user} />} />
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />
+        <Route path="/notices" element={<NoticeBoard user={user} />} />
         <Route path="/diary" element={<LessonLogs user={user} />} />
         <Route path="/leaves" element={<TeacherLeaves user={user} />} />
         <Route path="/profile" element={<ProfileSettings user={user} />} />

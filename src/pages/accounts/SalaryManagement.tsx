@@ -901,7 +901,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                       </button>
                       {salary ? (
                         <button
-                          onClick={() => generatePayrollSlip(salary)}
+                          onClick={() => generatePayrollSlip(salary, (staffList.find(s => s.id === salary.employeeId) as any)?.employeeId)}
                           className="py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
                         >
                           <Download className="w-3.5 h-3.5" /> Slip
@@ -1146,7 +1146,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                                 size="sm"
                                 variant="ghost"
                                 className="text-slate-500"
-                                onClick={() => generatePayrollSlip(salary)}
+                                onClick={() => generatePayrollSlip(salary, (staffList.find(s => s.id === salary.employeeId) as any)?.employeeId)}
                                 icon={Download}
                                 title="Download Payslip PDF"
                               />
@@ -1677,7 +1677,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge variant={statusColor as any}>{s.status.replace('_', ' ').toUpperCase()}</Badge>
-                            <Button size="sm" variant="ghost" icon={Download} onClick={() => generatePayrollSlip(s)} title="Download Pay Slip" />
+                            <Button size="sm" variant="ghost" icon={Download} onClick={() => generatePayrollSlip(s, (staffList.find(st => st.id === s.employeeId) as any)?.employeeId)} title="Download Pay Slip" />
                           </div>
                         </div>
 

@@ -60,7 +60,7 @@ async function fetchLogo(): Promise<string | null> {
   } catch { return null; }
 }
 
-export async function generatePayrollSlip(salary: Salary): Promise<void> {
+export async function generatePayrollSlip(salary: Salary, displayEmployeeId?: string): Promise<void> {
   const [logo, schoolSettings] = await Promise.all([fetchLogo(), getSchoolSettings()]);
   const academicYear = schoolSettings.academicYear || '2026-27';
 
@@ -115,7 +115,7 @@ export async function generatePayrollSlip(salary: Salary): Promise<void> {
   const empRows: [string, string, string, string][] = [
     ['Employee Name', salary.employeeName,           'Pay Slip No.',  slipNo],
     ['Designation',   salary.employeeRole || '-',    'Pay Period',    monthLabel],
-    ['Employee ID',   (salary.employeeId || '-').slice(0, 14), 'Date of Issue', issueDate],
+    ['Employee ID',   (displayEmployeeId || salary.employeeId || '-').slice(0, 14), 'Date of Issue', issueDate],
     ['Academic Year', academicYear,                  'Status',        salary.status.replace('_', ' ').toUpperCase()],
   ];
 

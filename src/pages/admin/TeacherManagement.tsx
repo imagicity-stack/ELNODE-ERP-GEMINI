@@ -50,6 +50,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
   const { showToast } = useToast();
 
   const [formData, setFormData] = useState({
+    employeeId: '',
     name: '',
     email: '',
     phone: '',
@@ -189,6 +190,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
 
   const resetForm = () => {
     setFormData({
+      employeeId: '',
       name: '',
       email: '',
       phone: '',
@@ -210,6 +212,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
     setEditingTeacher(teacher);
     setIsEditMode(true);
     setFormData({
+      employeeId: teacher.employeeId || '',
       name: teacher.name,
       email: teacher.email,
       phone: teacher.phone || '',
@@ -454,6 +457,9 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
                 </div>
               </div>
 
+              <FormField label="Employee ID" required hint="e.g. TCH001 — shown on payslips">
+                <Input required placeholder="TCH001" value={formData.employeeId} onChange={e => setFormData({...formData, employeeId: e.target.value.toUpperCase()})} />
+              </FormField>
               <FormField label="Full Name" required><Input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></FormField>
               <FormField label="Email Address" required><Input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /></FormField>
               <FormField label="Phone Number" required hint="Used for WhatsApp salary notifications">

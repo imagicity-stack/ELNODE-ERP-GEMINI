@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Settings2, GraduationCap, Building2, Phone, Globe, Mail, Database, AlertTriangle, RotateCw } from 'lucide-react';
+import { Save, Settings2, GraduationCap, Building2, Phone, Globe, Mail, Database, AlertTriangle, RotateCw, Receipt } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { getSchoolSettings, saveSchoolSettings, SchoolSettings } from '../../services/settingsService';
 import { useToast } from '../../components/Toast';
@@ -129,6 +129,34 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
               </div>
             ))}
           </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+              <Receipt className="w-4 h-4 text-indigo-600" />
+              <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Receipt Settings</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-600 mb-1.5">Receipt Prefix</p>
+              <input
+                value={settings.receiptPrefix || ''}
+                onChange={set('receiptPrefix')}
+                placeholder="EHSREC"
+                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono outline-none"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Letters before the number on every receipt (e.g. EHSREC → EHSREC0001).</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-600 mb-1.5">Start From</p>
+              <input
+                type="number"
+                min={1}
+                value={settings.receiptStartNumber ?? 1}
+                onChange={(e) => setSettings(prev => ({ ...prev, receiptStartNumber: Number(e.target.value) }))}
+                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono outline-none"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">First receipt number. Only applies before any receipt is generated.</p>
+            </div>
+          </div>
         </div>
 
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 safe-area-bottom">
@@ -191,6 +219,33 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
             </FormField>
             <FormField label="Email">
               <Input value={settings.email || ''} onChange={set('email')} placeholder="contact@eldenheights.org" />
+            </FormField>
+          </div>
+        </Card>
+
+        <Card className="p-6 space-y-6">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <Receipt className="w-4 h-4 text-indigo-600" />
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Receipt Settings</h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Receipt Prefix" hint="Letters before the number on every receipt (e.g. EHSREC → EHSREC0001)">
+              <Input
+                value={settings.receiptPrefix || ''}
+                onChange={set('receiptPrefix')}
+                placeholder="EHSREC"
+                className="font-mono"
+              />
+            </FormField>
+            <FormField label="Start From" hint="First receipt number. Only applies before any receipt is generated.">
+              <Input
+                type="number"
+                min={1}
+                value={settings.receiptStartNumber ?? 1}
+                onChange={(e) => setSettings(prev => ({ ...prev, receiptStartNumber: Number(e.target.value) }))}
+                className="font-mono max-w-xs"
+              />
             </FormField>
           </div>
         </Card>
