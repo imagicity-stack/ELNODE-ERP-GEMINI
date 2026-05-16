@@ -26,14 +26,14 @@ interface RecipientRow {
 
 const TEMPLATES = [
   {
-    id: 'fee_due_reminder',
+    id: 'fees_due_reminder',
     label: 'Fee Due Reminder',
     description: 'For pending / partially paid fees — sent before or on the due date',
     statuses: ['pending', 'partially_paid'],
     includeOverdue: false,
   },
   {
-    id: 'fee_overdue_notice',
+    id: 'fees_overdue_notice',
     label: 'Overdue Fee Notice',
     description: 'Stronger reminder for fees past the due date',
     statuses: ['pending', 'partially_paid', 'overdue'],
@@ -42,7 +42,7 @@ const TEMPLATES = [
 ] as const;
 
 function buildParams(template: typeof TEMPLATES[number]['id'], r: RecipientRow): string[] {
-  if (template === 'fee_due_reminder') {
+  if (template === 'fees_due_reminder') {
     return [r.parentName, r.amount, r.studentName, r.classSection, r.month, r.dueDate, PAYMENT_LINK];
   }
   return [r.parentName, r.amount, r.studentName, r.classSection, r.month, r.dueDate, PAYMENT_LINK];
@@ -54,7 +54,7 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [template, setTemplate] = useState<typeof TEMPLATES[number]['id']>('fee_due_reminder');
+  const [template, setTemplate] = useState<typeof TEMPLATES[number]['id']>('fees_due_reminder');
   const [classFilter, setClassFilter] = useState('all');
 
   const [sending, setSending] = useState(false);

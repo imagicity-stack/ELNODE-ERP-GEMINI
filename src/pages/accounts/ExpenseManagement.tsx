@@ -94,7 +94,7 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               phone: data.phone,
-              templateName: 'expenses_paid',
+              templateName: 'expense_paid_1',
               parameters: [
                 data.biller || 'Vendor',
                 `₹${Number(data.amount).toLocaleString('en-IN')}`,
