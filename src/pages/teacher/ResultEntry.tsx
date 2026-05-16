@@ -8,6 +8,7 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { logActivity } from '../../services/activityService';
 import {
   bulkSaveExamResults, publishExamResults, unpublishExamResults,
+  notifyParentsOfPublishedResults,
   ConcurrentEditError, calculateGradeFromScale,
 } from '../../services/examService';
 import {
@@ -292,6 +293,26 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
         `Published ${count} result(s) for ${exam?.name}`,
         { examId, count });
       showToast(`Published ${count} result(s)`, 'success');
+
+      // Offer to send WhatsApp notifications to parents — opt-in to avoid surprise blasts.
+      const notify = window.confirm(
+        `Send a WhatsApp notification to parents of all ${count} student(s) letting them know results are out?`,
+      );
+      if (notify) {
+        try {
+          const report = await notifyParentsOfPublishedResults(examId);
+          logActivity(user, 'Exam Result Notifications Sent', 'Teachers',
+            `Sent ${report.sent}/${report.attempted} WhatsApp notifications (${report.failed} failed) for ${exam?.name}`,
+            { examId, ...report });
+          if (report.attempted === 0) {
+            showToast('No parents with phone numbers to notify', 'info');
+          } else {
+            showToast(`Notified ${report.sent} parent(s)${report.failed ? ` · ${report.failed} failed` : ''}`, report.failed ? 'info' : 'success');
+          }
+        } catch (e: any) {
+          showToast(e?.message || 'Notification batch failed', 'error');
+        }
+      }
     } catch (err: any) {
       showToast(err?.message || 'Failed to publish', 'error');
     } finally {

@@ -212,6 +212,71 @@ export async function publishExamResults(examId: string, user: UserProfile): Pro
   return resultsSnap.size;
 }
 
+const RESULTS_LINK = 'https://ehs.elnode.in/parent/exams';
+
+/**
+ * Send a WhatsApp notification (via WATI) to each parent whose child has a published
+ * result for this exam. Best-effort — individual failures don't abort the rest.
+ *
+ * Returns counts of attempted/succeeded/failed.
+ */
+export async function notifyParentsOfPublishedResults(
+  examId: string,
+): Promise<{ attempted: number; sent: number; failed: number }> {
+  const examSnap = await getDoc(doc(db, 'exams', examId));
+  if (!examSnap.exists()) return { attempted: 0, sent: 0, failed: 0 };
+  const exam = examSnap.data() as Exam;
+
+  // Fetch all published results for this exam (server-side enforced visibility for parents
+  // depends on this flag too, so we mirror the same condition here).
+  const resultsSnap = await getDocs(query(
+    collection(db, 'examResults'),
+    where('examId', '==', examId),
+    where('published', '==', true),
+  ));
+  if (resultsSnap.empty) return { attempted: 0, sent: 0, failed: 0 };
+
+  // Bulk-fetch the student docs (for parent phone) — chunked by 10 (Firestore `in` limit).
+  const studentIds = resultsSnap.docs.map(d => (d.data() as any).studentId).filter(Boolean);
+  const studentMap: Record<string, Student> = {};
+  for (let i = 0; i < studentIds.length; i += 10) {
+    const chunk = studentIds.slice(i, i + 10);
+    const sSnap = await getDocs(query(collection(db, 'students'), where('__name__', 'in', chunk)));
+    sSnap.forEach(d => { studentMap[d.id] = { id: d.id, ...(d.data() as object) } as Student; });
+  }
+
+  let attempted = 0, sent = 0, failed = 0;
+  for (const d of resultsSnap.docs) {
+    const result = d.data() as ExamResult;
+    const student = studentMap[result.studentId];
+    const phone = student?.parentDetails?.phone;
+    if (!phone) continue;
+    attempted++;
+    try {
+      const res = await fetch('/api/whatsapp/send-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone,
+          templateName: 'exam_result_published',
+          parameters: [
+            student?.parentDetails?.fatherName || 'Parent',
+            student?.name || '',
+            exam.name,
+            `${result.percentage.toFixed(1)}%`,
+            result.overallGrade || '-',
+            RESULTS_LINK,
+          ],
+        }),
+      });
+      if (res.ok) sent++; else failed++;
+    } catch {
+      failed++;
+    }
+  }
+  return { attempted, sent, failed };
+}
+
 export async function unpublishExamResults(examId: string, user: UserProfile): Promise<number> {
   const resultsSnap = await getDocs(query(collection(db, 'examResults'), where('examId', '==', examId)));
   const batch = writeBatch(db);
