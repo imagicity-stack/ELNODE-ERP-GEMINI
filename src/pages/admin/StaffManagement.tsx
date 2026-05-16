@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, setDoc, query, where } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, getAuth, signOut, signInWithEmailAndPassword } from 'firebase/auth';
-import { initializeApp, getApp } from 'firebase/app';
-import { db, firebaseConfig, handleFirestoreError, OperationType } from '../../firebase';
+import { collection, addDoc, getDocs, doc, setDoc } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../../firebase';
+import {
+  validateStaffInput,
+  ensureUniqueEmail,
+  provisionStaffAuthAccount,
+  updateStaffWithUserSync,
+  normalizeEmail,
+  ConcurrentEditError,
+} from '../../services/staffService';
 import {
   Plus,
   Briefcase,
@@ -23,11 +29,19 @@ interface StaffMember {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: 'principal' | 'accounts' | 'admin' | 'security' | 'transport' | 'grievance_officer';
   joiningDate: string;
   salary: number;
   status: 'active' | 'on-leave' | 'resigned';
+  version?: number;
 }
+
+const ALLOWED_ROLES: ReadonlyArray<StaffMember['role']> = [
+  'principal', 'accounts', 'admin', 'security', 'transport', 'grievance_officer',
+];
+const PORTAL_ROLES: ReadonlyArray<string> = ['principal', 'accounts', 'grievance_officer'];
+const DEFAULT_PASSWORD = 'password123';
 
 export default function StaffManagement({ user }: { user: any }) {
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -65,104 +79,107 @@ export default function StaffManagement({ user }: { user: any }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return; // guard against double-submit
     setLoading(true);
     try {
+      const salaryNum = Number(formData.salary);
+      const validationErr = validateStaffInput({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        salary: salaryNum,
+      });
+      if (validationErr) {
+        showToast(validationErr, 'error');
+        return;
+      }
+      if (!ALLOWED_ROLES.includes(formData.role as StaffMember['role'])) {
+        showToast('Invalid role selected', 'error');
+        return;
+      }
+      if (!formData.joiningDate) {
+        showToast('Joining date is required', 'error');
+        return;
+      }
+
+      const normalizedEmail = normalizeEmail(formData.email);
+      const portalRole = PORTAL_ROLES.includes(formData.role) ? formData.role : 'office_staff';
+
       if (isEditMode && editingStaff) {
-        // Update existing staff
         try {
-          await setDoc(doc(db, 'staff', editingStaff.id), {
-            ...formData,
-            salary: Number(formData.salary),
-            updatedAt: new Date().toISOString(),
-          }, { merge: true });
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `staff/${editingStaff.id}`);
-        }
-
-        // Update user profile
-        try {
-          const staffQuery = query(collection(db, 'users'), where('email', '==', editingStaff.email), where('role', '==', editingStaff.role));
-          const staffDocs = await getDocs(staffQuery);
-          if (!staffDocs.empty) {
-            await setDoc(doc(db, 'users', staffDocs.docs[0].id), {
-              name: formData.name,
-            }, { merge: true });
+          await updateStaffWithUserSync({
+            collectionName: 'staff',
+            docId: editingStaff.id,
+            expectedVersion: editingStaff.version ?? 0,
+            updates: {
+              name: formData.name.trim(),
+              email: normalizedEmail,
+              phone: formData.phone,
+              role: formData.role,
+              joiningDate: formData.joiningDate,
+              salary: salaryNum,
+            },
+            originalEmail: editingStaff.email,
+            userProfileUpdates: {
+              name: formData.name.trim(),
+              email: normalizedEmail,
+              phone: formData.phone,
+              role: portalRole,
+            },
+          });
+          showToast('Staff member updated successfully!', 'success');
+        } catch (err: any) {
+          if (err instanceof ConcurrentEditError) {
+            showToast(err.message, 'error');
+            fetchStaff();
+            return;
           }
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, 'users');
+          throw err;
         }
-
         setIsModalOpen(false);
         setIsEditMode(false);
         setEditingStaff(null);
         fetchStaff();
-        showToast('Staff member updated successfully!', 'success');
         return;
       }
 
-      const defaultPassword = 'password123';
+      // CREATE PATH — duplicate-email check first so we don't orphan auth users
+      await ensureUniqueEmail(normalizedEmail);
 
-      // Initialize secondary app for user creation without signing out admin
-      let secondaryApp;
-      try {
-        secondaryApp = getApp('Secondary');
-      } catch (e) {
-        secondaryApp = initializeApp(firebaseConfig, 'Secondary');
-      }
-      const secondaryAuth = getAuth(secondaryApp);
-
-      const getOrCreateUser = async (email: string) => {
-        try {
-          const cred = await createUserWithEmailAndPassword(secondaryAuth, email, defaultPassword);
-          const uid = cred.user.uid;
-          await signOut(secondaryAuth);
-          return uid;
-        } catch (err: any) {
-          if (err.code === 'auth/email-already-in-use') {
-            try {
-              const cred = await signInWithEmailAndPassword(secondaryAuth, email, defaultPassword);
-              const uid = cred.user.uid;
-              await signOut(secondaryAuth);
-              return uid;
-            } catch (signInErr: any) {
-              if (signInErr.code === 'auth/invalid-credential' || signInErr.code === 'auth/wrong-password') {
-                throw new Error(`The email ${email} is already in use with a different password. Please contact support to reset it.`);
-              }
-              throw signInErr;
-            }
-          }
-          throw err;
-        }
-      };
-
-      // Create Auth Account
-      const staffUid = await getOrCreateUser(formData.email);
+      // Provision the auth account (also cleans up secondary app afterwards)
+      const staffUid = await provisionStaffAuthAccount(normalizedEmail, DEFAULT_PASSWORD);
 
       let staffRef;
       try {
         staffRef = await addDoc(collection(db, 'staff'), {
-          ...formData,
-          salary: Number(formData.salary),
+          name: formData.name.trim(),
+          email: normalizedEmail,
+          phone: formData.phone,
+          role: formData.role,
+          joiningDate: formData.joiningDate,
+          salary: salaryNum,
           status: 'active',
+          version: 1,
+          createdAt: new Date().toISOString(),
         });
       } catch (err) {
         handleFirestoreError(err, OperationType.WRITE, 'staff');
+        throw err;
       }
 
-      // Create user profile for staff
       try {
         await setDoc(doc(db, 'users', staffUid), {
           uid: staffUid,
-          email: formData.email,
-          name: formData.name,
-          // Portal roles are intentionally limited; keep the staff job type in the
-          // staff document and map non-portal staff roles to the staff portal.
-          role: ['principal', 'accounts', 'grievance_officer'].includes(formData.role) ? formData.role : 'office_staff',
-          staffId: staffRef?.id,
+          email: normalizedEmail,
+          name: formData.name.trim(),
+          phone: formData.phone,
+          role: portalRole,
+          staffId: staffRef.id,
           createdAt: new Date().toISOString(),
         });
       } catch (err) {
         handleFirestoreError(err, OperationType.WRITE, `users/${staffUid}`);
+        throw err;
       }
 
       setIsModalOpen(false);
@@ -170,6 +187,7 @@ export default function StaffManagement({ user }: { user: any }) {
       setFormData({
         name: '',
         email: '',
+        phone: '',
         role: 'accounts',
         joiningDate: '',
         salary: '',
@@ -177,10 +195,10 @@ export default function StaffManagement({ user }: { user: any }) {
       showToast('Staff member created successfully!', 'success');
     } catch (err: any) {
       console.error(err);
-      if (err.code === 'auth/operation-not-allowed') {
+      if (err?.code === 'auth/operation-not-allowed') {
         showToast('Firebase Error: Email/Password sign-in is not enabled in your Firebase Console.', 'error');
       } else {
-        showToast('Error: ' + (err.message || 'Unknown error'), 'error');
+        showToast(err?.message || 'Unknown error', 'error');
       }
     } finally {
       setLoading(false);

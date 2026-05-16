@@ -1,11 +1,17 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, setDoc, query, where, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { createUserWithEmailAndPassword, getAuth, signOut, signInWithEmailAndPassword } from 'firebase/auth';
-import { initializeApp, getApp } from 'firebase/app';
-import { db, storage, firebaseConfig, handleFirestoreError, OperationType } from '../../firebase';
+import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { Teacher, Subject, Class, House, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
+import {
+  validateStaffInput,
+  ensureUniqueEmail,
+  provisionStaffAuthAccount,
+  updateStaffWithUserSync,
+  normalizeEmail,
+  ConcurrentEditError,
+} from '../../services/staffService';
 import {
   Plus,
   Edit2,
@@ -23,6 +29,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useToast } from '../../components/Toast';
 import { PageHeader, Button, IconButton, Modal, ConfirmModal, SearchInput, FormField, Input, Select, EmptyState, Badge, Avatar } from '../../components/ui';
+
+const DEFAULT_PASSWORD = 'password123';
 
 export default function TeacherManagement({ user }: { user: UserProfile }) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -83,91 +91,89 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     try {
+      const salaryNum = Number(formData.salaryStructure);
+      const validationErr = validateStaffInput({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        salary: salaryNum,
+      });
+      if (validationErr) {
+        showToast(validationErr, 'error');
+        return;
+      }
+
+      const normalizedEmail = normalizeEmail(formData.email);
+
       const teacherData = {
         ...formData,
-        salaryStructure: Number(formData.salaryStructure),
-        updatedAt: new Date().toISOString(),
+        email: normalizedEmail,
+        name: formData.name.trim(),
+        salaryStructure: salaryNum,
       };
 
       if (isEditMode && editingTeacher) {
         try {
-          await setDoc(doc(db, 'teachers', editingTeacher.id), teacherData, { merge: true });
-          await logActivity(
-            user,
-            'UPDATE_TEACHER',
-            'Teachers',
-            `Updated teacher profile for ${formData.name}`
-          );
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `teachers/${editingTeacher.id}`);
-        }
-        
-        // Update user profile
-        try {
-          const teacherQuery = query(collection(db, 'users'), where('email', '==', editingTeacher.email), where('role', '==', 'teacher'));
-          const teacherDocs = await getDocs(teacherQuery);
-          if (!teacherDocs.empty) {
-            await setDoc(doc(db, 'users', teacherDocs.docs[0].id), {
-              name: formData.name,
+          await updateStaffWithUserSync({
+            collectionName: 'teachers',
+            docId: editingTeacher.id,
+            expectedVersion: editingTeacher.version ?? 0,
+            updates: {
+              ...teacherData,
+            },
+            originalEmail: editingTeacher.email,
+            userProfileUpdates: {
+              name: formData.name.trim(),
+              email: normalizedEmail,
               phone: formData.phone,
-              teacherId: editingTeacher.id,
               photoURL: formData.photoURL,
-            }, { merge: true });
-          }
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, 'users');
-        }
-      } else {
-        const defaultPassword = 'password123';
-        let secondaryApp;
-        try { secondaryApp = getApp('Secondary'); } catch (e) { secondaryApp = initializeApp(firebaseConfig, 'Secondary'); }
-        const secondaryAuth = getAuth(secondaryApp);
-
-        let teacherUid: string;
-        try {
-          const cred = await createUserWithEmailAndPassword(secondaryAuth, formData.email, defaultPassword);
-          teacherUid = cred.user.uid;
-          await signOut(secondaryAuth);
-        } catch (err: any) {
-          if (err.code === 'auth/email-already-in-use') {
-            try {
-              const cred = await signInWithEmailAndPassword(secondaryAuth, formData.email, defaultPassword);
-              teacherUid = cred.user.uid;
-              await signOut(secondaryAuth);
-            } catch (signInErr: any) {
-              if (signInErr.code === 'auth/invalid-credential' || signInErr.code === 'auth/wrong-password') {
-                throw new Error(`The email ${formData.email} is already in use with a different password. Please contact support to reset it.`);
-              }
-              throw signInErr;
-            }
-          } else {
-            throw err;
-          }
-        }
-
-        try {
-          const teacherRef = await addDoc(collection(db, 'teachers'), teacherData);
-          await setDoc(doc(db, 'users', teacherUid), {
-            uid: teacherUid,
-            email: formData.email,
-            name: formData.name,
-            phone: formData.phone,
-            role: 'teacher',
-            teacherId: teacherRef.id,
-            photoURL: formData.photoURL,
-            createdAt: new Date().toISOString(),
+              teacherId: editingTeacher.id,
+            },
           });
-          await logActivity(
-            user,
-            'HIRE_TEACHER',
-            'Teachers',
-            `Hired new teacher ${formData.name} (${formData.email})`
-          );
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, 'teachers/users');
+          await logActivity(user, 'UPDATE_TEACHER', 'Teachers', `Updated teacher profile for ${formData.name}`);
+          showToast('Teacher updated successfully!', 'success');
+        } catch (err: any) {
+          if (err instanceof ConcurrentEditError) {
+            showToast(err.message, 'error');
+            fetchData();
+            return;
+          }
+          throw err;
         }
+        setIsModalOpen(false);
+        fetchData();
+        resetForm();
+        return;
+      }
+
+      // CREATE PATH
+      await ensureUniqueEmail(normalizedEmail);
+      const teacherUid = await provisionStaffAuthAccount(normalizedEmail, DEFAULT_PASSWORD);
+
+      try {
+        const teacherRef = await addDoc(collection(db, 'teachers'), {
+          ...teacherData,
+          version: 1,
+          createdAt: new Date().toISOString(),
+        });
+        await setDoc(doc(db, 'users', teacherUid), {
+          uid: teacherUid,
+          email: normalizedEmail,
+          name: formData.name.trim(),
+          phone: formData.phone,
+          role: 'teacher',
+          teacherId: teacherRef.id,
+          photoURL: formData.photoURL,
+          createdAt: new Date().toISOString(),
+        });
+        await logActivity(user, 'HIRE_TEACHER', 'Teachers', `Hired new teacher ${formData.name} (${normalizedEmail})`);
+        showToast('Teacher registered successfully!', 'success');
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, 'teachers/users');
+        throw err;
       }
 
       setIsModalOpen(false);
@@ -175,7 +181,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
       resetForm();
     } catch (err: any) {
       console.error(err);
-      showToast('Error saving teacher: ' + (err.message || 'Unknown error'), 'error');
+      showToast(err?.message || 'Error saving teacher', 'error');
     } finally {
       setLoading(false);
     }
@@ -249,10 +255,13 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
+    // Sanitize filename and use a stable path (teacher doc ID or tmp placeholder)
+    const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
+    const pathKey = editingTeacher?.id ?? `tmp_${Date.now()}`;
     setLoading(true);
     try {
-      const storageRef = ref(storage, `profiles/teacher_${formData.email}/${Date.now()}_${file.name}`);
+      const storageRef = ref(storage, `profiles/teachers/${pathKey}/${Date.now()}_${safeFilename}`);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
       setFormData(prev => ({ ...prev, photoURL: url }));

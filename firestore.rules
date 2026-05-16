@@ -120,13 +120,33 @@ service cloud.firestore {
     // Teachers — readable by school staff and students (needed for timetable display)
     match /teachers/{teacherId} {
       allow read: if isSignedIn();
-      allow write: if isAnyAdmin();
+      allow create: if isAnyAdmin()
+                    && request.resource.data.get('version', 0) == 1;
+      // Admins may update any field; teachers may self-edit only safe
+      // profile fields on their own teacher doc. Both paths must bump version.
+      allow update: if request.resource.data.get('version', 1)
+                       == resource.data.get('version', 0) + 1
+                    && (
+                      isAnyAdmin() ||
+                      (
+                        isTeacher() &&
+                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teacherId', '') == teacherId &&
+                        request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['name', 'phone', 'photoURL', 'version', 'updatedAt'])
+                      )
+                    );
+      allow delete: if isAnyAdmin();
     }
 
     // Staff
     match /staff/{staffId} {
       allow read: if isAnyAdmin() || isTeacher() || isAccountant();
-      allow write: if isAnyAdmin();
+      allow create: if isAnyAdmin()
+                    && request.resource.data.get('version', 0) == 1;
+      allow update: if isAnyAdmin()
+                    && request.resource.data.get('version', 1)
+                       == resource.data.get('version', 0) + 1;
+      allow delete: if isAnyAdmin();
     }
 
     // Attendance
