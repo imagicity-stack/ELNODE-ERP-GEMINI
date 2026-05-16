@@ -8,6 +8,8 @@ export interface SchoolSettings {
   phone?: string;
   website?: string;
   email?: string;
+  receiptPrefix?: string;      // Prefix for receipt numbers (e.g. "EHSREC")
+  receiptStartNumber?: number; // Counter starts from this number (e.g. 1)
   updatedAt?: string;
   updatedBy?: string;
 }

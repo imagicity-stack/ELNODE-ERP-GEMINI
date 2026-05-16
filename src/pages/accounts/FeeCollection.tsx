@@ -3,6 +3,8 @@ import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt,
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc, runTransaction, onSnapshot } from 'firebase/firestore';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
+import { getSchoolSettings } from '../../services/settingsService';
+import { getNextReceiptNumber } from '../../services/receiptCounterService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
@@ -209,7 +211,11 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         return;
       }
 
-      const receiptNumber = `REC-${Date.now()}`;
+      const schoolSettings = await getSchoolSettings();
+      const receiptNumber = await getNextReceiptNumber(
+        schoolSettings.receiptPrefix || 'EHSREC',
+        schoolSettings.receiptStartNumber ?? 1,
+      );
       const requestRef = doc(db, 'feeRequests', pendingRequest.id);
 
       // Pre-fetch prior payments for this fee request so we can allocate the new
