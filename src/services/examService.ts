@@ -245,6 +245,31 @@ export async function notifyParentsOfPublishedResults(
     sSnap.forEach(d => { studentMap[d.id] = { id: d.id, ...(d.data() as object) } as Student; });
   }
 
+  // Collect unique classIds and houseIds to bulk-fetch display names.
+  const classIdSet = new Set<string>();
+  const houseIdSet = new Set<string>();
+  Object.values(studentMap).forEach(s => {
+    if ((s as any).classId) classIdSet.add((s as any).classId);
+    if ((s as any).houseId) houseIdSet.add((s as any).houseId);
+  });
+
+  const classNameMap: Record<string, string> = {};
+  const houseNameMap: Record<string, string> = {};
+
+  const classIds = [...classIdSet];
+  for (let i = 0; i < classIds.length; i += 10) {
+    const chunk = classIds.slice(i, i + 10);
+    const snap = await getDocs(query(collection(db, 'classes'), where('__name__', 'in', chunk)));
+    snap.forEach(d => { classNameMap[d.id] = (d.data() as any).name || d.id; });
+  }
+
+  const houseIds = [...houseIdSet];
+  for (let i = 0; i < houseIds.length; i += 10) {
+    const chunk = houseIds.slice(i, i + 10);
+    const snap = await getDocs(query(collection(db, 'houses'), where('__name__', 'in', chunk)));
+    snap.forEach(d => { houseNameMap[d.id] = (d.data() as any).name || d.id; });
+  }
+
   let attempted = 0, sent = 0, failed = 0;
   for (const d of resultsSnap.docs) {
     const result = d.data() as ExamResult;
@@ -252,6 +277,12 @@ export async function notifyParentsOfPublishedResults(
     const phone = student?.parentDetails?.phone;
     if (!phone) continue;
     attempted++;
+
+    const parentName = (student as any)?.parentDetails?.fatherName || 'Parent';
+    const studentName = (student as any)?.name || '';
+    const className = classNameMap[(student as any)?.classId] || (student as any)?.classId || '';
+    const houseName = houseNameMap[(student as any)?.houseId] || (student as any)?.houseId || '';
+
     try {
       const res = await fetch('/api/whatsapp/send-template', {
         method: 'POST',
@@ -259,14 +290,9 @@ export async function notifyParentsOfPublishedResults(
         body: JSON.stringify({
           phone,
           templateName: 'exam_result_published',
-          parameters: [
-            student?.parentDetails?.fatherName || 'Parent',
-            student?.name || '',
-            exam.name,
-            `${result.percentage.toFixed(1)}%`,
-            result.overallGrade || '-',
-            RESULTS_LINK,
-          ],
+          // {{1}} parent name  {{2}} student name  {{3}} class  {{4}} house
+          // {{5}} exam name    {{6}} portal link
+          parameters: [parentName, studentName, className, houseName, exam.name, RESULTS_LINK],
         }),
       });
       if (res.ok) sent++; else failed++;

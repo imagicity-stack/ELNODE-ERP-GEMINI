@@ -13,7 +13,7 @@ import {
 } from '../../services/examService';
 import {
   ArrowLeft, Save, Search, AlertCircle, CheckCircle2, Loader2,
-  User, Calculator, Send, EyeOff,
+  User, Calculator, Send, EyeOff, MessageCircle,
 } from 'lucide-react';
 import { Button, Input, Badge, Avatar } from '../../components/ui';
 import { useToast } from '../../components/Toast';
@@ -35,6 +35,7 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [notifying, setNotifying] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -292,31 +293,38 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
       logActivity(user, 'Exam Results Published', 'Teachers',
         `Published ${count} result(s) for ${exam?.name}`,
         { examId, count });
-      showToast(`Published ${count} result(s)`, 'success');
-
-      // Offer to send WhatsApp notifications to parents — opt-in to avoid surprise blasts.
-      const notify = window.confirm(
-        `Send a WhatsApp notification to parents of all ${count} student(s) letting them know results are out?`,
-      );
-      if (notify) {
-        try {
-          const report = await notifyParentsOfPublishedResults(examId);
-          logActivity(user, 'Exam Result Notifications Sent', 'Teachers',
-            `Sent ${report.sent}/${report.attempted} WhatsApp notifications (${report.failed} failed) for ${exam?.name}`,
-            { examId, ...report });
-          if (report.attempted === 0) {
-            showToast('No parents with phone numbers to notify', 'info');
-          } else {
-            showToast(`Notified ${report.sent} parent(s)${report.failed ? ` · ${report.failed} failed` : ''}`, report.failed ? 'info' : 'success');
-          }
-        } catch (e: any) {
-          showToast(e?.message || 'Notification batch failed', 'error');
-        }
-      }
+      showToast(`Published ${count} result(s). Use "Notify Parents" to send WhatsApp updates when ready.`, 'success');
     } catch (err: any) {
       showToast(err?.message || 'Failed to publish', 'error');
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const handleNotify = async () => {
+    if (!examId || !user || notifying) return;
+    const ok = window.confirm(
+      'Send a WhatsApp notification to all parents whose children have published results for this exam?',
+    );
+    if (!ok) return;
+    setNotifying(true);
+    try {
+      const report = await notifyParentsOfPublishedResults(examId);
+      logActivity(user, 'Exam Result Notifications Sent', 'Teachers',
+        `Sent ${report.sent}/${report.attempted} WhatsApp notifications (${report.failed} failed) for ${exam?.name}`,
+        { examId, ...report });
+      if (report.attempted === 0) {
+        showToast('No parents with phone numbers to notify', 'info');
+      } else {
+        showToast(
+          `Notified ${report.sent} parent(s)${report.failed ? ` · ${report.failed} failed` : ''}`,
+          report.failed ? 'info' : 'success',
+        );
+      }
+    } catch (e: any) {
+      showToast(e?.message || 'Notification batch failed', 'error');
+    } finally {
+      setNotifying(false);
     }
   };
 
@@ -496,15 +504,26 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
               </Button>
             )}
             {canPublish && isPublished && (
-              <Button
-                onClick={handleUnpublish}
-                disabled={publishing}
-                variant="secondary"
-                className="flex-1 !py-3.5 border-amber-300 text-amber-700"
-              >
-                <EyeOff className="w-4 h-4 mr-2" />
-                {publishing ? '…' : 'Unpublish'}
-              </Button>
+              <>
+                <Button
+                  onClick={handleNotify}
+                  disabled={notifying}
+                  variant="secondary"
+                  className="flex-1 !py-3.5 border-emerald-300 text-emerald-700"
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  {notifying ? '…' : 'Notify'}
+                </Button>
+                <Button
+                  onClick={handleUnpublish}
+                  disabled={publishing}
+                  variant="secondary"
+                  className="flex-1 !py-3.5 border-amber-300 text-amber-700"
+                >
+                  <EyeOff className="w-4 h-4 mr-2" />
+                  {publishing ? '…' : 'Unpublish'}
+                </Button>
+              </>
             )}
           </div>
         )}
@@ -562,15 +581,26 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
             </Button>
           )}
           {canPublish && isPublished && (
-            <Button
-              variant="secondary"
-              onClick={handleUnpublish}
-              disabled={publishing}
-              className="border-amber-300 text-amber-700 hover:bg-amber-50"
-            >
-              <EyeOff className="w-4 h-4 mr-2" />
-              {publishing ? 'Unpublishing...' : 'Unpublish'}
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                onClick={handleNotify}
+                disabled={notifying}
+                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              >
+                <MessageCircle className="w-4 h-4 mr-2" />
+                {notifying ? 'Notifying...' : 'Notify Parents'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={handleUnpublish}
+                disabled={publishing}
+                className="border-amber-300 text-amber-700 hover:bg-amber-50"
+              >
+                <EyeOff className="w-4 h-4 mr-2" />
+                {publishing ? 'Unpublishing...' : 'Unpublish'}
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -580,7 +610,7 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
           <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
           <div className="flex-1">
             <p className="text-sm font-bold">Results are published</p>
-            <p className="text-xs">Students and parents can now see these grades. To edit marks, unpublish first.</p>
+            <p className="text-xs">Students and parents can now see these grades. Click <strong>Notify Parents</strong> to send a WhatsApp announcement, or <strong>Unpublish</strong> to hide them again.</p>
           </div>
         </div>
       )}
