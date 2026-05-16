@@ -6,8 +6,6 @@ import GrievanceTracker from './GrievanceTracker';
 import FeeFollowup from './FeeFollowup';
 import BroadcastCenter from './BroadcastCenter';
 import ProfileSettings from '../shared/ProfileSettings';
-import FeeCollection from '../accounts/FeeCollection';
-
 export default function GrievancePortal({ user }: { user: UserProfile }) {
   const basePath = user.role === 'grievance_officer' ? '/grievance' :
                    user.role === 'principal' ? '/principal' : '/superadmin';
@@ -19,7 +17,6 @@ export default function GrievancePortal({ user }: { user: UserProfile }) {
         <Route path="/tracker" element={<GrievanceTracker user={user} />} />
         <Route path="/fee-followup" element={<FeeFollowup user={user} />} />
         <Route path="/broadcast" element={<BroadcastCenter user={user} />} />
-        <Route path="/fee-collection" element={<FeeCollection user={user} />} />
         <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="*" element={<Navigate to={basePath} />} />
       </Routes>

@@ -231,13 +231,15 @@ service cloud.firestore {
     }
 
     match /feeRequests/{requestId} {
+      // Grievance officer can read (for follow-ups) but NOT create or update requests —
+      // payment requests are managed exclusively by the accounts team.
       allow get: if isSignedIn() && (
         isAdmin() || isAccountant() || isGrievanceOfficer() ||
         isLinkedToStudent(resource.data.get('studentId', ''))
       );
       allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isParent() || isStudent();
-      allow create: if isAdmin() || isAccountant() || isGrievanceOfficer();
-      allow update: if isAdmin() || isAccountant() || isGrievanceOfficer() || (
+      allow create: if isAdmin() || isAccountant();
+      allow update: if isAdmin() || isAccountant() || (
         isLinkedToStudent(resource.data.studentId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paidAmount', 'status', 'updatedAt'])
       );

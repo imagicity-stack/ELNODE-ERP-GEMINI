@@ -178,7 +178,6 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['grievance_officer'], section: 'Overview' },
   { label: 'Grievances', icon: MessageSquare, path: '/tracker', roles: ['grievance_officer', 'principal', 'super_admin'], section: 'Grievance' },
   { label: 'Fee Follow-up', icon: Wallet, path: '/fee-followup', roles: ['grievance_officer', 'super_admin'], section: 'Grievance' },
-  { label: 'Fee Collection', icon: IndianRupee, path: '/fee-collection', roles: ['grievance_officer'], section: 'Finance' },
   { label: 'Broadcast', icon: Megaphone, path: '/broadcast', roles: ['grievance_officer', 'super_admin'], section: 'Communication' },
 
   // Teacher specific (already mostly covered by Overview)
