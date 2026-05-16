@@ -521,6 +521,13 @@ export interface LessonLog {
   homeworkFileUrl?: string;
   homeworkFileName?: string;
   createdAt: string;
+  // Robustness metadata
+  createdBy?: string;            // uid of author
+  createdByName?: string;        // display name snapshot
+  updatedAt?: string;
+  updatedBy?: string;            // uid of last editor
+  updatedByName?: string;        // display name snapshot
+  version?: number;              // optimistic concurrency token
 }
 
 export type LeaveType = 'planned' | 'medical' | 'emergency' | 'half_day' | 'regularization';

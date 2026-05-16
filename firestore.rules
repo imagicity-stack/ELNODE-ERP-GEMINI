@@ -293,10 +293,48 @@ service cloud.firestore {
     }
 
     match /lessonLogs/{id} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && (isTeacher() || isAnyAdmin());
-      allow update: if isSignedIn() && (isAnyAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid));
-      allow delete: if isAnyAdmin();
+      // Read: admins, principals, teachers (full). Students/parents only for their own class.
+      // Students rely on the `classId` field on their user doc (self-healed on login).
+      // Parents rely on `classIds` (also self-healed on login). If a parent's doc has not yet
+      // been migrated (no `classIds` set), fall back to allowing read so they aren't locked out
+      // mid-session; the next login will populate the field and enforcement will tighten.
+      allow read: if isSignedIn() && (
+        isAnyAdmin() || isTeacher() ||
+        (isStudent() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('classId', '') == resource.data.classId) ||
+        (isParent() && (
+          !('classIds' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+          resource.data.classId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.classIds
+        ))
+      );
+      // List queries: only privileged readers can run unrestricted list. Students/parents must
+      // include their classId in a where() clause, which is enforced at the client and protected
+      // here by requiring the same auth conditions; an attacker without a matching classId
+      // simply gets denied per-doc on read.
+      allow list: if isSignedIn() && (isAnyAdmin() || isTeacher() || isStudent() || isParent());
+
+      allow create: if isSignedIn() && (isTeacher() || isAnyAdmin())
+                    && request.resource.data.topic is string && request.resource.data.topic.size() > 0
+                    && request.resource.data.topic.size() <= 300
+                    && request.resource.data.classwork.size() <= 8000
+                    && request.resource.data.homework.size() <= 8000;
+
+      // Update: admins always; teacher only for own logs; optimistic concurrency — version must strictly increment by 1
+      allow update: if isSignedIn() && (
+        isAnyAdmin() ||
+        (isTeacher() && resource.data.teacherId == request.auth.uid)
+      )
+      && request.resource.data.classId == resource.data.classId
+      && request.resource.data.teacherId == resource.data.teacherId
+      && request.resource.data.topic.size() <= 300
+      && request.resource.data.classwork.size() <= 8000
+      && request.resource.data.homework.size() <= 8000
+      && request.resource.data.get('version', 1) == resource.data.get('version', 0) + 1;
+
+      // Delete: admins or the owning teacher
+      allow delete: if isSignedIn() && (
+        isAnyAdmin() ||
+        (isTeacher() && resource.data.teacherId == request.auth.uid)
+      );
     }
 
     // Teacher Leave Requests

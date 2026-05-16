@@ -47,8 +47,9 @@ export function showLocalNotification(title: string, options?: NotificationOptio
 
 // Function to start listening for global notifications (like notices)
 export function startNotificationListeners(
-  userId: string, 
-  role: string, 
+  userId: string,
+  role: string,
+  classIds: string[] = [],
   onNotify?: (title: string, body: string, type: 'info' | 'success') => void
 ) {
   // We want to try starting listeners even if browser notification permission isn't granted,
@@ -154,13 +155,16 @@ export function startNotificationListeners(
     });
   }
 
-  // Listen for lesson logs (diary updates)
+  // Listen for lesson logs (diary updates) — scoped to the user's own class(es) only.
+  // Without classIds (e.g. unlinked student) we skip the listener entirely instead of
+  // broadcasting every diary update school-wide.
   let unsubscribeLessonLogs = () => {};
-  if (role === 'student' || role === 'parent') {
-    // For simplicity in this demo, we'll listen for any new log and if we had the classId we'd filter.
-    // In a real app, we'd pass the classId here.
+  if ((role === 'student' || role === 'parent') && classIds.length > 0) {
+    // Firestore `in` supports up to 30 values; clamp to be safe.
+    const scopedClassIds = classIds.slice(0, 30);
     const lessonLogsQuery = query(
       collection(db, 'lessonLogs'),
+      where('classId', 'in', scopedClassIds),
       orderBy('updatedAt', 'desc'),
       limit(1)
     );
@@ -176,14 +180,14 @@ export function startNotificationListeners(
         if (change.type === 'added' || change.type === 'modified') {
           const log = change.doc.data();
           handleNotify(
-            'Diary Update: ' + log.topic, 
+            'Diary Update: ' + (log.topic || 'New entry'),
             `New classwork/homework logged for your class.`,
             'success',
             'lesson-log-' + change.doc.id
           );
         }
       });
-    });
+    }, () => { /* silent: missing index or denied — skip notifications */ });
   }
 
   return () => {

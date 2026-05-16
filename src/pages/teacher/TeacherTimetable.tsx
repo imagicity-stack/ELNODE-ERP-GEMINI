@@ -7,6 +7,7 @@ import { db, storage, handleFirestoreError, OperationType } from '../../firebase
 import { useData } from '../../contexts/DataContext';
 import { cn } from '../../lib/utils';
 import { logActivity } from '../../services/activityService';
+import { validateLessonInput, sanitizeFileName, ConcurrentEditError, updateLessonLog } from '../../services/lessonLogService';
 import {
   PageHeader,
   Card,
@@ -118,6 +119,10 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     classworkFile: null as File | null,
     homeworkFile: null as File | null,
   });
+  // Date the lesson was actually delivered (default: today; teacher can backfill up to 14 days)
+  const [logDate, setLogDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  // Optimistic-concurrency token snapshotted at the time we loaded the existing log
+  const [existingVersion, setExistingVersion] = useState<number>(0);
 
   const getPeriod = (day: string, slotId: string) => {
     const tid = teacherData?.id || user.uid;
@@ -156,43 +161,45 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     });
   };
 
+  // Re-query existing log whenever the chosen log date changes (so backfilling a past lesson
+  // loads that day's existing entry instead of today's).
+  const fetchExistingForDate = async (period: any, slot: any, date: string) => {
+    const q = query(
+      collection(db, 'lessonLogs'),
+      where('teacherId', '==', (teacherData?.id || user.uid)),
+      where('classId', '==', period.classId),
+      where('slotId', '==', slot.id),
+      where('date', '==', date)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const docSnap = snap.docs[0];
+      const data = docSnap.data() as LessonLog;
+      setLessonData({
+        topic: data.topic || '',
+        classwork: data.classwork || '',
+        homework: data.homework || '',
+        classworkFile: null,
+        homeworkFile: null,
+      });
+      setExistingVersion(data.version ?? 0);
+      setSelectedPeriod(prev => ({ ...prev, existingId: docSnap.id, topic: data.topic }));
+    } else {
+      setLessonData({ topic: '', classwork: '', homework: '', classworkFile: null, homeworkFile: null });
+      setExistingVersion(0);
+      setSelectedPeriod(prev => ({ ...prev, existingId: null }));
+    }
+  };
+
   const handleOpenLog = async (period: any, slot: any) => {
     setSelectedPeriod({ ...period, slot });
     setLocalLoading(true);
     setUploadProgress({ cw: 0, hw: 0 });
-    
+    const today = new Date().toISOString().split('T')[0];
+    setLogDate(today);
+
     try {
-      // Find existing log for this day/period
-      const today = new Date().toISOString().split('T')[0];
-      const q = query(
-        collection(db, 'lessonLogs'),
-        where('teacherId', '==', (teacherData?.id || user.uid)),
-        where('classId', '==', period.classId),
-        where('slotId', '==', slot.id),
-        where('date', '==', today)
-      );
-      
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const data = snap.docs[0].data() as LessonLog;
-        setLessonData({
-          topic: data.topic,
-          classwork: data.classwork,
-          homework: data.homework,
-          classworkFile: null,
-          homeworkFile: null,
-        });
-        setSelectedPeriod(prev => ({ ...prev, existingId: snap.docs[0].id, topic: data.topic }));
-      } else {
-        setLessonData({
-          topic: '',
-          classwork: '',
-          homework: '',
-          classworkFile: null,
-          homeworkFile: null,
-        });
-        setSelectedPeriod(prev => ({ ...prev, existingId: null }));
-      }
+      await fetchExistingForDate(period, slot, today);
       setIsModalOpen(true);
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, 'lessonLogs');
@@ -201,89 +208,121 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     }
   };
 
+  // When teacher picks a different date in the modal, reload the existing log for that date
+  useEffect(() => {
+    if (!isModalOpen || !selectedPeriod?.slot) return;
+    fetchExistingForDate(selectedPeriod, selectedPeriod.slot, logDate).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logDate]);
+
   const handleSaveLesson = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPeriod) return;
+    if (!selectedPeriod || saving) return;
+
+    // Input validation (length, required) — single source of truth for client/server expectations
+    const validationError = validateLessonInput({
+      topic: lessonData.topic,
+      classwork: lessonData.classwork,
+      homework: lessonData.homework,
+    });
+    if (validationError) { showToast(validationError, 'error'); return; }
+
+    // Date sanity: don't allow future dates, and don't allow backfilling more than 14 days
+    const today = new Date().toISOString().split('T')[0];
+    if (logDate > today) { showToast('Lesson date cannot be in the future', 'error'); return; }
+    const fourteenDaysAgo = new Date(); fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    if (logDate < fourteenDaysAgo.toISOString().split('T')[0]) {
+      showToast('Lessons older than 14 days cannot be backfilled. Contact admin if needed.', 'error');
+      return;
+    }
 
     setSaving(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
       const slot = selectedPeriod.slot || {};
       const activeTimetable = timetables.find(t => t.classId === selectedPeriod.classId);
-      const logData: any = {
-        classId: selectedPeriod.classId,
-        subjectId: selectedPeriod.subjectId,
-        teacherId: teacherData?.id || user.uid,
-        date: today,
-        slotId: slot.id,
-        // Snapshot slot details so this log survives future timetable changes
-        slotLabel: slot.label || '',
-        slotStartTime: slot.startTime || '',
-        slotEndTime: slot.endTime || '',
-        timetableVersion: activeTimetable?.version ?? null,
-        topic: lessonData.topic,
-        classwork: lessonData.classwork,
-        homework: lessonData.homework,
-        updatedAt: new Date().toISOString(),
-      };
+      const uploadedFiles: { classworkFileUrl?: string; classworkFileName?: string; homeworkFileUrl?: string; homeworkFileName?: string } = {};
 
-      // Upload files in parallel if present
-      const uploadPromises: Promise<any>[] = [];
-
+      // Upload files in parallel if present — sanitize filenames before they hit storage paths
+      const uploadPromises: Promise<unknown>[] = [];
       if (lessonData.classworkFile) {
-        const path = `lessons/${today}/${selectedPeriod.classId}/classwork_${Date.now()}_${lessonData.classworkFile.name}`;
+        const safe = sanitizeFileName(lessonData.classworkFile.name);
+        const path = `lessons/${logDate}/${selectedPeriod.classId}/classwork_${Date.now()}_${safe}`;
         uploadPromises.push(
           uploadFile(lessonData.classworkFile, path, 'cw').then(url => {
-            logData.classworkFileUrl = url;
-            logData.classworkFileName = lessonData.classworkFile!.name;
+            uploadedFiles.classworkFileUrl = url;
+            uploadedFiles.classworkFileName = lessonData.classworkFile!.name;
           })
         );
       }
-
       if (lessonData.homeworkFile) {
-        const path = `lessons/${today}/${selectedPeriod.classId}/homework_${Date.now()}_${lessonData.homeworkFile.name}`;
+        const safe = sanitizeFileName(lessonData.homeworkFile.name);
+        const path = `lessons/${logDate}/${selectedPeriod.classId}/homework_${Date.now()}_${safe}`;
         uploadPromises.push(
           uploadFile(lessonData.homeworkFile, path, 'hw').then(url => {
-            logData.homeworkFileUrl = url;
-            logData.homeworkFileName = lessonData.homeworkFile!.name;
+            uploadedFiles.homeworkFileUrl = url;
+            uploadedFiles.homeworkFileName = lessonData.homeworkFile!.name;
           })
         );
       }
-
       if (uploadPromises.length > 0) {
-        try {
-          await Promise.all(uploadPromises);
-        } catch (uploadErr: any) {
-          console.error("Upload failed:", uploadErr);
-          throw new Error(`Upload failed: ${uploadErr.message || 'Check your internet or CORS settings'}`);
-        }
+        await Promise.all(uploadPromises);
       }
 
       if (selectedPeriod.existingId) {
-        await setDoc(doc(db, 'lessonLogs', selectedPeriod.existingId), logData, { merge: true });
-        logActivity(
-          user, 
-          'Updated Lesson Log', 
-          'Teachers', 
-          `Updated log for ${subjects[selectedPeriod.subjectId]} - ${classes[selectedPeriod.classId]}`,
-          { classId: selectedPeriod.classId, subjectId: selectedPeriod.subjectId }
+        // UPDATE path — version-checked transaction prevents silent overwrites
+        await updateLessonLog(
+          selectedPeriod.existingId,
+          existingVersion,
+          {
+            topic: lessonData.topic,
+            classwork: lessonData.classwork,
+            homework: lessonData.homework,
+            ...uploadedFiles,
+          },
+          user,
         );
+        logActivity(user, 'Updated Lesson Log', 'Teachers',
+          `Updated log for ${subjects[selectedPeriod.subjectId]} - ${classes[selectedPeriod.classId]} (${logDate})`,
+          { classId: selectedPeriod.classId, subjectId: selectedPeriod.subjectId, date: logDate });
       } else {
-        logData.createdAt = new Date().toISOString();
-        await addDoc(collection(db, 'lessonLogs'), logData);
-        logActivity(
-          user, 
-          'Created Lesson Log', 
-          'Teachers', 
-          `Created log for ${subjects[selectedPeriod.subjectId]} - ${classes[selectedPeriod.classId]}`,
-          { classId: selectedPeriod.classId, subjectId: selectedPeriod.subjectId }
-        );
+        // CREATE path
+        const nowIso = new Date().toISOString();
+        const newLog: any = {
+          classId: selectedPeriod.classId,
+          subjectId: selectedPeriod.subjectId,
+          teacherId: teacherData?.id || user.uid,
+          date: logDate,
+          slotId: slot.id,
+          slotLabel: slot.label || '',
+          slotStartTime: slot.startTime || '',
+          slotEndTime: slot.endTime || '',
+          timetableVersion: activeTimetable?.version ?? null,
+          topic: lessonData.topic.trim(),
+          classwork: lessonData.classwork,
+          homework: lessonData.homework,
+          createdAt: nowIso,
+          createdBy: user.uid,
+          createdByName: user.name,
+          updatedAt: nowIso,
+          updatedBy: user.uid,
+          updatedByName: user.name,
+          version: 1,
+          ...uploadedFiles,
+        };
+        await addDoc(collection(db, 'lessonLogs'), newLog);
+        logActivity(user, 'Created Lesson Log', 'Teachers',
+          `Created log for ${subjects[selectedPeriod.subjectId]} - ${classes[selectedPeriod.classId]} (${logDate})`,
+          { classId: selectedPeriod.classId, subjectId: selectedPeriod.subjectId, date: logDate });
       }
 
       showToast('Lesson log saved successfully!', 'success');
       setIsModalOpen(false);
     } catch (err: any) {
-      if (err.message === 'File size exceeds 1MB limit.') {
+      if (err instanceof ConcurrentEditError) {
+        showToast(err.message, 'error');
+        // Reload the latest state so the teacher sees the other person's changes
+        try { await fetchExistingForDate(selectedPeriod, selectedPeriod.slot, logDate); } catch {}
+      } else if (err?.message?.startsWith('File size exceeds')) {
         showToast(err.message, 'error');
       } else {
         handleFirestoreError(err, OperationType.WRITE, 'lessonLogs');
@@ -600,14 +639,35 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
         }
       >
         <form onSubmit={handleSaveLesson} data-lesson-form className="space-y-6">
-          <FormField label="Today's Topic" required>
-            <Input
-              placeholder="e.g. Introduction to Trigonometry"
-              value={lessonData.topic}
-              onChange={(e) => setLessonData({ ...lessonData, topic: e.target.value })}
-              required
-            />
-          </FormField>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <FormField label="Lesson Date" required hint="Backfill up to 14 days">
+              <input
+                type="date"
+                value={logDate}
+                max={new Date().toISOString().split('T')[0]}
+                min={(() => { const d = new Date(); d.setDate(d.getDate() - 14); return d.toISOString().split('T')[0]; })()}
+                onChange={e => setLogDate(e.target.value)}
+                className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+              />
+            </FormField>
+            <div className="sm:col-span-2">
+              <FormField label="Topic" required hint={`${lessonData.topic.length}/200`}>
+                <Input
+                  placeholder="e.g. Introduction to Trigonometry"
+                  value={lessonData.topic}
+                  maxLength={200}
+                  onChange={(e) => setLessonData({ ...lessonData, topic: e.target.value })}
+                  required
+                />
+              </FormField>
+            </div>
+          </div>
+          {selectedPeriod?.existingId && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>You are editing an existing log for this date. If someone else saves changes while you're editing, your save will be rejected to prevent overwriting their work.</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Classwork */}
@@ -620,8 +680,10 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
                 placeholder="Details of what was taught in class..."
                 rows={4}
                 value={lessonData.classwork}
+                maxLength={5000}
                 onChange={(e) => setLessonData({ ...lessonData, classwork: e.target.value })}
               />
+              <p className="text-[10px] text-slate-400 -mt-2 text-right">{lessonData.classwork.length}/5000</p>
               <div className="relative">
                 <input
                   type="file"
@@ -676,8 +738,10 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
                 placeholder="Details of homework assigned..."
                 rows={4}
                 value={lessonData.homework}
+                maxLength={5000}
                 onChange={(e) => setLessonData({ ...lessonData, homework: e.target.value })}
               />
+              <p className="text-[10px] text-slate-400 -mt-2 text-right">{lessonData.homework.length}/5000</p>
               <div className="relative">
                 <input
                   type="file"

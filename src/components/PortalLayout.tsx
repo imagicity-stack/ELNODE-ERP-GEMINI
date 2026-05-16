@@ -269,9 +269,29 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
       
       if (auth.currentUser) {
         const studentId = (auth.currentUser as any).studentId || auth.currentUser.uid;
+
+        // Resolve the user's class scope so diary notifications stay relevant.
+        // Student: their own classId. Parent: fetch their children's classIds (one-shot).
+        let classIds: string[] = [];
+        try {
+          if (role === 'student' && user.classId) {
+            classIds = [user.classId];
+          } else if (role === 'parent' && user.studentIds?.length) {
+            const { getDoc, doc } = await import('firebase/firestore');
+            const { db } = await import('../firebase');
+            const docs = await Promise.all(
+              user.studentIds.slice(0, 10).map(id => getDoc(doc(db, 'students', id)))
+            );
+            classIds = Array.from(new Set(
+              docs.filter(d => d.exists()).map(d => (d.data() as any).classId).filter(Boolean)
+            ));
+          }
+        } catch { /* non-fatal — listener will simply skip */ }
+
         const unsubscribe = startNotificationListeners(
-          studentId, 
+          studentId,
           role,
+          classIds,
           (title, body) => showToast(`${title}: ${body}`, 'info')
         );
         return unsubscribe;
