@@ -49,10 +49,14 @@ export default function ResultView({ student }: ResultViewProps) {
       const subjectSnapshot = await getDocs(collection(db, 'subjects'));
       setSubjects(subjectSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Subject)));
 
-      // Fetch results for this student
+      // Fetch results for this student — ONLY published ones are visible to students/parents.
+      // (We do the filter client-side so we don't need a composite index, and so legacy results
+      //  without an explicit `published` field aren't accidentally hidden if `examResults` had
+      //  no migration. The default for old rows is `published === undefined` which is filtered.)
       const q = query(collection(db, 'examResults'), where('studentId', '==', student.id));
       const resultSnapshot = await getDocs(q);
-      setResults(resultSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamResult)));
+      const all = resultSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamResult));
+      setResults(all.filter(r => r.published === true));
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'exams/subjects/examResults');
     } finally {
@@ -85,14 +89,18 @@ export default function ResultView({ student }: ResultViewProps) {
 
     const tableData = result.subjectResults.map((res: any) => {
       const subject = subjects.find((s) => s.id === res.subjectId);
-      const pct = res.maxMarks > 0 ? ((res.marksObtained / res.maxMarks) * 100).toFixed(1) : '0.0';
+      const isAbsent = res.status === 'absent';
+      const isExempt = res.status === 'exempt';
+      const pct = res.maxMarks > 0 && !isAbsent && !isExempt
+        ? ((res.marksObtained / res.maxMarks) * 100).toFixed(1) : '-';
+      const status = isAbsent ? 'Absent' : isExempt ? 'Exempt' : (res.marksObtained >= (res.maxMarks * 0.4) ? 'Pass' : 'Fail');
       return [
         subject?.name || 'Unknown',
         res.maxMarks,
-        res.marksObtained,
-        `${pct}%`,
+        isAbsent || isExempt ? '-' : res.marksObtained,
+        pct === '-' ? '-' : `${pct}%`,
         res.grade,
-        res.marksObtained >= 40 ? 'Pass' : 'Fail',
+        status,
       ];
     });
 

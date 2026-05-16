@@ -141,13 +141,23 @@ service cloud.firestore {
     }
 
     // Exam Results
+    // Read: admins/teachers full; students see their own ONLY when published; parents see their
+    // children's ONLY when published. The `published` gate enforces the publication workflow at
+    // the database level — no client mistake can leak unpublished drafts.
     match /examResults/{resultId} {
       allow get: if isSignedIn() && (
         isAnyAdmin() || isTeacher() ||
-        isLinkedToStudent(resource.data.get('studentId', ''))
+        (isLinkedToStudent(resource.data.get('studentId', '')) && resource.data.get('published', false) == true)
       );
       allow list: if isAnyAdmin() || isTeacher() || isParent() || isStudent();
-      allow create, update, delete: if isSignedIn() && (isAnyAdmin() || isTeacher());
+      // Writes: admins or teachers. Optimistic concurrency — `version` must strictly increment.
+      allow create: if isSignedIn() && (isAnyAdmin() || isTeacher())
+                    && request.resource.data.get('version', 1) == 1;
+      allow update: if isSignedIn() && (isAnyAdmin() || isTeacher())
+                    && request.resource.data.studentId == resource.data.studentId
+                    && request.resource.data.examId == resource.data.examId
+                    && request.resource.data.get('version', 1) == resource.data.get('version', 0) + 1;
+      allow delete: if isSignedIn() && isAnyAdmin();
     }
 
     // Homework
@@ -219,7 +229,24 @@ service cloud.firestore {
 
     // Helper collections
     match /gradingScales/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
-    match /exams/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin() || isTeacher(); }
+
+    // Exams
+    // Read: any signed-in user (students/parents need this to see scheduled exams).
+    // Create: admins or teachers (any teacher can schedule for their classes).
+    // Update / delete: admins, or the teacher who created the exam.
+    match /exams/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isAnyAdmin() || isTeacher())
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 200
+                    && request.resource.data.maxMarks is number
+                    && request.resource.data.maxMarks > 0;
+      allow update, delete: if isSignedIn() && (
+        isAnyAdmin() ||
+        (isTeacher() && resource.data.get('createdBy', '') == request.auth.uid)
+      );
+    }
     match /salaries/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
     match /expenses/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
     match /payroll-config/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin(); }

@@ -1,24 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
-import { collection, query, where, getDocs, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { UserProfile, Exam, Student, ExamResult, GradingScale, Subject } from '../../types';
+import { UserProfile, Exam, Student, ExamResult, GradingScale, Subject, SubjectResultStatus } from '../../types';
 import { usePermissions } from '../../hooks/usePermissions';
 import { logActivity } from '../../services/activityService';
-import { 
-  ArrowLeft, 
-  Save, 
-  Search, 
-  AlertCircle, 
-  CheckCircle2, 
-  Loader2,
-  User,
-  Calculator
+import {
+  bulkSaveExamResults, publishExamResults, unpublishExamResults,
+  ConcurrentEditError, calculateGradeFromScale,
+} from '../../services/examService';
+import {
+  ArrowLeft, Save, Search, AlertCircle, CheckCircle2, Loader2,
+  User, Calculator, Send, EyeOff,
 } from 'lucide-react';
 import { Button, Input, Badge, Avatar } from '../../components/ui';
+import { useToast } from '../../components/Toast';
 import { cn } from '../../lib/utils';
-import { auth } from '../../firebase';
 
 export default function ResultEntry({ user }: { user: UserProfile }) {
   const { examId } = useParams<{ examId: string }>();
@@ -28,9 +26,14 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
   const [gradingScale, setGradingScale] = useState<GradingScale | null>(null);
   const [subject, setSubject] = useState<Subject | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
-  const [results, setResults] = useState<Record<string, Partial<ExamResult>>>( {});
+  const [results, setResults] = useState<Record<string, Partial<ExamResult>>>({});
+  // Track the version each result was loaded at so we can detect concurrent edits on save
+  const [resultVersions, setResultVersions] = useState<Record<string, number>>({});
+  // Track which rows the teacher actually touched, so we only save those
+  const [dirtyRows, setDirtyRows] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -38,6 +41,10 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
   const { classesMap } = useData();
   const { isReadOnly } = usePermissions(user?.role || 'student');
   const readOnly = isReadOnly('exams');
+  const { showToast } = useToast();
+
+  const isPublished = exam?.status === 'published';
+  const canPublish = user.role === 'super_admin' || user.role === 'principal' || user.role === 'office_staff';
 
   useEffect(() => {
     if (examId) {
@@ -60,9 +67,9 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
       const examData = { id: examDoc.id, ...examDoc.data() } as Exam;
       setExam(examData);
 
-      // 2. Fetch Grading Scale
+      // 2. Fetch Grading Scale (FIX: collection is 'gradingScales', not 'grading_scales')
       if (examData.gradingScaleId) {
-        const gsDoc = await getDoc(doc(db, 'grading_scales', examData.gradingScaleId));
+        const gsDoc = await getDoc(doc(db, 'gradingScales', examData.gradingScaleId));
         if (gsDoc.exists()) {
           setGradingScale({ id: gsDoc.id, ...gsDoc.data() } as GradingScale);
         }
@@ -89,15 +96,29 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
       });
       setStudents(allStudents.sort((a, b) => a.name.localeCompare(b.name)));
 
-      // 5. Fetch Existing Results
-      const resultsQuery = query(collection(db, 'results'), where('examId', '==', examId));
-      const resultsSnap = await getDocs(resultsQuery);
+      // 5. Fetch Existing Results — read primarily from `examResults` (canonical) and
+      // fall back to legacy `results` so older entries written by the broken pre-fix
+      // ResultEntry remain visible. On next save they migrate automatically.
+      const [canonSnap, legacySnap] = await Promise.all([
+        getDocs(query(collection(db, 'examResults'), where('examId', '==', examId))),
+        getDocs(query(collection(db, 'results'), where('examId', '==', examId))).catch(() => null),
+      ]);
       const existingResults: Record<string, Partial<ExamResult>> = {};
-      resultsSnap.forEach(doc => {
-        const data = doc.data() as ExamResult;
+      const versions: Record<string, number> = {};
+      // Legacy first so canonical overrides
+      legacySnap?.forEach(d => {
+        const data = d.data() as ExamResult;
         existingResults[data.studentId] = data;
+        versions[data.studentId] = 0; // treat as new in canonical collection
+      });
+      canonSnap.forEach(d => {
+        const data = d.data() as ExamResult;
+        existingResults[data.studentId] = data;
+        versions[data.studentId] = data.version ?? 0;
       });
       setResults(existingResults);
+      setResultVersions(versions);
+      setDirtyRows(new Set());
 
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, 'exam_results');
@@ -108,126 +129,192 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
   };
 
   const calculateGrade = (marks: number, maxMarks: number) => {
-    if (!gradingScale) return 'N/A';
-    const percentage = (marks / maxMarks) * 100;
-    const range = gradingScale.ranges.find(r => percentage >= r.min && percentage <= r.max);
-    return range ? range.grade : 'F';
+    if (!gradingScale || maxMarks <= 0) return 'N/A';
+    return calculateGradeFromScale(marks, maxMarks, gradingScale.ranges);
+  };
+
+  const markDirty = (studentId: string) =>
+    setDirtyRows(prev => { const next = new Set(prev); next.add(studentId); return next; });
+
+  const upsertSubjectResult = (
+    prev: Record<string, Partial<ExamResult>>,
+    studentId: string,
+    patch: Partial<{ marksObtained: number; remarks: string; status: SubjectResultStatus }>,
+  ) => {
+    const student = students.find(s => s.id === studentId);
+    const existing = prev[studentId] || {
+      examId,
+      studentId,
+      classId: student?.classId,
+      subjectResults: [],
+    };
+    const subjectResults = [...(existing.subjectResults || [])];
+    const subIdx = subjectResults.findIndex(r => r.subjectId === exam?.subjectId);
+    const existingSub = subIdx >= 0 ? subjectResults[subIdx] : {
+      subjectId: exam?.subjectId || '',
+      marksObtained: 0,
+      maxMarks: exam?.maxMarks || 100,
+      grade: '',
+      status: 'present' as SubjectResultStatus,
+    };
+    const updatedSub = {
+      ...existingSub,
+      ...patch,
+    };
+    // Recompute grade based on status — absent/exempt has no grade
+    if (updatedSub.status === 'absent') updatedSub.grade = 'AB';
+    else if (updatedSub.status === 'exempt') updatedSub.grade = 'EX';
+    else updatedSub.grade = calculateGrade(updatedSub.marksObtained, updatedSub.maxMarks);
+
+    if (subIdx >= 0) subjectResults[subIdx] = updatedSub;
+    else subjectResults.push(updatedSub);
+
+    // Recompute totals — exclude absent/exempt from total denominator
+    const counted = subjectResults.filter(r => !r.status || r.status === 'present');
+    const totalMarks = counted.reduce((acc, r) => acc + (r.marksObtained || 0), 0);
+    const maxTotalMarks = counted.reduce((acc, r) => acc + (r.maxMarks || 0), 0);
+    const percentage = maxTotalMarks > 0 ? (totalMarks / maxTotalMarks) * 100 : 0;
+
+    return {
+      ...prev,
+      [studentId]: {
+        ...existing,
+        subjectResults,
+        totalMarks,
+        percentage,
+        overallGrade: maxTotalMarks > 0 ? calculateGrade(totalMarks, maxTotalMarks) : 'N/A',
+        updatedAt: new Date().toISOString(),
+      },
+    };
   };
 
   const handleMarkChange = (studentId: string, marks: string) => {
     const marksNum = parseFloat(marks);
     if (isNaN(marksNum) && marks !== '') return;
-    
     if (marksNum > (exam?.maxMarks || 100)) return;
+    if (marksNum < 0) return;
+    markDirty(studentId);
+    setResults(prev => upsertSubjectResult(prev, studentId, {
+      marksObtained: isNaN(marksNum) ? 0 : marksNum,
+      status: 'present',
+    }));
+  };
 
-    setResults(prev => {
-      const student = students.find(s => s.id === studentId);
-      const existing = prev[studentId] || {
-        examId,
-        studentId,
-        classId: student?.classId,
-        subjectResults: []
-      };
-
-      // Since each Exam doc is per-subject, we treat subjectResults as having one entry or we update it
-      const subjectResults = [...(existing.subjectResults || [])];
-      const subIdx = subjectResults.findIndex(r => r.subjectId === exam?.subjectId);
-      
-      const newSubResult = {
-        subjectId: exam?.subjectId || '',
-        marksObtained: isNaN(marksNum) ? 0 : marksNum,
-        maxMarks: exam?.maxMarks || 100,
-        grade: calculateGrade(isNaN(marksNum) ? 0 : marksNum, exam?.maxMarks || 100)
-      };
-
-      if (subIdx >= 0) {
-        subjectResults[subIdx] = newSubResult;
-      } else {
-        subjectResults.push(newSubResult);
-      }
-
-      const totalMarks = subjectResults.reduce((acc, curr) => acc + curr.marksObtained, 0);
-      const maxTotalMarks = subjectResults.reduce((acc, curr) => acc + curr.maxMarks, 0);
-      const percentage = (totalMarks / maxTotalMarks) * 100;
-
-      return {
-        ...prev,
-        [studentId]: {
-          ...existing,
-          subjectResults,
-          totalMarks,
-          percentage,
-          overallGrade: calculateGrade(totalMarks, maxTotalMarks),
-          updatedAt: new Date().toISOString()
-        }
-      };
-    });
+  const handleStatusChange = (studentId: string, status: SubjectResultStatus) => {
+    markDirty(studentId);
+    setResults(prev => upsertSubjectResult(prev, studentId, {
+      status,
+      marksObtained: status === 'present' ? (prev[studentId]?.subjectResults?.find(r => r.subjectId === exam?.subjectId)?.marksObtained ?? 0) : 0,
+    }));
   };
 
   const handleRemarksChange = (studentId: string, remarks: string) => {
-    setResults(prev => {
-      const existing = prev[studentId];
-      if (!existing || !existing.subjectResults) return prev;
-
-      const subjectResults = [...existing.subjectResults];
-      const subIdx = subjectResults.findIndex(r => r.subjectId === exam?.subjectId);
-      
-      if (subIdx >= 0) {
-        subjectResults[subIdx] = { ...subjectResults[subIdx], remarks };
-      }
-
-      return {
-        ...prev,
-        [studentId]: {
-          ...existing,
-          subjectResults
-        }
-      };
-    });
+    markDirty(studentId);
+    setResults(prev => upsertSubjectResult(prev, studentId, { remarks }));
   };
 
   const handleSaveAll = async () => {
     if (!examId || !user) return;
+    if (saving) return;
     setSaving(true);
     setError(null);
     try {
-      const batchPromises = Object.entries(results).map(([studentId, result]) => {
-        const resultId = `${examId}_${studentId}`;
-        return setDoc(doc(db, 'results', resultId), {
-          ...result,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-      });
-
-      await Promise.all(batchPromises);
-      
-      // Update exam status if it was 'scheduled'
-      if (exam?.status === 'scheduled') {
-        await updateDoc(doc(db, 'exams', examId), {
-          status: 'completed'
-        });
+      // Only save rows the teacher actually touched in this session
+      const dirtyIds = Array.from(dirtyRows);
+      if (dirtyIds.length === 0) {
+        setSuccess(true);
+        setTimeout(() => setSuccess(false), 2000);
+        showToast('No changes to save', 'info');
+        return;
       }
 
-      // Log activity
-      logActivity(
-        user,
-        'Exam Marks Updated',
-        'Teachers',
-        `Updated marks for ${exam?.name} - ${subject?.name}`,
-        { 
-          examId, 
-          subjectId: exam?.subjectId,
-          examName: exam?.name 
-        }
-      );
+      const payloads = dirtyIds
+        .map(sid => {
+          const r = results[sid];
+          if (!r) return null;
+          return {
+            result: { ...r, examId, studentId: sid } as any,
+            expectedVersion: resultVersions[sid] ?? 0,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
 
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
+      const { saved, conflicts, errors } = await bulkSaveExamResults(payloads, user);
+
+      if (conflicts > 0) {
+        setError(`${conflicts} record(s) were modified by someone else and were not saved. Refresh to see the latest version.`);
+        showToast(`${conflicts} concurrent edit conflict(s) — refresh and retry`, 'error');
+      }
+      if (errors.length > 0) {
+        showToast(`${errors.length} other error(s) occurred`, 'error');
+      }
+
+      // Flip exam to 'completed' if it was still 'scheduled' and we saved something
+      if (exam?.status === 'scheduled' && saved > 0) {
+        await updateDoc(doc(db, 'exams', examId), { status: 'completed' });
+        setExam(prev => prev ? { ...prev, status: 'completed' } : prev);
+      }
+
+      logActivity(user, 'Exam Marks Updated', 'Teachers',
+        `Saved ${saved} mark(s) for ${exam?.name} - ${subject?.name}` +
+        (conflicts > 0 ? ` (${conflicts} skipped due to conflicts)` : ''),
+        { examId, subjectId: exam?.subjectId, examName: exam?.name, savedCount: saved, conflictCount: conflicts });
+
+      if (saved > 0 && conflicts === 0 && errors.length === 0) {
+        setSuccess(true);
+        setTimeout(() => setSuccess(false), 3000);
+      }
+      // Reload to pick up new versions for the saved rows
+      await fetchData();
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'results');
+      handleFirestoreError(err, OperationType.WRITE, 'examResults');
       setError('Failed to save results');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!examId || !user || publishing) return;
+    if (dirtyRows.size > 0) {
+      showToast('Save your changes before publishing', 'error');
+      return;
+    }
+    const ok = window.confirm(
+      'Publish results to students and parents? They will be able to see grades immediately.',
+    );
+    if (!ok) return;
+    setPublishing(true);
+    try {
+      const count = await publishExamResults(examId, user);
+      setExam(prev => prev ? { ...prev, status: 'published', publishedAt: new Date().toISOString(), publishedBy: user.uid } : prev);
+      logActivity(user, 'Exam Results Published', 'Teachers',
+        `Published ${count} result(s) for ${exam?.name}`,
+        { examId, count });
+      showToast(`Published ${count} result(s)`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to publish', 'error');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleUnpublish = async () => {
+    if (!examId || !user || publishing) return;
+    const ok = window.confirm('Unpublish results? They will be hidden from students and parents.');
+    if (!ok) return;
+    setPublishing(true);
+    try {
+      const count = await unpublishExamResults(examId, user);
+      setExam(prev => prev ? { ...prev, status: 'completed' } : prev);
+      logActivity(user, 'Exam Results Unpublished', 'Teachers',
+        `Unpublished ${count} result(s) for ${exam?.name}`,
+        { examId, count });
+      showToast(`Unpublished ${count} result(s)`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to unpublish', 'error');
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -324,46 +411,80 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
                     </Badge>
                   )}
                 </div>
-                <div className="flex gap-2 items-center">
+                <div className="flex gap-2 items-center mb-2">
+                  <select
+                    value={subResult?.status || 'present'}
+                    disabled={readOnly || isPublished}
+                    onChange={(e) => handleStatusChange(student.id, e.target.value as SubjectResultStatus)}
+                    className="h-11 px-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white"
+                  >
+                    <option value="present">Present</option>
+                    <option value="absent">Absent</option>
+                    <option value="exempt">Exempt</option>
+                  </select>
                   <Input
                     type="number"
                     min="0"
                     max={exam?.maxMarks}
                     step="0.5"
-                    value={marks}
-                    disabled={readOnly}
+                    value={subResult?.status && subResult.status !== 'present' ? '' : marks}
+                    disabled={readOnly || isPublished || (subResult?.status && subResult.status !== 'present')}
                     onChange={(e) => handleMarkChange(student.id, e.target.value)}
                     className={cn(
-                      "w-24 text-center font-bold text-base h-11 shrink-0",
+                      "w-20 text-center font-bold text-base h-11 shrink-0",
                       marks === '' ? "border-slate-200" : "border-indigo-300 bg-indigo-50/30 text-indigo-700"
                     )}
                     placeholder={`/${exam?.maxMarks}`}
                   />
-                  <Input
-                    placeholder="Remarks (optional)"
-                    value={subResult?.remarks || ''}
-                    disabled={readOnly}
-                    onChange={(e) => handleRemarksChange(student.id, e.target.value)}
-                    className="flex-1 h-11 text-sm"
-                  />
                 </div>
+                <Input
+                  placeholder="Remarks (optional)"
+                  value={subResult?.remarks || ''}
+                  disabled={readOnly || isPublished}
+                  onChange={(e) => handleRemarksChange(student.id, e.target.value)}
+                  className="w-full h-10 text-sm"
+                />
               </div>
             );
           })}
         </div>
 
-        {/* Sticky save */}
+        {/* Sticky save / publish bar */}
         {!readOnly && (
-          <div className="fixed bottom-0 left-0 right-0 px-4 py-3 bg-white border-t border-slate-100 shadow-2xl z-50">
-            <Button
-              onClick={handleSaveAll}
-              disabled={saving}
-              loading={saving}
-              className="w-full !py-3.5"
-            >
-              <Save className="w-4 h-4 mr-2" />
-              {saving ? 'Saving...' : `Save Results (${Object.keys(results).length})`}
-            </Button>
+          <div className="fixed bottom-0 left-0 right-0 px-4 py-3 bg-white border-t border-slate-100 shadow-2xl z-50 flex gap-2">
+            {!isPublished && (
+              <Button
+                onClick={handleSaveAll}
+                disabled={saving || dirtyRows.size === 0}
+                loading={saving}
+                className="flex-1 !py-3.5"
+              >
+                <Save className="w-4 h-4 mr-2" />
+                {saving ? 'Saving...' : `Save${dirtyRows.size > 0 ? ` (${dirtyRows.size})` : ''}`}
+              </Button>
+            )}
+            {canPublish && !isPublished && (
+              <Button
+                onClick={handlePublish}
+                disabled={publishing || dirtyRows.size > 0 || Object.keys(results).length === 0}
+                variant="secondary"
+                className="flex-1 !py-3.5 border-emerald-300 text-emerald-700"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                {publishing ? '…' : 'Publish'}
+              </Button>
+            )}
+            {canPublish && isPublished && (
+              <Button
+                onClick={handleUnpublish}
+                disabled={publishing}
+                variant="secondary"
+                className="flex-1 !py-3.5 border-amber-300 text-amber-700"
+              >
+                <EyeOff className="w-4 h-4 mr-2" />
+                {publishing ? '…' : 'Unpublish'}
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -390,11 +511,14 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {!readOnly && (
+          {isPublished && (
+            <Badge variant="success" className="px-3 py-1.5 text-xs">PUBLISHED</Badge>
+          )}
+          {!readOnly && !isPublished && (
             <Button
               variant="primary"
               onClick={handleSaveAll}
-              disabled={saving}
+              disabled={saving || dirtyRows.size === 0}
               className="shadow-lg shadow-indigo-100"
             >
               {saving ? (
@@ -402,11 +526,43 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
               ) : (
                 <Save className="w-4 h-4 mr-2" />
               )}
-              Save Results
+              Save Results {dirtyRows.size > 0 && `(${dirtyRows.size})`}
+            </Button>
+          )}
+          {canPublish && !isPublished && (
+            <Button
+              variant="secondary"
+              onClick={handlePublish}
+              disabled={publishing || dirtyRows.size > 0 || Object.keys(results).length === 0}
+              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Send className="w-4 h-4 mr-2" />
+              {publishing ? 'Publishing...' : 'Publish Results'}
+            </Button>
+          )}
+          {canPublish && isPublished && (
+            <Button
+              variant="secondary"
+              onClick={handleUnpublish}
+              disabled={publishing}
+              className="border-amber-300 text-amber-700 hover:bg-amber-50"
+            >
+              <EyeOff className="w-4 h-4 mr-2" />
+              {publishing ? 'Unpublishing...' : 'Unpublish'}
             </Button>
           )}
         </div>
       </div>
+
+      {isPublished && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-bold">Results are published</p>
+            <p className="text-xs">Students and parents can now see these grades. To edit marks, unpublish first.</p>
+          </div>
+        </div>
+      )}
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -504,24 +660,32 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
                         {classesMap[student.classId] || student.classId} {student.section && `- ${student.section}`}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex justify-center">
-                          <div className="relative">
-                            <Input
-                              type="number"
-                              min="0"
-                              max={exam?.maxMarks}
-                              step="0.5"
-                              value={marks}
-                              disabled={readOnly}
-                              onChange={(e) => handleMarkChange(student.id, e.target.value)}
-                              className={cn(
-                                "w-24 text-center font-bold text-lg h-11",
-                                marks === '' ? "border-slate-200" : "border-indigo-200 bg-indigo-50/30 text-indigo-700",
-                                readOnly && "bg-slate-50 cursor-not-allowed opacity-80"
-                              )}
-                              placeholder={`/ ${exam?.maxMarks}`}
-                            />
-                          </div>
+                        <div className="flex justify-center items-center gap-2">
+                          <select
+                            value={subResult?.status || 'present'}
+                            disabled={readOnly || isPublished}
+                            onChange={(e) => handleStatusChange(student.id, e.target.value as SubjectResultStatus)}
+                            className="h-11 px-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white"
+                          >
+                            <option value="present">Present</option>
+                            <option value="absent">Absent</option>
+                            <option value="exempt">Exempt</option>
+                          </select>
+                          <Input
+                            type="number"
+                            min="0"
+                            max={exam?.maxMarks}
+                            step="0.5"
+                            value={subResult?.status && subResult.status !== 'present' ? '' : marks}
+                            disabled={readOnly || isPublished || (subResult?.status && subResult.status !== 'present')}
+                            onChange={(e) => handleMarkChange(student.id, e.target.value)}
+                            className={cn(
+                              "w-20 text-center font-bold text-lg h-11",
+                              marks === '' ? "border-slate-200" : "border-indigo-200 bg-indigo-50/30 text-indigo-700",
+                              (readOnly || isPublished) && "bg-slate-50 cursor-not-allowed opacity-80"
+                            )}
+                            placeholder={`/ ${exam?.maxMarks}`}
+                          />
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -541,11 +705,11 @@ export default function ResultEntry({ user }: { user: UserProfile }) {
                         <Input
                           placeholder={readOnly ? "" : "Ex: Good performance"}
                           value={subResult?.remarks || ''}
-                          disabled={readOnly}
+                          disabled={readOnly || isPublished}
                           onChange={(e) => handleRemarksChange(student.id, e.target.value)}
                           className={cn(
                             "bg-transparent border-transparent hover:border-slate-200 focus:bg-white",
-                            readOnly && "cursor-not-allowed"
+                            (readOnly || isPublished) && "cursor-not-allowed"
                           )}
                         />
                       </td>

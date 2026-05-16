@@ -12,8 +12,11 @@ import {
   X,
   Download,
   CheckSquare,
-  FileText
+  FileText,
+  AlertTriangle,
 } from 'lucide-react';
+import { validateExamSchedule, findExamConflicts, ExamConflict, ValidationIssue } from '../../services/examService';
+import { useToast } from '../../components/Toast';
 import { cn } from '../../lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -35,6 +38,10 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('exams');
+  const { showToast } = useToast();
+  const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([]);
+  const [conflicts, setConflicts] = useState<ExamConflict[]>([]);
+  const [overrideConflicts, setOverrideConflicts] = useState(false);
 
   // Form State for New Exam
   const [examForm, setExamForm] = useState({
@@ -100,6 +107,33 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
 
   const handleCreateExam = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const issues = validateExamSchedule({
+      startDate: examForm.startDate,
+      endDate: examForm.endDate || examForm.startDate,
+      classIds: examForm.classIds,
+    });
+    setValidationIssues(issues);
+    if (issues.some(i => i.level === 'error')) {
+      showToast(issues.find(i => i.level === 'error')!.message, 'error');
+      return;
+    }
+
+    if (!overrideConflicts) {
+      try {
+        const found = await findExamConflicts({
+          startDate: examForm.startDate,
+          endDate: examForm.endDate || examForm.startDate,
+          classIds: examForm.classIds,
+        });
+        setConflicts(found);
+        if (found.length > 0) {
+          showToast(`${found.length} scheduling conflict(s) — review and override to proceed`, 'error');
+          return;
+        }
+      } catch (err) { console.warn('Conflict check failed:', err); }
+    }
+
     setLoading(true);
     try {
       let syllabusPhotoUrl = '';
@@ -133,6 +167,10 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
         createdBy: user.uid
       });
       setIsExamModalOpen(false);
+      setValidationIssues([]);
+      setConflicts([]);
+      setOverrideConflicts(false);
+      showToast('Exam scheduled', 'success');
       fetchExams();
       setExamForm({
         name: '',
@@ -161,9 +199,10 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
     return range ? range.grade : 'F';
   };
 
-  const examStatusVariant = (status: string): 'info' | 'warning' | 'success' => {
+  const examStatusVariant = (status: string): 'info' | 'warning' | 'success' | 'indigo' => {
     if (status === 'scheduled') return 'info';
     if (status === 'ongoing') return 'warning';
+    if (status === 'published') return 'indigo';
     return 'success';
   };
 
@@ -331,6 +370,41 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
         }
       >
         <form id="exam-form" onSubmit={handleCreateExam} className="space-y-4">
+          {validationIssues.length > 0 && (
+            <div className="space-y-1">
+              {validationIssues.map((iss, i) => (
+                <div key={i} className={cn(
+                  'flex items-start gap-2 px-3 py-2 rounded-xl text-xs',
+                  iss.level === 'error' ? 'bg-rose-50 border border-rose-200 text-rose-700' : 'bg-amber-50 border border-amber-200 text-amber-700',
+                )}>
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>{iss.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {conflicts.length > 0 && (
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-rose-800">Scheduling conflict{conflicts.length !== 1 ? 's' : ''} detected</p>
+                  <ul className="text-xs text-rose-700 mt-1 space-y-0.5">
+                    {conflicts.map((c, i) => <li key={i}>• {c.detail}</li>)}
+                  </ul>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-rose-800 font-semibold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={overrideConflicts}
+                  onChange={e => setOverrideConflicts(e.target.checked)}
+                  className="rounded"
+                />
+                I understand — schedule anyway
+              </label>
+            </div>
+          )}
           <FormField label="Exam Name" required>
             <Input
               type="text"
