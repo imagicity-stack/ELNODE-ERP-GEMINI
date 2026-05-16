@@ -248,6 +248,19 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Fee followup records — managed by grievance officer and accounts
+    match /feeFollowups/{id} {
+      allow read: if isAdmin() || isAccountant() || isGrievanceOfficer();
+      allow create, update: if isAdmin() || isAccountant() || isGrievanceOfficer();
+      allow delete: if isAdmin();
+    }
+
+    // Atomic counters (e.g. receipt number sequence)
+    match /counters/{id} {
+      allow read: if isAdmin() || isAccountant() || isGrievanceOfficer();
+      allow write: if isAdmin() || isAccountant() || isGrievanceOfficer();
+    }
+
     // Activity logs — admins see all; students/parents/teachers/accounts can query their own feed
     match /activityLogs/{id} {
       allow get: if isAnyAdmin() || isAccountant();
