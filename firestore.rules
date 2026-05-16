@@ -125,7 +125,7 @@ service cloud.firestore {
       allow update: if isAnyAdmin()
                     && request.resource.data.get('version', 1)
                        == resource.data.get('version', 0) + 1;
-      allow delete: if isAdmin();
+      allow delete: if isAnyAdmin();
     }
 
     // Staff
@@ -136,7 +136,7 @@ service cloud.firestore {
       allow update: if isAnyAdmin()
                     && request.resource.data.get('version', 1)
                        == resource.data.get('version', 0) + 1;
-      allow delete: if isAdmin();
+      allow delete: if isAnyAdmin();
     }
 
     // Attendance
