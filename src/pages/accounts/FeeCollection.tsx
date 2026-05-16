@@ -176,7 +176,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone: student.parentDetails.phone,
-          templateName: 'payment_confirmed',
+          templateName: 'payments_confirmed',
           parameters: [
             student.parentDetails.fatherName || 'Parent',
             `₹${payment.amount.toLocaleString('en-IN')}`,
@@ -371,7 +371,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               phone: parentPhone,
-              templateName: 'payment_confirmed',
+              templateName: 'payments_confirmed',
               parameters: [
                 selectedStudent.parentDetails?.fatherName || 'Parent',
                 `₹${payAmount.toLocaleString('en-IN')}`,

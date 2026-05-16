@@ -521,7 +521,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               phone: enteredPhone,
-              templateName: 'salary_disbursed',
+              templateName: 'salaries_disbursed',
               parameters: [
                 advanceStaff.name,
                 `Rs. ${amt.toLocaleString('en-IN')} (Advance)`,
@@ -665,7 +665,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               phone: enteredPhone,
-              templateName: 'salary_disbursed',
+              templateName: 'salaries_disbursed',
               parameters: [
                 processingSalary.employeeName,
                 `Rs. ${amt.toLocaleString('en-IN')}`,

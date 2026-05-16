@@ -11,19 +11,19 @@ const PAYMENT_LINK = 'https://ehs.elnode.in/parent/fees';
 
 const TEMPLATES = [
   {
-    id: 'fee_due_reminder',
+    id: 'fees_due_reminder',
     label: 'Fee Due Reminder',
     description: 'Remind parents of upcoming/pending fee dues',
     statuses: ['pending', 'partially_paid'],
   },
   {
-    id: 'fee_overdue_notice',
+    id: 'fees_overdue_notice',
     label: 'Overdue Fee Notice',
     description: 'Stronger notice for overdue fees',
     statuses: ['pending', 'overdue', 'partially_paid'],
   },
   {
-    id: 'general_announcement',
+    id: 'general_announcement1',
     label: 'General Announcement',
     description: 'Send a custom announcement to selected parents',
     statuses: [],
@@ -49,7 +49,7 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
   const [broadcastLogs, setBroadcastLogs] = useState<BroadcastLog[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [template, setTemplate] = useState<TemplateId>('fee_due_reminder');
+  const [template, setTemplate] = useState<TemplateId>('fees_due_reminder');
   const [classFilter, setClassFilter] = useState('all');
   const [customMessage, setCustomMessage] = useState('');
   const [individualPhone, setIndividualPhone] = useState('');
@@ -98,7 +98,7 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
   const classNameMap = Object.fromEntries(classes.map(c => [c.id, c.name]));
 
   const recipients: Recipient[] = (() => {
-    if (template === 'general_announcement') {
+    if (template === 'general_announcement1') {
       return students
         .filter(s => classFilter === 'all' || s.classId === classFilter)
         .filter(s => s.parentDetails?.phone)
@@ -128,7 +128,7 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
   })();
 
   const buildParams = (r: Recipient): string[] => {
-    if (template === 'general_announcement') {
+    if (template === 'general_announcement1') {
       return [r.parentName, customMessage, r.studentName, r.classSection, PAYMENT_LINK];
     }
     return [r.parentName, r.amount || '', r.studentName, r.classSection, r.month || '', r.dueDate || '', PAYMENT_LINK];
@@ -178,7 +178,7 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
     if (phone.length < 10) { showToast('Enter a valid phone number', 'error'); return; }
     setSending(true);
     try {
-      const params = template === 'general_announcement'
+      const params = template === 'general_announcement1'
         ? [individualParent || 'Parent', customMessage, '', '', PAYMENT_LINK]
         : [individualParent || 'Parent', '', '', '', '', '', PAYMENT_LINK];
 
@@ -262,7 +262,7 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
               ))}
             </div>
 
-            {template === 'general_announcement' && (
+            {template === 'general_announcement1' && (
               <div className="mt-4">
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Message Content</label>
                 <textarea
@@ -330,7 +330,7 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
 
               <Button
                 onClick={handleBulkSend}
-                disabled={sending || recipients.length === 0 || (template === 'general_announcement' && !customMessage.trim())}
+                disabled={sending || recipients.length === 0 || (template === 'general_announcement1' && !customMessage.trim())}
                 className="w-full mt-4 bg-green-500 hover:bg-green-600 text-white"
               >
                 <Send className="w-4 h-4 mr-2" />
@@ -364,7 +364,7 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
                     className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-400"
                   />
                 </div>
-                {template === 'general_announcement' && (
+                {template === 'general_announcement1' && (
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">Message</label>
                     <textarea
@@ -377,7 +377,7 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
                 )}
                 <Button
                   onClick={handleIndividualSend}
-                  disabled={sending || !individualPhone.trim() || (template === 'general_announcement' && !customMessage.trim())}
+                  disabled={sending || !individualPhone.trim() || (template === 'general_announcement1' && !customMessage.trim())}
                   className="w-full bg-green-500 hover:bg-green-600 text-white"
                 >
                   <Send className="w-4 h-4 mr-2" />

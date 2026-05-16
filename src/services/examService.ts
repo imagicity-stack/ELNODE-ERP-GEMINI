@@ -289,7 +289,7 @@ export async function notifyParentsOfPublishedResults(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone,
-          templateName: 'exam_result_published',
+          templateName: 'exam_results_published',
           // {{1}} parent name  {{2}} student name  {{3}} class  {{4}} house
           // {{5}} exam name    {{6}} portal link
           parameters: [parentName, studentName, className, houseName, exam.name, RESULTS_LINK],

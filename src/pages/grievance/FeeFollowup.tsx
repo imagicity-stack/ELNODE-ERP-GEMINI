@@ -193,7 +193,7 @@ export default function FeeFollowup({ user }: { user: UserProfile }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone,
-          templateName: 'fee_due_reminder',
+          templateName: 'fees_due_reminder',
           parameters: [
             student?.parentDetails?.fatherName || 'Parent',
             `Rs. ${amount}`,
