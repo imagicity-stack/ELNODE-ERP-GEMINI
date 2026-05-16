@@ -20,7 +20,7 @@ import {
   Calendar,
   X
 } from 'lucide-react';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, runTransaction } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../../firebase';
@@ -156,13 +156,19 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
       } else if (user.role === 'teacher') {
         const tid = user.teacherId || user.uid;
         const teacherRef = doc(db, 'teachers', tid);
-        const teacherDoc = await getDoc(teacherRef);
-        if (teacherDoc.exists()) {
-          await updateDoc(teacherRef, { 
-            name: profileData.name, 
-            phone: profileData.phone
+        // Use a transaction so the version bump enforced by Firestore rules
+        // is atomic with the read of the current version.
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(teacherRef);
+          if (!snap.exists()) return;
+          const currentVersion = (snap.data().version ?? 0) as number;
+          tx.update(teacherRef, {
+            name: profileData.name,
+            phone: profileData.phone,
+            version: currentVersion + 1,
+            updatedAt: new Date().toISOString(),
           });
-        }
+        });
       }
 
       setSuccess('Profile updated successfully!');
