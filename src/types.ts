@@ -1,4 +1,77 @@
-export type UserRole = 'super_admin' | 'student' | 'parent' | 'accounts' | 'teacher' | 'principal' | 'office_staff';
+export type UserRole = 'super_admin' | 'student' | 'parent' | 'accounts' | 'teacher' | 'principal' | 'office_staff' | 'grievance_officer';
+
+// ─── Grievance Types ──────────────────────────────────────────────────────────
+
+export type GrievanceCategory = 'academic' | 'fee' | 'facility' | 'staff_conduct' | 'transport' | 'other';
+export type GrievancePriority = 'low' | 'medium' | 'high' | 'urgent';
+export type GrievanceStatus = 'open' | 'in_progress' | 'awaiting_response' | 'resolved' | 'closed';
+
+export interface GrievanceNote {
+  id: string;
+  content: string;
+  authorName: string;
+  authorRole: string;
+  createdAt: string;
+  isInternal: boolean;
+}
+
+export interface Grievance {
+  id: string;
+  title: string;
+  description: string;
+  category: GrievanceCategory;
+  priority: GrievancePriority;
+  status: GrievanceStatus;
+  submittedByUid: string;
+  parentName: string;
+  parentPhone?: string;
+  studentId: string;
+  studentName: string;
+  classSection: string;
+  isEscalated: boolean;
+  escalatedAt?: string;
+  escalatedBy?: string;
+  notes: GrievanceNote[];
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+}
+
+export interface FollowupLog {
+  id: string;
+  note: string;
+  contactMethod: 'phone' | 'whatsapp' | 'in_person' | 'email';
+  loggedBy: string;
+  createdAt: string;
+}
+
+export interface FeeFollowupRecord {
+  id: string;
+  feeRequestId: string;
+  studentId: string;
+  studentName: string;
+  parentPhone: string;
+  parentName: string;
+  classSection: string;
+  amountDue: number;
+  status: string;
+  logs: FollowupLog[];
+  promisedPaymentDate?: string;
+  isEscalated: boolean;
+  lastContactedAt?: string;
+  updatedAt: string;
+}
+
+export interface BroadcastLog {
+  id: string;
+  templateName: string;
+  audience: string;
+  totalSent: number;
+  totalFailed: number;
+  sentAt: string;
+  sentBy: string;
+  message?: string;
+}
 
 export interface ModulePermission {
   enabled: boolean;
@@ -89,7 +162,7 @@ export interface StaffMember {
 }
 
 export type UnifiedStaff = (Teacher | StaffMember) & {
-  staffCategory: 'Teacher' | 'Principal' | 'Accounts' | 'Admin' | 'Other Staff';
+  staffCategory: 'Teacher' | 'Principal' | 'Accounts' | 'Grievance' | 'Admin' | 'Other Staff';
   baseSalary: number;
 };
 

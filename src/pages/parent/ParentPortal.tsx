@@ -15,6 +15,7 @@ import ResultView from '../shared/ResultView';
 import AcademicCalendar from '../admin/AcademicCalendar';
 import NoticeBoard from '../admin/NoticeBoard';
 import LessonLogs from '../shared/LessonLogs';
+import ParentGrievance from './ParentGrievance';
 import { ChevronDown, Users } from 'lucide-react';
 
 export default function ParentPortal({ user }: { user: UserProfile }) {
@@ -88,6 +89,7 @@ export default function ParentPortal({ user }: { user: UserProfile }) {
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />
         <Route path="/notices" element={<NoticeBoard user={user} />} />
         <Route path="/diary" element={<LessonLogs user={user} student={selectedStudent || undefined} />} />
+        <Route path="/grievances" element={<ParentGrievance user={user} selectedStudent={selectedStudent} />} />
         <Route path="*" element={<Navigate to="/parent" />} />
       </Routes>
     </PortalLayout>

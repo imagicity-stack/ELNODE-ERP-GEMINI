@@ -185,6 +185,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
         let cat: UnifiedStaff['staffCategory'] = 'Other Staff';
         if (data.role === 'principal') cat = 'Principal';
         else if (data.role === 'accounts') cat = 'Accounts';
+        else if (data.role === 'grievance_officer') cat = 'Grievance';
         else if (data.role === 'admin') cat = 'Admin';
         return { ...data, id: doc.id, staffCategory: cat, baseSalary: data.salary || 0 } as UnifiedStaff;
       });

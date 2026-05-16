@@ -23,7 +23,7 @@ interface StaffMember {
   id: string;
   name: string;
   email: string;
-  role: 'principal' | 'accounts' | 'admin' | 'security' | 'transport';
+  role: 'principal' | 'accounts' | 'admin' | 'security' | 'transport' | 'grievance_officer';
   joiningDate: string;
   salary: number;
   status: 'active' | 'on-leave' | 'resigned';
@@ -157,7 +157,7 @@ export default function StaffManagement({ user }: { user: any }) {
           name: formData.name,
           // Portal roles are intentionally limited; keep the staff job type in the
           // staff document and map non-portal staff roles to the staff portal.
-          role: ['principal', 'accounts'].includes(formData.role) ? formData.role : 'office_staff',
+          role: ['principal', 'accounts', 'grievance_officer'].includes(formData.role) ? formData.role : 'office_staff',
           staffId: staffRef?.id,
           createdAt: new Date().toISOString(),
         });
@@ -421,6 +421,7 @@ export default function StaffManagement({ user }: { user: any }) {
               >
                 <option value="principal">Principal</option>
                 <option value="accounts">Accounts</option>
+                <option value="grievance_officer">Grievance Officer</option>
                 <option value="admin">Admin Staff</option>
                 <option value="security">Security</option>
                 <option value="transport">Transport</option>

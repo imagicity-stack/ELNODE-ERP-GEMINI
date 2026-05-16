@@ -35,6 +35,9 @@ import PaymentAnalytics from '../accounts/PaymentAnalytics';
 import ProfileSettings from '../shared/ProfileSettings';
 import SchoolSettings from './SchoolSettings';
 import WhatsAppNotifications from './WhatsAppNotifications';
+import GrievanceTracker from '../grievance/GrievanceTracker';
+import FeeFollowup from '../grievance/FeeFollowup';
+import BroadcastCenter from '../grievance/BroadcastCenter';
 
 export default function AdminPortal({ user }: { user: UserProfile }) {
   return (
@@ -70,6 +73,9 @@ export default function AdminPortal({ user }: { user: UserProfile }) {
         <Route path="/diary" element={<LessonLogs user={user} />} />
         <Route path="/activity-logs" element={<ActivityTracker user={user} />} />
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />
+        <Route path="/tracker" element={<GrievanceTracker user={user} />} />
+        <Route path="/fee-followup" element={<FeeFollowup user={user} />} />
+        <Route path="/broadcast" element={<BroadcastCenter user={user} />} />
         <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="*" element={<Navigate to="/superadmin" />} />
       </Routes>
