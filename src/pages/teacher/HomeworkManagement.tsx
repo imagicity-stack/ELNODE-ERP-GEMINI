@@ -379,7 +379,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
                   </div>
                 </Td>
                 <Td className="text-slate-600">{hw.classId} &bull; {hw.subjectId}</Td>
-                <Td className="text-slate-600">{new Date(hw.dueDate).toLocaleDateString()}</Td>
+                <Td className="text-slate-600">{new Date(hw.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Td>
                 <Td className="font-bold text-slate-900">{hw.submissions?.length || 0}</Td>
                 <Td>
                   <Badge variant={new Date(hw.dueDate) >= new Date() ? 'info' : 'success'}>

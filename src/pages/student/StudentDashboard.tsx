@@ -32,6 +32,7 @@ import UpdatesSection from '../../components/UpdatesSection';
 import { useData } from '../../contexts/DataContext';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { buildStudentContext } from '../../lib/aiContext';
+import { fmtDate } from '../../lib/utils';
 
 interface StudentDashboardProps {
   user: UserProfile;
@@ -276,7 +277,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
                     <Avatar name={hw.subjectId} size="sm" />
                     <div>
                       <h4 className="text-sm font-bold text-slate-900 line-clamp-1">{hw.content}</h4>
-                      <p className="text-xs text-slate-500">{hw.subjectId} • Due {hw.dueDate}</p>
+                      <p className="text-xs text-slate-500">{hw.subjectId} • Due {fmtDate(hw.dueDate)}</p>
                     </div>
                   </div>
                   <Badge variant="warning">pending</Badge>
@@ -303,7 +304,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
                   <div className="absolute -left-[5px] top-0 w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
                   <div className="flex items-center justify-between mb-1">
                     <h4 className="text-sm font-bold text-slate-900">{notice.title}</h4>
-                    <span className="text-xs text-slate-400">{new Date(notice.createdAt).toLocaleDateString()}</span>
+                    <span className="text-xs text-slate-400">{new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{notice.content}</p>
                 </div>
@@ -347,7 +348,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
             <p className="text-xs opacity-80">Outstanding Balance</p>
             <h2 className="text-3xl font-bold mt-1">₹{(pendingFeeAmount || 0).toLocaleString()}</h2>
             {feeRequests.length > 0 && (
-              <p className="text-[10px] mt-4 opacity-70">Next Due Date: {feeRequests[0].dueDate}</p>
+              <p className="text-[10px] mt-4 opacity-70">Next Due Date: {fmtDate(feeRequests[0].dueDate)}</p>
             )}
             <Link
               to="/student/fees"

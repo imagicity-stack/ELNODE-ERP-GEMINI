@@ -5,6 +5,7 @@ import { collection, getDocs, query, where, doc, orderBy, getDoc } from 'firebas
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
+import { fmtDate } from '../../lib/utils';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import {
@@ -277,7 +278,7 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-900">₹{(tx.amount || 0).toLocaleString()}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">{tx.receiptNumber} · {tx.date}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">{tx.receiptNumber} · {fmtDate(tx.date)}</p>
                           <p className="text-xs text-slate-400 capitalize">{tx.method.replace('_', ' ')}</p>
                         </div>
                         <button
@@ -412,7 +413,7 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                     {payments.map((tx) => (
                       <Tr key={tx.id}>
                         <Td className="font-bold text-slate-900">{tx.receiptNumber}</Td>
-                        <Td>{tx.date}</Td>
+                        <Td>{fmtDate(tx.date)}</Td>
                         <Td className="font-bold text-emerald-600">₹{(tx.amount || 0).toLocaleString()}</Td>
                         <Td className="capitalize">{tx.method.replace('_', ' ')}</Td>
                         <Td>
@@ -446,7 +447,7 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                 {currentRequest ? (
                   <>
                     <p className="text-xs opacity-70 leading-relaxed mb-6">
-                      Fee for {currentRequest.month} is due by {new Date(currentRequest.dueDate).toLocaleDateString()}.
+                      Fee for {currentRequest.month} is due by {new Date(currentRequest.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}.
                     </p>
                     <button
                       onClick={() => handlePayNow(currentRequest)}

@@ -434,7 +434,7 @@ export default function ExamManagement({ user }: ExamManagementProps) {
                 <Td className="text-slate-600">
                   {exam.classIds.join(', ')} &bull; {subjects.find(s => s.id === exam.subjectId)?.name || exam.subjectId}
                 </Td>
-                <Td className="text-slate-600">{new Date(exam.startDate).toLocaleDateString()}</Td>
+                <Td className="text-slate-600">{new Date(exam.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Td>
                 <Td className="font-bold text-slate-900">{exam.maxMarks}</Td>
                 <Td>
                   <Badge variant={examStatusVariant(exam.status)}>

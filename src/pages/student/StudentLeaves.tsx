@@ -153,7 +153,7 @@ export default function StudentLeaves({ user }: { user: UserProfile }) {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-900 capitalize">{leave.leaveType.replace(/_/g, ' ')}</p>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {format(new Date(leave.startDate), 'MMM d')} – {format(new Date(leave.endDate), 'MMM d, yyyy')} · {leave.totalDays} {leave.totalDays === 1 ? 'day' : 'days'}
+                      {format(new Date(leave.startDate), 'd MMM')} – {format(new Date(leave.endDate), 'd MMM yyyy')} · {leave.totalDays} {leave.totalDays === 1 ? 'day' : 'days'}
                     </p>
                   </div>
                   <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full shrink-0 ${style.bg}`}>
@@ -215,7 +215,7 @@ export default function StudentLeaves({ user }: { user: UserProfile }) {
                     <div>
                       <h4 className="font-bold text-slate-900 capitalize leading-none mb-1">{leave.leaveType.replace('_', ' ')}</h4>
                       <p className="text-xs text-slate-500 font-medium">
-                        {format(new Date(leave.startDate), 'MMM d')} - {format(new Date(leave.endDate), 'MMM d, yyyy')}
+                        {format(new Date(leave.startDate), 'd MMM')} - {format(new Date(leave.endDate), 'd MMM yyyy')}
                       </p>
                     </div>
                   </div>

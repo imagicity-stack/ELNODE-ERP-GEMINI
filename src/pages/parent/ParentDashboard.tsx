@@ -28,6 +28,7 @@ import {
 import UpdatesSection from '../../components/UpdatesSection';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { buildParentContext } from '../../lib/aiContext';
+import { fmtDate } from '../../lib/utils';
 
 interface ParentDashboardProps {
   user: UserProfile;
@@ -306,7 +307,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-900">{fee.month} Fees</h4>
-                      <p className="text-xs text-slate-500">Due: {fee.dueDate} • ₹{fee.totalAmount}</p>
+                      <p className="text-xs text-slate-500">Due: {fmtDate(fee.dueDate)} • ₹{fee.totalAmount}</p>
                     </div>
                   </div>
                   <Badge variant={fee.status === 'paid' ? 'success' : 'warning'}>
@@ -357,7 +358,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
                 <div key={notice.id} className="p-3 bg-slate-50 rounded-xl border border-transparent hover:border-violet-100 hover:bg-white hover:shadow-sm transition-all group">
                   <div className="flex items-center justify-between mb-1">
                     <h4 className="text-xs font-bold text-slate-900 group-hover:text-violet-600">{notice.title}</h4>
-                    <span className="text-[8px] text-slate-400">{new Date(notice.createdAt).toLocaleDateString()}</span>
+                    <span className="text-[8px] text-slate-400">{new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                   </div>
                   <p className="text-[10px] text-slate-500 line-clamp-2">{notice.content}</p>
                 </div>
@@ -426,7 +427,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
                 <div key={hw.id} className="p-3 bg-slate-50 rounded-xl">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-bold text-violet-600 uppercase">{hw.subjectId}</span>
-                    <span className="text-[10px] text-slate-400">{hw.dueDate}</span>
+                    <span className="text-[10px] text-slate-400">{fmtDate(hw.dueDate)}</span>
                   </div>
                   <h4 className="text-sm font-bold text-slate-900">{hw.content.substring(0, 50)}...</h4>
                   <div className="flex items-center gap-2 mt-2">

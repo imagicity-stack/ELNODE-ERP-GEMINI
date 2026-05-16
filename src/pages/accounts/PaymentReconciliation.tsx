@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { UserProfile, FeePayment, FeeRequest, Student } from '../../types';
+import { fmtDate } from '../../lib/utils';
 import { AlertTriangle, CheckCircle2, RefreshCcw, FileWarning, Copy, Scale, GitBranch } from 'lucide-react';
 import {
   PageHeader,
@@ -265,7 +266,7 @@ export default function PaymentReconciliation({ user: _user }: Props) {
                 {orphans.map(({ payment, reason }) => (
                   <Tr key={payment.id}>
                     <Td className="font-mono text-xs">{payment.receiptNumber}</Td>
-                    <Td>{payment.date}</Td>
+                    <Td>{fmtDate(payment.date)}</Td>
                     <Td>{studentMap.get(payment.studentId)?.name || payment.studentId}</Td>
                     <Td>₹{(payment.amount || 0).toLocaleString('en-IN')}</Td>
                     <Td className="capitalize">{(payment.method || '').replace(/_/g, ' ')}</Td>

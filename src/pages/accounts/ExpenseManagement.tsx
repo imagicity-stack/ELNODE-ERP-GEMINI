@@ -425,7 +425,7 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
                   </Td>
                   <Td>{exp.biller}</Td>
                   <Td className="font-bold text-slate-900">₹{(exp.amount || 0).toLocaleString()}</Td>
-                  <Td>{new Date(exp.date).toLocaleDateString()}</Td>
+                  <Td>{new Date(exp.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Td>
                   <Td>
                     <Badge variant={exp.status === 'paid' ? 'success' : 'warning'}>
                       {exp.status}

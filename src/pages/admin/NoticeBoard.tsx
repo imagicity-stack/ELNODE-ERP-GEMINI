@@ -212,7 +212,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
                   </div>
                   <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
                     <span className="flex items-center gap-1"><User className="w-3 h-3" />{notice.authorName}</span>
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(notice.createdAt).toLocaleDateString()}</span>
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                   </div>
                   {notice.targetRoles && notice.targetRoles.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
@@ -304,7 +304,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
                   </Badge>
                   <div className="flex items-center gap-1 text-xs text-slate-400">
                     <Clock className="w-3 h-3" />
-                    {new Date(notice.createdAt).toLocaleDateString()}
+                    {new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                   </div>
                 </div>
 

@@ -1,6 +1,6 @@
 import { UserProfile, Student, Homework } from '../../types';
 import { CheckSquare, Filter, CheckCircle2, Clock, BookOpen } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn, fmtDate } from '../../lib/utils';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -131,7 +131,7 @@ export default function ParentHomework({ user, selectedStudent }: ParentHomework
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> Due {hw.dueDate}
+                        <Clock className="w-3 h-3" /> Due {fmtDate(hw.dueDate)}
                       </p>
                     </div>
                   </div>
@@ -139,7 +139,7 @@ export default function ParentHomework({ user, selectedStudent }: ParentHomework
                   {submitted && submission && (
                     <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
                       <p className="text-xs font-bold text-emerald-700 mb-1">
-                        Submitted on {new Date(submission.submittedAt).toLocaleDateString()}
+                        Submitted on {new Date(submission.submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </p>
                       <p className="text-xs text-emerald-600 line-clamp-2">{submission.content}</p>
                     </div>
@@ -237,12 +237,12 @@ export default function ParentHomework({ user, selectedStudent }: ParentHomework
                               {submitted ? 'Submitted' : 'Pending'}
                             </Badge>
                           </div>
-                          <p className="text-xs text-slate-400 font-medium mb-2">Due {hw.dueDate}</p>
+                          <p className="text-xs text-slate-400 font-medium mb-2">Due {fmtDate(hw.dueDate)}</p>
                           <p className="text-sm text-slate-600 leading-relaxed">{hw.content}</p>
                           {submitted && submission && (
                             <div className="mt-3 p-2.5 bg-emerald-50 rounded-lg border border-emerald-100">
                               <p className="text-xs font-bold text-emerald-700 mb-1">
-                                Submitted on {new Date(submission.submittedAt).toLocaleDateString()}
+                                Submitted on {new Date(submission.submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                               </p>
                               <p className="text-xs text-emerald-600 line-clamp-2">{submission.content}</p>
                             </div>

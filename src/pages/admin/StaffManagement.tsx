@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../components/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
+import { fmtDate } from '../../lib/utils';
 import {
   PageHeader, Card, Badge, Button, IconButton, Modal,
   FormField, Input, Select, Table, Thead, Th, Tbody, Tr, Td, EmptyState, Avatar
@@ -353,7 +354,7 @@ export default function StaffManagement({ user }: { user: any }) {
                 <Td className="hidden lg:table-cell">
                   <div className="flex items-center gap-1.5 text-slate-600">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    {member.joiningDate}
+                    {fmtDate(member.joiningDate)}
                   </div>
                 </Td>
                 <Td className="hidden sm:table-cell">

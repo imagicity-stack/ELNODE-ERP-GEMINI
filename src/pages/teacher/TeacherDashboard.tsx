@@ -390,7 +390,7 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
                 <div key={hw.id} className="p-4 border border-slate-100 rounded-xl hover:bg-slate-50 transition-all">
                   <div className="flex items-center justify-between mb-2">
                     <Badge variant="info">{hw.subjectId}</Badge>
-                    <span className="text-[10px] text-slate-400">{new Date(hw.dueDate).toLocaleDateString()}</span>
+                    <span className="text-[10px] text-slate-400">{new Date(hw.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                   </div>
                   <h4 className="text-sm font-bold text-slate-900 mb-3 line-clamp-1">{hw.content}</h4>
                   <div className="flex items-center justify-between">
@@ -428,7 +428,7 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
                   <div className="absolute -left-[5px] top-0 w-2 h-2 rounded-full bg-blue-500"></div>
                   <div className="flex items-center justify-between mb-1">
                     <h4 className="text-sm font-bold text-slate-900">{notice.title}</h4>
-                    <span className="text-xs text-slate-400">{new Date(notice.createdAt).toLocaleDateString()}</span>
+                    <span className="text-xs text-slate-400">{new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{notice.content}</p>
                 </div>

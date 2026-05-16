@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { UserProfile, Attendance } from '../../types';
+import { fmtDate } from '../../lib/utils';
 import {
   PageHeader,
   Card,
@@ -118,7 +119,7 @@ export default function StudentAttendance({ user }: StudentAttendanceProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="text-sm font-bold text-slate-900">{record.date}</span>
+                      <span className="text-sm font-bold text-slate-900">{fmtDate(record.date)}</span>
                     </div>
                     {record.remarks && (
                       <p className="text-xs text-slate-500 italic mt-0.5 truncate">{record.remarks}</p>
@@ -169,7 +170,7 @@ export default function StudentAttendance({ user }: StudentAttendanceProps) {
                       <Td>
                         <div className="flex items-center gap-2">
                           <Calendar className="w-4 h-4 text-slate-400" />
-                          <span className="font-medium text-slate-900">{record.date}</span>
+                          <span className="font-medium text-slate-900">{fmtDate(record.date)}</span>
                         </div>
                       </Td>
                       <Td>

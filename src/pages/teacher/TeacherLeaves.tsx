@@ -260,7 +260,7 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
         user,
         'Leave Cancelled',
         'Teachers',
-        `Cancelled ${leaveTypeLabel(leave.leaveType)} leave request for ${leave.startDate}`,
+        `Cancelled ${leaveTypeLabel(leave.leaveType)} leave request for ${fmtDate(leave.startDate)}`,
         { leaveId: leave.id }
       );
 
@@ -332,8 +332,8 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
                     <p className="text-sm font-bold text-slate-900">{leaveTypeLabel(leave.leaveType)}</p>
                     <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
                       <CalendarDays className="w-3 h-3" />
-                      {format(new Date(leave.startDate), 'MMM d')}
-                      {leave.endDate !== leave.startDate ? ` → ${format(new Date(leave.endDate), 'MMM d')}` : ''}
+                      {format(new Date(leave.startDate), 'd MMM')}
+                      {leave.endDate !== leave.startDate ? ` → ${format(new Date(leave.endDate), 'd MMM')}` : ''}
                       <span className="ml-1 text-slate-400">({leave.totalDays}d)</span>
                     </p>
                     <p className="text-[11px] text-slate-600 mt-1 line-clamp-2">{leave.reason}</p>
@@ -467,16 +467,16 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
                         <div>
                           <p className="text-sm font-bold text-slate-900">{leaveTypeLabel(leave.leaveType)}</p>
                           <p className="text-[10px] text-slate-400 mt-0.5">
-                            Submitted {format(new Date(leave.submittedAt), 'MMM d, yyyy')}
+                            Submitted {format(new Date(leave.submittedAt), 'd MMM yyyy')}
                           </p>
                         </div>
                       </td>
                       <td className="py-4 px-4">
                         <p className="text-sm font-semibold text-slate-800 flex items-center gap-1">
                           <CalendarDays className="w-3.5 h-3.5 text-teal-500" />
-                          {format(new Date(leave.startDate), 'MMM d')}
+                          {format(new Date(leave.startDate), 'd MMM')}
                           {leave.endDate !== leave.startDate
-                            ? ` – ${format(new Date(leave.endDate), 'MMM d')}`
+                            ? ` – ${format(new Date(leave.endDate), 'd MMM')}`
                             : ''}
                         </p>
                       </td>
@@ -640,9 +640,9 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-900 leading-none">
-                      {format(new Date(viewLeave.startDate), 'MMM d')}
+                      {format(new Date(viewLeave.startDate), 'd MMM')}
                       {viewLeave.endDate !== viewLeave.startDate
-                        ? ` – ${format(new Date(viewLeave.endDate), 'MMM d')}`
+                        ? ` – ${format(new Date(viewLeave.endDate), 'd MMM')}`
                         : ''}
                     </h4>
                     <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase">
@@ -661,7 +661,7 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
                   <div>
                     <StatusBadge status={viewLeave.status} />
                     <p className="text-[10px] text-slate-500 font-bold mt-1.5 uppercase">
-                      {format(new Date(viewLeave.submittedAt), 'MMM d, yyyy')}
+                      {format(new Date(viewLeave.submittedAt), 'd MMM yyyy')}
                     </p>
                   </div>
                 </div>

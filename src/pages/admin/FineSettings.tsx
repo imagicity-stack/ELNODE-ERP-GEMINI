@@ -407,7 +407,7 @@ export default function FineSettings({ user }: { user: UserProfile }) {
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-500">Last Updated</span>
                   <Badge variant="default" className="text-[10px]">
-                    {config?.updatedAt ? new Date(config.updatedAt).toLocaleDateString() : 'N/A'}
+                    {config?.updatedAt ? new Date(config.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A'}
                   </Badge>
                 </div>
                 <div className="pt-4 mt-4 border-t border-slate-100">

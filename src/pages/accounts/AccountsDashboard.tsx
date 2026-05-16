@@ -397,7 +397,7 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
                   </div>
                   <div>
                     <p className="text-sm font-bold text-slate-900">Fee Payment</p>
-                    <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString()}</p>
+                    <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
                   </div>
                 </div>
                 <span className="text-sm font-bold text-emerald-600">
@@ -413,7 +413,7 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
                   </div>
                   <div>
                     <p className="text-sm font-bold text-slate-900">{tx.biller}</p>
-                    <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString()}</p>
+                    <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
                   </div>
                 </div>
                 <span className="text-sm font-bold text-red-600">

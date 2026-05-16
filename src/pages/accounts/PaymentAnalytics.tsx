@@ -434,7 +434,7 @@ export default function PaymentAnalytics({ user }: PaymentAnalyticsProps) {
                     <p className="text-[10px] text-slate-500 font-medium uppercase">{p.method.replace('_', ' ')} • {p.receiptNumber}</p>
                   </div>
                 </div>
-                <Badge variant="success" className="text-[10px] font-black">{new Date(p.date).toLocaleDateString()}</Badge>
+                <Badge variant="success" className="text-[10px] font-black">{new Date(p.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Badge>
               </div>
             ))}
             {payments.length === 0 && <EmptyState icon={RefreshCcw} title="No transactions yet" />}

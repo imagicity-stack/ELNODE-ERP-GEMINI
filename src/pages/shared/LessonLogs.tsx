@@ -305,7 +305,7 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
                   <div className="flex items-start justify-between mb-4">
                     <div className="min-w-0">
                       <Badge variant="info" className="mb-2">
-                        {new Date(log.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {new Date(log.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
                       </Badge>
                       <h3 className="text-lg font-black text-slate-900 leading-tight group-hover:text-blue-600 transition-colors truncate">
                         {log.topic}
@@ -380,7 +380,7 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
         onClose={() => setSelectedLog(null)}
         title="Lesson Details"
         subtitle={selectedLog
-          ? `${subjects[selectedLog.subjectId] || selectedLog.subjectId} • Class ${classes[selectedLog.classId] || selectedLog.classId} • ${new Date(selectedLog.date).toDateString()}`
+          ? `${subjects[selectedLog.subjectId] || selectedLog.subjectId} • Class ${classes[selectedLog.classId] || selectedLog.classId} • ${new Date(selectedLog.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
           : ''}
         size="lg"
       >
@@ -501,7 +501,7 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
         onClose={() => setEditingLog(null)}
         title="Edit Lesson Log"
         subtitle={editingLog
-          ? `${subjects[editingLog.subjectId] || editingLog.subjectId} • Class ${classes[editingLog.classId] || editingLog.classId} • ${new Date(editingLog.date).toDateString()}`
+          ? `${subjects[editingLog.subjectId] || editingLog.subjectId} • Class ${classes[editingLog.classId] || editingLog.classId} • ${new Date(editingLog.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
           : ''}
         size="lg"
         footer={

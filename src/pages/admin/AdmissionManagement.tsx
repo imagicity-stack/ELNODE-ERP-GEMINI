@@ -11,7 +11,7 @@ import {
   AlertCircle,
   XCircle,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn, fmtDate } from '../../lib/utils';
 import { Class } from '../../types';
 import {
   PageHeader, Card, StatCard, Badge, Button, Modal,
@@ -315,7 +315,7 @@ export default function AdmissionManagement({ user }: { user: any }) {
                   </div>
                 </Td>
                 <Td>{getClassName(lead.classInterested)}</Td>
-                <Td>{lead.date}</Td>
+                <Td>{fmtDate(lead.date)}</Td>
                 <Td>
                   {readOnly ? (
                     <Badge variant={statusVariant(lead.status)}>{lead.status}</Badge>

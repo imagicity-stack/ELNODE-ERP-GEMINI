@@ -384,7 +384,7 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
                         <div className="flex items-center gap-3">
                           <div className="text-right">
                             {getStatusBadge(leave.status)}
-                            <p className="text-[9px] text-slate-400 font-bold mt-1 uppercase">Applied {format(new Date(leave.submittedAt), 'MMM d, h:mm a')}</p>
+                            <p className="text-[9px] text-slate-400 font-bold mt-1 uppercase">Applied {format(new Date(leave.submittedAt), 'd MMM, h:mm a')}</p>
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Button variant="secondary" size="xs" onClick={() => setViewingLeave(leave)}>
