@@ -1,5 +1,6 @@
 import { UserProfile, Exam, ExamResult, Student, Subject, GradingScale, Teacher } from '../../types';
-import { Plus, FileText, TrendingUp, Calendar, Trash2, CheckCircle2, AlertCircle, Save } from 'lucide-react';
+import { Plus, FileText, TrendingUp, Calendar, Trash2, CheckCircle2, AlertCircle, Save, AlertTriangle } from 'lucide-react';
+import { validateExamSchedule, findExamConflicts, ExamConflict, ValidationIssue } from '../../services/examService';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -49,6 +50,11 @@ export default function ExamManagement({ user }: ExamManagementProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
+
+  const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([]);
+  const [conflicts, setConflicts] = useState<ExamConflict[]>([]);
+  const [overrideConflicts, setOverrideConflicts] = useState(false);
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
 
   const [newExam, setNewExam] = useState({
     name: '',
@@ -136,6 +142,47 @@ export default function ExamManagement({ user }: ExamManagementProps) {
 
   const handleScheduleExam = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate first
+    const issues = validateExamSchedule({
+      startDate: newExam.startDate,
+      endDate: newExam.endDate || newExam.startDate,
+      startTime: newExam.startTime,
+      room: newExam.room,
+      classIds: newExam.classIds,
+    });
+    setValidationIssues(issues);
+    const blockingErrors = issues.filter(i => i.level === 'error');
+    if (blockingErrors.length > 0) {
+      showToast(blockingErrors[0].message, 'error');
+      return;
+    }
+
+    // Conflict check — if found and not yet overridden, show and require override
+    if (!overrideConflicts) {
+      setCheckingConflicts(true);
+      try {
+        const found = await findExamConflicts({
+          startDate: newExam.startDate,
+          endDate: newExam.endDate || newExam.startDate,
+          startTime: newExam.startTime,
+          room: newExam.room,
+          classIds: newExam.classIds,
+        });
+        setConflicts(found);
+        if (found.length > 0) {
+          showToast(`${found.length} scheduling conflict(s) detected — review and override to proceed`, 'error');
+          setCheckingConflicts(false);
+          return;
+        }
+      } catch (err) {
+        // Non-fatal — log and continue
+        console.warn('Conflict check failed:', err);
+      } finally {
+        setCheckingConflicts(false);
+      }
+    }
+
     try {
       let syllabusPhotoUrl = '';
       let storagePath = '';
@@ -171,6 +218,10 @@ export default function ExamManagement({ user }: ExamManagementProps) {
         createdBy: user.uid
       });
       setIsModalOpen(false);
+      setValidationIssues([]);
+      setConflicts([]);
+      setOverrideConflicts(false);
+      showToast('Exam scheduled', 'success');
       fetchData();
       setNewExam({
         name: '',
@@ -196,10 +247,10 @@ export default function ExamManagement({ user }: ExamManagementProps) {
 
   const generateReportCard = (exam: Exam) => {
     if (exam.status !== 'published') {
-      showToast('Publish the exam results first before generating report cards.', 'error');
+      showToast('Publish the exam results first (open the exam in Marks Entry → Publish).', 'error');
       return;
     }
-    showToast('Report cards are available on individual student and parent portals once results are published.', 'info');
+    showToast('Report cards are now available on individual student and parent portals.', 'info');
   };
 
   const filteredExams = exams.filter(exam =>
@@ -207,7 +258,8 @@ export default function ExamManagement({ user }: ExamManagementProps) {
     exam.classIds.some(cid => cid.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const examStatusVariant = (status: string) => {
+  const examStatusVariant = (status: string): 'success' | 'warning' | 'info' | 'indigo' => {
+    if (status === 'published') return 'indigo';
     if (status === 'completed') return 'success';
     if (status === 'ongoing') return 'warning';
     return 'info';
@@ -452,6 +504,47 @@ export default function ExamManagement({ user }: ExamManagementProps) {
         }
       >
         <form id="exam-form" onSubmit={handleScheduleExam} className="space-y-5">
+          {/* Validation issues banner */}
+          {validationIssues.length > 0 && (
+            <div className="space-y-1">
+              {validationIssues.map((iss, i) => (
+                <div key={i} className={cn(
+                  'flex items-start gap-2 px-3 py-2 rounded-xl text-xs',
+                  iss.level === 'error' ? 'bg-rose-50 border border-rose-200 text-rose-700' : 'bg-amber-50 border border-amber-200 text-amber-700',
+                )}>
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>{iss.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Conflicts banner with override */}
+          {conflicts.length > 0 && (
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-rose-800">Scheduling conflict{conflicts.length !== 1 ? 's' : ''} detected</p>
+                  <ul className="text-xs text-rose-700 mt-1 space-y-0.5">
+                    {conflicts.map((c, i) => (
+                      <li key={i}>• {c.detail}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-rose-800 font-semibold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={overrideConflicts}
+                  onChange={e => setOverrideConflicts(e.target.checked)}
+                  className="rounded"
+                />
+                I understand — schedule anyway
+              </label>
+            </div>
+          )}
+
           {/* Exam type toggle */}
           <div className="flex p-1 bg-slate-100 rounded-xl">
             {(['scheduled', 'surprise', 'internal', 'practical'] as const).map((type) => (

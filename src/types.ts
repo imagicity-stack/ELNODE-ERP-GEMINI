@@ -356,10 +356,20 @@ export interface Exam {
   };
   topic?: string;
   startTime?: string;
+  endTime?: string;
+  durationMinutes?: number;
   room?: string;
+  invigilatorId?: string;
+  isMakeup?: boolean;
+  originalExamId?: string; // For makeup exams — links back to the original
   createdAt: string;
   createdBy: string;
+  // Publication metadata
+  publishedAt?: string;
+  publishedBy?: string;
 }
+
+export type SubjectResultStatus = 'present' | 'absent' | 'exempt';
 
 export interface ExamResult {
   id: string;
@@ -372,6 +382,7 @@ export interface ExamResult {
     maxMarks: number;
     grade: string;
     remarks?: string;
+    status?: SubjectResultStatus; // 'absent'/'exempt' mean marksObtained is not graded
   }[];
   totalMarks: number;
   percentage: number;
@@ -379,6 +390,12 @@ export interface ExamResult {
   rank?: number;
   published: boolean;
   updatedAt: string;
+  // Audit trail
+  createdBy?: string;
+  createdByName?: string;
+  updatedBy?: string;
+  updatedByName?: string;
+  version?: number; // optimistic concurrency token
 }
 
 export interface GradingScale {
@@ -521,6 +538,13 @@ export interface LessonLog {
   homeworkFileUrl?: string;
   homeworkFileName?: string;
   createdAt: string;
+  // Robustness metadata
+  createdBy?: string;            // uid of author
+  createdByName?: string;        // display name snapshot
+  updatedAt?: string;
+  updatedBy?: string;            // uid of last editor
+  updatedByName?: string;        // display name snapshot
+  version?: number;              // optimistic concurrency token
 }
 
 export type LeaveType = 'planned' | 'medical' | 'emergency' | 'half_day' | 'regularization';

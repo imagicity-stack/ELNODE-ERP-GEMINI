@@ -86,12 +86,38 @@ export default function App() {
               }
             }
 
+            // Self-healing: Denormalize classId onto student user doc so Firestore rules
+            // can scope diary/notice/etc. access without extra get() roundtrips.
+            if (updatedUser.role === 'student' && updatedUser.studentId && !updatedUser.classId) {
+              const sDoc = await getDoc(doc(db, 'students', updatedUser.studentId));
+              if (sDoc.exists()) {
+                const cid = (sDoc.data() as any).classId;
+                if (cid) { updatedUser.classId = cid; needsUpdate = true; }
+              }
+            }
+
             // Self-healing: Fix missing studentIds for parents
             if (updatedUser.role === 'parent' && (!updatedUser.studentIds || updatedUser.studentIds.length === 0) && updatedUser.schoolNumber) {
               const studentQ = query(collection(db, 'students'), where('schoolNumber', '==', updatedUser.schoolNumber), limit(1));
               const studentDocs = await getDocs(studentQ);
               if (!studentDocs.empty) {
                 updatedUser.studentIds = [studentDocs.docs[0].id];
+                needsUpdate = true;
+              }
+            }
+
+            // Self-healing: Denormalize classIds onto parent user doc so Firestore rules can
+            // scope diary/notice access without an extra get() per query.
+            if (updatedUser.role === 'parent' && updatedUser.studentIds?.length) {
+              const docs = await Promise.all(
+                updatedUser.studentIds.map(id => getDoc(doc(db, 'students', id)))
+              );
+              const classIds = Array.from(new Set(
+                docs.filter(d => d.exists()).map(d => (d.data() as any).classId).filter(Boolean)
+              ));
+              const currentClassIds = (updatedUser as any).classIds || [];
+              if (classIds.length && JSON.stringify(classIds.sort()) !== JSON.stringify([...currentClassIds].sort())) {
+                (updatedUser as any).classIds = classIds;
                 needsUpdate = true;
               }
             }

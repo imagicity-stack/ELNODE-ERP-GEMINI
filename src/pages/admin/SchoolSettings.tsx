@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Settings2, GraduationCap, Building2, Phone, Globe, Mail } from 'lucide-react';
+import { Save, Settings2, GraduationCap, Building2, Phone, Globe, Mail, Database, AlertTriangle, RotateCw } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { getSchoolSettings, saveSchoolSettings, SchoolSettings } from '../../services/settingsService';
 import { useToast } from '../../components/Toast';
 import { PageHeader, Card, Button, FormField, Input } from '../../components/ui';
 import { logActivity } from '../../services/activityService';
+import { migrateLegacyResults } from '../../services/examService';
 
 const YEAR_REGEX = /^\d{4}-\d{2}$/;
 
@@ -12,7 +13,33 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
   const [settings, setSettings] = useState<SchoolSettings>({ academicYear: '2026-27' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationReport, setMigrationReport] = useState<{ copied: number; skipped: number } | null>(null);
   const { showToast } = useToast();
+
+  const isSuperAdmin = user.role === 'super_admin';
+
+  const handleMigrateResults = async () => {
+    if (migrating) return;
+    const ok = window.confirm(
+      'Copy any orphaned exam results from the legacy "results" collection into "examResults"?\n\n' +
+      'This is safe to run repeatedly — existing canonical records will not be overwritten.',
+    );
+    if (!ok) return;
+    setMigrating(true);
+    setMigrationReport(null);
+    try {
+      const report = await migrateLegacyResults();
+      setMigrationReport(report);
+      await logActivity(user, 'Legacy Results Migrated', 'Super Admin',
+        `Copied ${report.copied} legacy result(s), skipped ${report.skipped}`);
+      showToast(`Migrated ${report.copied} result(s) (${report.skipped} skipped)`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Migration failed', 'error');
+    } finally {
+      setMigrating(false);
+    }
+  };
 
   useEffect(() => {
     getSchoolSettings()
@@ -174,6 +201,46 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
             {saving ? 'Saving…' : 'Save Settings'}
           </Button>
         </div>
+
+        {isSuperAdmin && (
+          <Card className="p-6 space-y-4 border-amber-200 bg-amber-50/30">
+            <div className="flex items-center gap-2 pb-2 border-b border-amber-100">
+              <Database className="w-4 h-4 text-amber-600" />
+              <h3 className="text-sm font-bold text-amber-800 uppercase tracking-wide">Maintenance</h3>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-slate-900">Migrate Legacy Exam Results</p>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    A pre-fix version of the marks-entry page wrote to a <code className="px-1 bg-slate-100 rounded text-[10px]">results</code> collection
+                    instead of <code className="px-1 bg-slate-100 rounded text-[10px]">examResults</code>. This tool copies any
+                    orphaned rows over. Safe to run repeatedly — existing records are preserved.
+                  </p>
+                </div>
+              </div>
+
+              {migrationReport && (
+                <div className="ml-7 mt-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">
+                  <strong>Migration complete:</strong> {migrationReport.copied} record(s) copied, {migrationReport.skipped} skipped (already present or invalid).
+                </div>
+              )}
+
+              <div className="ml-7">
+                <Button
+                  onClick={handleMigrateResults}
+                  disabled={migrating}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  <RotateCw className={`w-4 h-4 mr-2 ${migrating ? 'animate-spin' : ''}`} />
+                  {migrating ? 'Migrating...' : 'Run Migration'}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
     </>
   );

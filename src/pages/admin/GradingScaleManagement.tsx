@@ -14,6 +14,9 @@ import {
   PageHeader, Card, Button, IconButton, Modal, ConfirmModal,
   FormField, Input, Table, Thead, Th, Tbody, Tr, Td, EmptyState
 } from '../../components/ui';
+import { validateGradingScale, ValidationIssue } from '../../services/examService';
+import { useToast } from '../../components/Toast';
+import { AlertTriangle } from 'lucide-react';
 
 export default function GradingScaleManagement({ user }: { user: UserProfile }) {
   const [scales, setScales] = useState<GradingScale[]>([]);
@@ -25,6 +28,8 @@ export default function GradingScaleManagement({ user }: { user: UserProfile }) 
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('grading-scales');
+  const { showToast } = useToast();
+  const [issues, setIssues] = useState<ValidationIssue[]>([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -53,6 +58,20 @@ export default function GradingScaleManagement({ user }: { user: UserProfile }) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate ranges: no gaps, no overlaps, no out-of-bounds, no duplicate grades.
+    const validation = validateGradingScale(formData.ranges);
+    setIssues(validation);
+    const errors = validation.filter(i => i.level === 'error');
+    if (errors.length > 0) {
+      showToast(errors[0].message, 'error');
+      return;
+    }
+    if (!formData.name.trim()) {
+      showToast('Scale name is required', 'error');
+      return;
+    }
+
     setLoading(true);
     try {
       if (editingScale) {
@@ -65,8 +84,10 @@ export default function GradingScaleManagement({ user }: { user: UserProfile }) 
       }
       setIsModalOpen(false);
       setEditingScale(null);
+      setIssues([]);
       fetchScales();
       setFormData({ name: '', ranges: [{ grade: '', min: 0, max: 0, point: 0, description: '' }] });
+      showToast('Grading scale saved', 'success');
     } catch (err) {
       handleFirestoreError(err, editingScale ? OperationType.UPDATE : OperationType.CREATE, editingScale ? `gradingScales/${editingScale.id}` : 'gradingScales');
     } finally {
@@ -298,6 +319,19 @@ export default function GradingScaleManagement({ user }: { user: UserProfile }) 
         }
       >
         <form id="grading-form" onSubmit={handleSubmit} className="space-y-6">
+          {issues.length > 0 && (
+            <div className="space-y-1">
+              {issues.map((iss, i) => (
+                <div key={i} className={
+                  'flex items-start gap-2 px-3 py-2 rounded-xl text-xs ' +
+                  (iss.level === 'error' ? 'bg-rose-50 border border-rose-200 text-rose-700' : 'bg-amber-50 border border-amber-200 text-amber-700')
+                }>
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>{iss.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <FormField label="Scale Name" required>
             <Input
               type="text"
