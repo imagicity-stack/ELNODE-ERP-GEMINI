@@ -44,13 +44,17 @@ export default function App() {
       setLoading(true);
       if (firebaseUser) {
         try {
-          
+          // Force a fresh token so Firestore security rules see request.auth
+          // immediately — without this, the first read can be denied because the
+          // Firestore SDK hasn't received the auth token yet.
+          try { await firebaseUser.getIdToken(true); } catch (_) {}
+
           // Use a retry mechanism with timeout for the initial profile fetch
           const fetchProfileWithRetry = async (retries = 3): Promise<any> => {
             for (let i = 0; i < retries; i++) {
               try {
                 const userDocPromise = getDoc(doc(db, 'users', firebaseUser.uid));
-                const timeoutPromise = new Promise((_, reject) => 
+                const timeoutPromise = new Promise((_, reject) =>
                   setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
                 );
                 return await Promise.race([userDocPromise, timeoutPromise]);
@@ -58,7 +62,7 @@ export default function App() {
                 console.warn(`Profile fetch attempt ${i + 1} failed:`, err);
                 if (i === retries - 1) throw err;
                 // Wait a bit before retrying
-                await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+                await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
               }
             }
           };

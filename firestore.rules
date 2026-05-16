@@ -53,6 +53,9 @@ service cloud.firestore {
     // Users collection
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAnyAdmin());
+      // Allow any signed-in user to do a limit-1 query by their own email so the
+      // UID-mismatch recovery path in App.tsx (email fallback lookup) works even
+      // before the user's role doc exists (e.g. first Google OAuth login).
       allow list: if isAnyAdmin() || (
         isSignedIn() &&
         request.query.limit <= 1 &&
