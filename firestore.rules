@@ -472,6 +472,13 @@ service cloud.firestore {
       allow write: if isSuperAdminByEmail();
     }
 
+    // Admission leads — admin portal only
+    match /admission_leads/{id} {
+      allow read: if isAnyAdmin();
+      allow create, update: if isAnyAdmin();
+      allow delete: if isAdmin();
+    }
+
     // Safety fallback — deny everything not explicitly matched above
     match /{document=**} {
       allow read, write: if false;
