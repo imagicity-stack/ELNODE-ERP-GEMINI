@@ -55,7 +55,8 @@ export default function FeeFollowup({ user }: { user: UserProfile }) {
         const followupMap: Record<string, FeeFollowupRecord> = {};
         followupSnap.docs.forEach(d => { followupMap[d.id] = { id: d.id, ...d.data() } as FeeFollowupRecord; });
         setFollowups(followupMap);
-      } catch {
+      } catch (err) {
+        console.error('FeeFollowup load error:', err);
         showToast('Failed to load fee data', 'error');
       } finally {
         setLoading(false);
