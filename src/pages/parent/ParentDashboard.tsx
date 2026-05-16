@@ -11,6 +11,7 @@ import {
   BookOpen,
   ChevronRight,
   Sparkles,
+  MessageCircle,
 } from 'lucide-react';
 import { UserProfile, Student, Notice, FeeRequest, Attendance, Homework, ExamResult } from '../../types';
 import { Link } from 'react-router-dom';
@@ -165,6 +166,13 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
       icon: Bell,
       hint: unreadNoticesCount > 0 ? `${unreadNoticesCount} updates` : 'No new',
       bg: 'from-rose-500 to-rose-700',
+    },
+    {
+      to: '/parent/grievances',
+      label: 'Grievances',
+      icon: MessageCircle,
+      hint: 'Raise a concern',
+      bg: 'from-teal-500 to-teal-700',
     },
   ];
 

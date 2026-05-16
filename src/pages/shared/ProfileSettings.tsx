@@ -142,17 +142,38 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
         updatedAt: new Date().toISOString()
       });
 
-      // Update student/teacher record if it exists
-      if (user.role === 'student' || user.role === 'parent') {
+      // Sync to the student / teacher document so all portals see the updated phone
+      if (user.role === 'student') {
         const sid = user.studentId || user.uid;
         const studentRef = doc(db, 'students', sid);
         const studentDoc = await getDoc(studentRef);
         if (studentDoc.exists()) {
-          await updateDoc(studentRef, { 
-            name: profileData.name, 
-            phone: profileData.phone
+          await updateDoc(studentRef, {
+            name: profileData.name,
+            phone: profileData.phone,
+            updatedAt: new Date().toISOString(),
           });
         }
+      } else if (user.role === 'parent') {
+        // Parents are linked to one or more students via studentIds.
+        // Sync the parent's phone onto parentDetails.phone for each child so
+        // that fee-collection, grievance, and broadcast portals all see fresh data.
+        const linkedIds: string[] = [
+          ...(user.studentIds ?? []),
+          ...(user.studentId ? [user.studentId] : []),
+        ].filter(Boolean);
+        const uniqueIds = [...new Set(linkedIds)];
+        await Promise.all(
+          uniqueIds.map(async (sid) => {
+            const studentRef = doc(db, 'students', sid);
+            const snap = await getDoc(studentRef);
+            if (!snap.exists()) return;
+            await updateDoc(studentRef, {
+              'parentDetails.phone': profileData.phone,
+              updatedAt: new Date().toISOString(),
+            });
+          }),
+        );
       } else if (user.role === 'teacher') {
         const tid = user.teacherId || user.uid;
         const teacherRef = doc(db, 'teachers', tid);

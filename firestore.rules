@@ -36,6 +36,7 @@ service cloud.firestore {
     function isAccountant() { return hasRole(['accounts']); }
     function isPrincipal() { return hasRole(['principal']); }
     function isOfficeStaff() { return hasRole(['office_staff']); }
+    function isGrievanceOfficer() { return hasRole(['grievance_officer']); }
 
     function isLinkedToStudent(studentId) {
       return isSignedIn() &&
@@ -105,12 +106,12 @@ service cloud.firestore {
     // Students — list is restricted; students/parents should not enumerate the full roster
     match /students/{studentId} {
       allow get: if isSignedIn() && (
-        isAnyAdmin() || isTeacher() || isAccountant() ||
+        isAnyAdmin() || isTeacher() || isAccountant() || isGrievanceOfficer() ||
         isLinkedToStudent(studentId)
       );
-      allow list: if isAnyAdmin() || isTeacher() || isAccountant();
+      allow list: if isAnyAdmin() || isTeacher() || isAccountant() || isGrievanceOfficer();
       allow create: if isSignedIn() && (isAnyAdmin() || isAccountant());
-      allow update: if isSignedIn() && (isAnyAdmin() || isAccountant() || (
+      allow update: if isSignedIn() && (isAnyAdmin() || isAccountant() || isGrievanceOfficer() || (
         isLinkedToStudent(studentId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feeStatus', 'updatedAt', 'fcmTokens', 'lastLogin'])
       ));
@@ -207,10 +208,10 @@ service cloud.firestore {
 
     match /feePayments/{paymentId} {
       allow get: if isSignedIn() && (
-        isAdmin() || isAccountant() ||
+        isAdmin() || isAccountant() || isGrievanceOfficer() ||
         isLinkedToStudent(resource.data.get('studentId', ''))
       );
-      allow list: if isAdmin() || isAccountant() || isParent() || isStudent();
+      allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isParent() || isStudent();
       allow create: if isSignedIn() && (isAdmin() || isAccountant() || (
         isLinkedToStudent(request.resource.data.studentId) &&
         request.resource.data.method == 'online' &&
@@ -228,16 +229,23 @@ service cloud.firestore {
 
     match /feeRequests/{requestId} {
       allow get: if isSignedIn() && (
-        isAdmin() || isAccountant() ||
+        isAdmin() || isAccountant() || isGrievanceOfficer() ||
         isLinkedToStudent(resource.data.get('studentId', ''))
       );
-      allow list: if isAdmin() || isAccountant() || isParent() || isStudent();
-      allow create: if isAdmin() || isAccountant();
-      allow update: if isAdmin() || isAccountant() || (
+      allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isParent() || isStudent();
+      allow create: if isAdmin() || isAccountant() || isGrievanceOfficer();
+      allow update: if isAdmin() || isAccountant() || isGrievanceOfficer() || (
         isLinkedToStudent(resource.data.studentId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paidAmount', 'status', 'updatedAt'])
       );
       allow delete: if isAdmin() || isAccountant();
+    }
+
+    // Broadcast logs — written by grievance officer / super admin after WhatsApp blasts
+    match /broadcastLogs/{id} {
+      allow read: if isAdmin() || isAccountant() || isGrievanceOfficer();
+      allow create: if isSignedIn() && (isAdmin() || isGrievanceOfficer());
+      allow delete: if isAdmin();
     }
 
     // Activity logs — admins see all; students/parents/teachers/accounts can query their own feed

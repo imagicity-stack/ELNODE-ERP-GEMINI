@@ -4,6 +4,9 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
 } from 'firebase/auth';
 import { auth } from '../firebase';
 import { SCHOOL_NAME, APP_NAME, SCHOOL_DOMAIN, LEGACY_DOMAIN, APP_LOGO } from '../constants';
@@ -25,11 +28,14 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
+      await setPersistence(auth, keepSignedIn ? browserLocalPersistence : browserSessionPersistence);
       const cleanId = identifier.trim().toLowerCase();
       if (activeTab === 'student-parent') {
         const primaryEmail = `${cleanId}@${SCHOOL_DOMAIN}`;
@@ -294,6 +300,25 @@ export default function Login() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <div
+                onClick={() => setKeepSignedIn(v => !v)}
+                className={cn(
+                  'w-10 h-5.5 rounded-full relative transition-colors duration-200 flex-shrink-0',
+                  keepSignedIn ? 'bg-indigo-600' : 'bg-slate-200',
+                )}
+                style={{ height: '1.375rem' }}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200',
+                    keepSignedIn ? 'translate-x-5' : 'translate-x-0.5',
+                  )}
+                />
+              </div>
+              <span className="text-sm text-slate-600 font-medium">Keep me signed in</span>
+            </label>
 
             <button
               type="submit"

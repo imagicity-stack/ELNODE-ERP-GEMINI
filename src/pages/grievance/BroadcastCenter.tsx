@@ -64,26 +64,38 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
   useEffect(() => {
     (async () => {
       try {
-        const [stuSnap, reqSnap, clsSnap, logSnap] = await Promise.all([
+        // Main data — students, fee requests, classes (must all succeed)
+        const [stuSnap, reqSnap, clsSnap] = await Promise.all([
           getDocs(collection(db, 'students')),
           getDocs(collection(db, 'feeRequests')),
           getDocs(collection(db, 'classes')),
-          getDocs(query(collection(db, 'broadcastLogs'), orderBy('sentAt', 'desc'), limit(20))),
         ]);
         setStudents(stuSnap.docs.map(d => ({ id: d.id, ...d.data() } as Student)));
         setRequests(reqSnap.docs.map(d => ({ id: d.id, ...d.data() } as FeeRequest)));
         setClasses(clsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Class)));
-        setBroadcastLogs(logSnap.docs.map(d => ({ id: d.id, ...d.data() } as BroadcastLog)));
-      } catch {
-        showToast('Failed to load data', 'error');
+      } catch (err) {
+        console.error('BroadcastCenter: failed to load main data', err);
+        showToast('Failed to load student/fee data', 'error');
       } finally {
         setLoading(false);
+      }
+
+      // Broadcast history — non-fatal; missing index or empty collection is fine
+      try {
+        const logSnap = await getDocs(
+          query(collection(db, 'broadcastLogs'), orderBy('sentAt', 'desc'), limit(20)),
+        );
+        setBroadcastLogs(logSnap.docs.map(d => ({ id: d.id, ...d.data() } as BroadcastLog)));
+      } catch (err) {
+        console.warn('BroadcastCenter: could not load broadcast history', err);
+        // Leave broadcastLogs as [] — history panel shows "No broadcasts yet"
       }
     })();
   }, []);
 
   const selectedTemplate = TEMPLATES.find(t => t.id === template)!;
   const studentMap = Object.fromEntries(students.map(s => [s.id, s]));
+  const classNameMap = Object.fromEntries(classes.map(c => [c.id, c.name]));
 
   const recipients: Recipient[] = (() => {
     if (template === 'general_announcement') {
@@ -94,7 +106,7 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
           phone: s.parentDetails!.phone!,
           parentName: s.parentDetails?.fatherName || 'Parent',
           studentName: s.name,
-          classSection: `${s.classId} ${s.section}`.trim(),
+          classSection: `${classNameMap[s.classId] || s.classId} ${s.section}`.trim(),
         }));
     }
     return requests
@@ -107,7 +119,7 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
           phone: student.parentDetails.phone,
           parentName: student.parentDetails.fatherName || 'Parent',
           studentName: student.name,
-          classSection: `${student.classId} ${student.section}`.trim(),
+          classSection: `${classNameMap[student.classId] || student.classId} ${student.section}`.trim(),
           amount: `Rs. ${((r.totalAmount || 0) - (r.paidAmount || 0)).toLocaleString('en-IN')}`,
           month: fmtMonthYear(r.month),
           dueDate: r.dueDate || '',
