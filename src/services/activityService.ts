@@ -24,8 +24,10 @@ export const logActivity = async (
       ...(metadata !== undefined ? { metadata } : {}),
     };
 
-    // Strip undefined values so Firestore addDoc never receives them
-    const log = JSON.parse(JSON.stringify(rawLog));
+    // Strip undefined values without destroying Firestore sentinels (e.g. serverTimestamp)
+    const log = Object.fromEntries(
+      Object.entries(rawLog).filter(([, v]) => v !== undefined)
+    );
 
     await addDoc(collection(db, 'activityLogs'), log);
   } catch (err) {

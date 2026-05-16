@@ -34,6 +34,19 @@ import { getActivityLogs } from '../../services/activityService';
 import { format } from 'date-fns';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
 
+// Tolerates Firestore Timestamp objects, ISO strings, missing/malformed values.
+const toDate = (ts: any): Date | null => {
+  if (!ts) return null;
+  if (typeof ts?.toDate === 'function') return ts.toDate();
+  if (typeof ts?.seconds === 'number') return new Date(ts.seconds * 1000);
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d;
+};
+const safeFormat = (ts: any, pattern: string) => {
+  const d = toDate(ts);
+  return d ? format(d, pattern) : '—';
+};
+
 const SECTIONS: ActivitySection[] = [
   'Super Admin', 'Accounts', 'Parents', 'Students', 'Academic', 'Teachers', 'Exam', 'Staff'
 ];
@@ -77,7 +90,7 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
     );
 
     const tableRows = filteredLogs.map((log) => [
-      format(new Date(log.timestamp), 'dd/MM/yy HH:mm'),
+      safeFormat(log.timestamp, 'dd/MM/yy HH:mm'),
       `${log.userName}\n(${log.userRole})`,
       log.section,
       log.action,
@@ -186,7 +199,7 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
                     <p className="text-xs font-bold text-slate-700 mb-0.5">{log.action}</p>
                     <p className="text-[10px] text-slate-500 line-clamp-2">{log.details}</p>
                     <p className="text-[10px] text-slate-400 mt-1 font-mono">
-                      {format(new Date(log.timestamp), 'MMM dd, h:mm a')}
+                      {safeFormat(log.timestamp, 'MMM dd, h:mm a')}
                     </p>
                   </div>
                 </div>
@@ -272,7 +285,7 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
                     <Td className="whitespace-nowrap">
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-slate-900">
-                          {format(new Date(log.timestamp), 'MMM dd, h:mm a')}
+                          {safeFormat(log.timestamp, 'MMM dd, h:mm a')}
                         </span>
                         <span className="text-[10px] text-slate-400 font-mono sm:hidden">
                           {log.section} · {log.action}
