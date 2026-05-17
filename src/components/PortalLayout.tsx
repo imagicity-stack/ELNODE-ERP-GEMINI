@@ -44,6 +44,22 @@ import { motion, AnimatePresence } from 'motion/react';
 import { requestNotificationPermission, startNotificationListeners } from '../services/notificationService';
 import { useToast } from './Toast';
 import { usePermissions } from '../hooks/usePermissions';
+import { logActivity } from '../services/activityService';
+import { ActivitySection } from '../types';
+
+const roleToSection = (role: string): ActivitySection => {
+  switch (role) {
+    case 'super_admin': return 'Super Admin';
+    case 'accountant':
+    case 'accounts': return 'Accounts';
+    case 'teacher': return 'Teachers';
+    case 'student': return 'Students';
+    case 'parent': return 'Parents';
+    case 'principal': return 'Principal';
+    case 'grievance_officer': return 'Super Admin';
+    default: return 'Staff';
+  }
+};
 
 // ─── Role Configuration ───────────────────────────────────────────────────────
 
@@ -316,6 +332,15 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
   }, {} as Record<string, NavItem[]>);
 
   const handleLogout = async () => {
+    try {
+      const section = roleToSection(user.role);
+      await logActivity(
+        user,
+        'User Logged Out',
+        section,
+        `${user.name} signed out of the ${section} portal`
+      );
+    } catch { /* non-fatal — proceed with sign out */ }
     await signOut(auth);
     navigate('/login');
   };

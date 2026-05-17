@@ -6,6 +6,7 @@ import { PageHeader, Card, Button } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { Megaphone, Users, Send, CheckCircle2, XCircle, Clock, Filter } from 'lucide-react';
 import { cn, fmtMonthYear } from '../../lib/utils';
+import { logActivity } from '../../services/activityService';
 
 const PAYMENT_LINK = 'https://ehs.elnode.in/parent/fees';
 
@@ -167,6 +168,14 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
       setBroadcastLogs(prev => [{ id: docRef.id, ...logEntry }, ...prev.slice(0, 19)]);
     } catch {}
 
+    logActivity(
+      user,
+      'Broadcast Sent (Bulk)',
+      'Super Admin',
+      `Bulk broadcast sent to ${recipients.length} recipients`,
+      { count: recipients.length, channel: 'whatsapp', template }
+    );
+
     showToast(`Sent to ${done} recipients${failed > 0 ? `, ${failed} failed` : ''}`, done > 0 ? 'success' : 'error');
     setSending(false);
     setProgress(null);
@@ -189,6 +198,13 @@ export default function BroadcastCenter({ user }: { user: UserProfile }) {
       });
       if (res.ok) {
         showToast('Message sent successfully', 'success');
+        logActivity(
+          user,
+          'Broadcast Sent (Individual)',
+          'Super Admin',
+          `Individual broadcast sent to ${individualParent || phone}`,
+          { recipientId: phone, recipientName: individualParent || 'Parent', channel: 'whatsapp' }
+        );
         try {
           const logEntry = {
             templateName: template,

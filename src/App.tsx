@@ -8,8 +8,27 @@ import { useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, where, collection, limit, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
-import { UserProfile } from './types';
+import { UserProfile, ActivitySection } from './types';
 import { SCHOOL_DOMAIN, LEGACY_DOMAIN } from './constants';
+import { logActivity } from './services/activityService';
+
+// Guard so login is logged once per browser session — onAuthStateChanged
+// fires on token refresh too, and we don't want a log on every refresh.
+let hasLoggedLoginThisSession = false;
+
+const roleToSection = (role: string): ActivitySection => {
+  switch (role) {
+    case 'super_admin': return 'Super Admin';
+    case 'accountant':
+    case 'accounts': return 'Accounts';
+    case 'teacher': return 'Teachers';
+    case 'student': return 'Students';
+    case 'parent': return 'Parents';
+    case 'principal': return 'Principal';
+    case 'grievance_officer': return 'Super Admin';
+    default: return 'Staff';
+  }
+};
 import Login from './pages/Login';
 import AdminPortal from './pages/admin/AdminPortal';
 import StudentPortal from './pages/student/StudentPortal';
@@ -133,6 +152,22 @@ export default function App() {
             } else {
               setUser(existingUser);
             }
+
+            if (!hasLoggedLoginThisSession) {
+              hasLoggedLoginThisSession = true;
+              const profileForLog = needsUpdate ? updatedUser : existingUser;
+              const section = roleToSection(profileForLog.role);
+              const provider = firebaseUser.providerData?.some(
+                (p: any) => p.providerId !== 'password'
+              ) ? 'google' : 'password';
+              logActivity(
+                profileForLog,
+                'User Logged In',
+                section,
+                `${profileForLog.name} signed in to the ${section} portal`,
+                { provider }
+              );
+            }
           } else {
             
             // 2. Try searching by email in case of UID mismatch
@@ -198,6 +233,21 @@ export default function App() {
                   console.error('Error linking profile to new UID:', setErr);
                   setUser(existingUser);
                 }
+
+                if (!hasLoggedLoginThisSession) {
+                  hasLoggedLoginThisSession = true;
+                  const section = roleToSection(newUser.role);
+                  const provider = firebaseUser.providerData?.some(
+                    (p: any) => p.providerId !== 'password'
+                  ) ? 'google' : 'password';
+                  logActivity(
+                    newUser,
+                    'User Logged In',
+                    section,
+                    `${newUser.name} signed in to the ${section} portal`,
+                    { provider }
+                  );
+                }
               } else {
                 // Google-authenticated user has no linked school profile.
                 // Sign out to prevent a stuck-authenticated-but-null loop.
@@ -222,6 +272,8 @@ export default function App() {
           setUser(null);
         }
       } else {
+        // Signed out — reset login guard so the next sign-in is logged
+        hasLoggedLoginThisSession = false;
         setUser(null);
       }
       setLoading(false);

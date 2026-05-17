@@ -687,6 +687,7 @@ export interface ActivityLog {
   action: string;
   section: ActivitySection;
   details: string;
+  aiDescription?: string;
   ip?: string;
   location?: string;
   isp?: string;

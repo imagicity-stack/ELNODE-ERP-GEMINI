@@ -56,6 +56,13 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
         await updateDoc(doc(db, 'houses', editingHouse.id), formData);
       } else {
         await addDoc(collection(db, 'houses'), formData);
+        logActivity(
+          user,
+          'House Created',
+          'Academic',
+          `Created house "${formData.name}"`,
+          { name: formData.name, color: formData.color }
+        );
       }
       setIsModalOpen(false);
       setIsEditMode(false);
@@ -88,7 +95,15 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
   const performDelete = async () => {
     if (!deletingId) return;
     try {
+      const deleted = houses.find(h => h.id === deletingId);
       await deleteDoc(doc(db, 'houses', deletingId));
+      logActivity(
+        user,
+        'House Deleted',
+        'Academic',
+        `Deleted house "${deleted?.name || deletingId}"`,
+        { houseId: deletingId, name: deleted?.name }
+      );
       fetchData();
       setIsDeleteModalOpen(false);
       setDeletingId(null);

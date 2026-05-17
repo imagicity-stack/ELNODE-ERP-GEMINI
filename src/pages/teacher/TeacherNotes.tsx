@@ -5,6 +5,7 @@ import { collection, addDoc, getDocs, query, where, orderBy, doc, deleteDoc, get
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
+import { logActivity } from '../../services/activityService';
 import {
   PageHeader,
   Card,
@@ -139,7 +140,16 @@ export default function TeacherNotes({ user }: TeacherNotesProps) {
       };
 
       await addDoc(collection(db, 'studyMaterials'), materialData);
-      
+
+      const className = classes.find(c => c.id === formData.classId)?.name || formData.classId;
+      logActivity(
+        user,
+        'Study Material Uploaded',
+        'Teachers',
+        `Uploaded "${formData.title}" for Class ${className}`,
+        { classId: formData.classId, subject: formData.subjectId, fileName: file.name }
+      );
+
       showToast('Material uploaded successfully', 'success');
       setIsModalOpen(false);
       setFormData({
@@ -174,6 +184,14 @@ export default function TeacherNotes({ user }: TeacherNotesProps) {
         const storageRef = ref(storage, material.storagePath);
         await deleteObject(storageRef).catch(err => console.error('Error deleting from storage:', err));
       }
+
+      logActivity(
+        user,
+        'Study Material Deleted',
+        'Teachers',
+        `Deleted study material "${material?.title || deletingId}"`,
+        { materialId: deletingId }
+      );
 
       showToast('Material deleted successfully', 'success');
       fetchData();

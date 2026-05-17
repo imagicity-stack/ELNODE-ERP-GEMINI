@@ -52,6 +52,13 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
         await updateDoc(doc(db, 'subjects', editingSubject.id), formData);
       } else {
         await addDoc(collection(db, 'subjects'), formData);
+        logActivity(
+          user,
+          'Subject Created',
+          'Academic',
+          `Created subject "${formData.name}" (${formData.code})`,
+          { name: formData.name, code: formData.code, type: formData.type }
+        );
       }
       setIsModalOpen(false);
       setIsEditMode(false);
@@ -84,7 +91,15 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
   const performDelete = async () => {
     if (!deletingId) return;
     try {
+      const deleted = subjects.find(s => s.id === deletingId);
       await deleteDoc(doc(db, 'subjects', deletingId));
+      logActivity(
+        user,
+        'Subject Deleted',
+        'Academic',
+        `Deleted subject "${deleted?.name || deletingId}"`,
+        { subjectId: deletingId, name: deleted?.name, code: deleted?.code }
+      );
       fetchSubjects();
       setIsDeleteModalOpen(false);
       setDeletingId(null);

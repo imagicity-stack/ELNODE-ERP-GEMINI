@@ -148,6 +148,19 @@ export default function TimetableManagement({ user }: { user: UserProfile }) {
       // Refresh timetables
       const snap = await getDocs(collection(db, 'timetable'));
       setTimetables(snap.docs.map(d => ({ id: d.id, ...d.data() } as Timetable)));
+
+      const className = classes.find(c => c.id === selectedClassId)?.name || selectedClassId;
+      const subjectName = subjects.find(s => s.id === formData.subjectId)?.name || formData.subjectId;
+      const teacherName = teachers.find(t => t.id === formData.teacherId)?.name || formData.teacherId;
+      const slotLabel = config?.slots.find(s => s.id === formData.slotId)?.label || formData.slotId;
+      logActivity(
+        user,
+        'Timetable Slot Created',
+        'Academic',
+        `Class ${className} · ${formData.day} ${slotLabel} → ${subjectName} (${teacherName})`,
+        { classId: selectedClassId, day: formData.day, slotId: formData.slotId, subjectId: formData.subjectId, teacherId: formData.teacherId }
+      );
+
       setIsModalOpen(false);
       setFormData({
         day: '',
@@ -185,6 +198,16 @@ export default function TimetableManagement({ user }: { user: UserProfile }) {
       // Refresh
       const snap = await getDocs(collection(db, 'timetable'));
       setTimetables(snap.docs.map(d => ({ id: d.id, ...d.data() } as Timetable)));
+
+      const className = classes.find(c => c.id === selectedTimetable.classId)?.name || selectedTimetable.classId;
+      const slotLabel = config?.slots.find(s => s.id === slotId)?.label || slotId;
+      logActivity(
+        user,
+        'Timetable Slot Deleted',
+        'Academic',
+        `Class ${className} · ${day} ${slotLabel} removed`,
+        { classId: selectedTimetable.classId, day, slotId }
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'timetable');
     }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { logActivity } from '../../services/activityService';
 import { SchoolEvent, UserProfile } from '../../types';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
@@ -79,11 +80,23 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
     if (!isAdmin) return;
     setLoading(true);
     try {
-      await addDoc(collection(db, 'events'), {
+      const eventRef = await addDoc(collection(db, 'events'), {
         ...formData,
         createdBy: user.uid,
         createdAt: new Date().toISOString(),
       });
+      logActivity(
+        user,
+        'Calendar Event Created',
+        'Academic',
+        `Created calendar event "${formData.title}" on ${formData.startDate}`,
+        {
+          eventId: eventRef.id,
+          title: formData.title,
+          type: formData.type,
+          startDate: formData.startDate,
+        }
+      );
       setIsModalOpen(false);
       fetchEvents();
       setFormData({
@@ -107,7 +120,17 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
   const performDelete = async () => {
     if (!deletingId) return;
     try {
+      const deletedEvent = events.find(e => e.id === deletingId);
       await deleteDoc(doc(db, 'events', deletingId));
+      logActivity(
+        user,
+        'Calendar Event Deleted',
+        'Academic',
+        deletedEvent
+          ? `Deleted calendar event "${deletedEvent.title}"`
+          : `Deleted calendar event ${deletingId}`,
+        { eventId: deletingId, title: deletedEvent?.title, type: deletedEvent?.type }
+      );
       fetchEvents();
       setIsDeleteModalOpen(false);
       setDeletingId(null);
