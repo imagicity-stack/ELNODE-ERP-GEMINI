@@ -279,7 +279,9 @@ export interface FeeRequest {
     name: string;
     amount: number;
     discount: number;
+    discountReason?: string;
     finalAmount: number;
+    isCustom?: boolean;
   }[];
   totalAmount: number;
   fineAmount: number;
