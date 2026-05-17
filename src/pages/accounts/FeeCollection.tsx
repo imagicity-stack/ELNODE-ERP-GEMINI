@@ -880,9 +880,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       await updateDoc(doc(db, 'feeRequests', request.id), updatedRequest);
       logActivity(
-        user, 
-        'Waived Penalty', 
-        'Super Admin', 
+        user,
+        'Waived Penalty',
+        user.role === 'super_admin' ? 'Super Admin' : 'Accountant',
         `Waived ₹${waiverData.amount} for ${waiverData.studentName}`,
         { studentId: request.studentId, amount: waiverData.amount }
       );
@@ -1336,7 +1336,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                             size="sm"
                             onClick={() => handleCancelRequest(studentRequest.id, student.id)}
                           />
-                          {user.role === 'super_admin' && currentFine > 0 && (
+                          {(user.role === 'super_admin' || user.role === 'accountant') && currentFine > 0 && (
                             <IconButton
                               icon={ShieldOff}
                               variant="secondary"
