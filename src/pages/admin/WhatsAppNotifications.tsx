@@ -163,7 +163,7 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
         sentByName: user.displayName || user.email || 'Admin',
         sentAt: serverTimestamp(),
       });
-      await logActivity(user, 'WhatsApp Blast Sent', `${template} sent to ${recipients.length - failed}/${recipients.length} parents`);
+      await logActivity(user, 'WhatsApp Blast Sent', 'Super Admin', `${template} sent to ${recipients.length - failed}/${recipients.length} parents`, { template, total: recipients.length, failed });
     } catch { /* non-fatal */ }
 
     setSending(false);

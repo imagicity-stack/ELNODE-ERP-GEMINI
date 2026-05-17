@@ -59,7 +59,7 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
     setSaving(true);
     try {
       await saveSchoolSettings({ ...settings, updatedBy: user.uid });
-      await logActivity(user, 'School Settings Updated', `Academic year set to ${settings.academicYear}`);
+      await logActivity(user, 'School Settings Updated', 'Super Admin', `Academic year set to ${settings.academicYear}`, { academicYear: settings.academicYear });
       showToast('Settings saved successfully', 'success');
     } catch {
       showToast('Failed to save settings', 'error');

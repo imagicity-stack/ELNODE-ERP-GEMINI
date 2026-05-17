@@ -1,7 +1,7 @@
 import { UserProfile, Student, FeeRequest, FeePayment, FineConfig, AdvancePayment, FeeStructure, FeeHead } from '../../types';
-import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Download, Wallet, Scale, ShieldOff, CalendarDays } from 'lucide-react';
+import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Download, Wallet, Scale, ShieldOff, CalendarDays, MessageSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, doc, orderBy, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, orderBy, getDoc, updateDoc } from 'firebase/firestore';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { getAdvancePaymentsForStudent } from '../../services/advancePaymentService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -27,6 +27,8 @@ import {
   Spinner,
   Modal,
   FormField,
+  Input,
+  Textarea,
 } from '../../components/ui';
 
 interface ParentFeesProps {
@@ -53,6 +55,16 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
   const [advanceSelectedMonths, setAdvanceSelectedMonths] = useState<string[]>([]);
   const [advanceSelectedHeads, setAdvanceSelectedHeads] = useState<string[]>([]);
   const [advanceProcessing, setAdvanceProcessing] = useState(false);
+
+  // Partial payment request state
+  const [partialReqModal, setPartialReqModal] = useState<{
+    isOpen: boolean; requestId: string; maxAmount: number;
+  }>({ isOpen: false, requestId: '', maxAmount: 0 });
+  const [partialReqData, setPartialReqData] = useState({
+    amount: '', reason: '', committedDate: '',
+  });
+  const [partialReqLoading, setPartialReqLoading] = useState(false);
+
   const { showToast } = useToast();
 
   const fetchData = async () => {
@@ -96,6 +108,60 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
   useEffect(() => {
     fetchData();
   }, [selectedStudent?.id]);
+
+  const handleSubmitPartialRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = Number(partialReqData.amount);
+    if (!amount || amount <= 0 || amount >= partialReqModal.maxAmount) {
+      showToast(`Enter an amount between ₹1 and ₹${(partialReqModal.maxAmount - 1).toLocaleString()}`, 'error');
+      return;
+    }
+    if (!partialReqData.reason.trim()) { showToast('Please enter a reason', 'error'); return; }
+    if (!partialReqData.committedDate) { showToast('Please enter a committed payment date', 'error'); return; }
+    setPartialReqLoading(true);
+    try {
+      await updateDoc(doc(db, 'feeRequests', partialReqModal.requestId), {
+        partialPaymentRequest: {
+          requestedAmount: amount,
+          reason: partialReqData.reason.trim(),
+          committedDate: partialReqData.committedDate,
+          requestedAt: new Date().toISOString(),
+          status: 'pending',
+        },
+      });
+      logActivity(user, 'Partial Payment Request', 'Parents',
+        `Requested ₹${amount.toLocaleString()} partial — committed by ${partialReqData.committedDate}`);
+      // WhatsApp confirmation to parent
+      try {
+        const phone = selectedStudent?.parentDetails?.phone;
+        if (phone) {
+          await fetch('/api/whatsapp/send-template', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone,
+              templateName: 'partial_payment_request',
+              parameters: [
+                selectedStudent?.parentDetails?.fatherName || user.name,
+                selectedStudent?.name || '',
+                `₹${amount.toLocaleString('en-IN')}`,
+                partialReqData.committedDate,
+                partialReqData.reason,
+              ],
+            }),
+          });
+        }
+      } catch { /* non-fatal */ }
+      showToast('Partial payment request submitted — the accountant will process it.', 'success');
+      setPartialReqModal({ isOpen: false, requestId: '', maxAmount: 0 });
+      setPartialReqData({ amount: '', reason: '', committedDate: '' });
+      fetchData();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'feeRequests');
+    } finally {
+      setPartialReqLoading(false);
+    }
+  };
 
   const handleDownloadReceipt = (payment: FeePayment) => {
     const request = feeRequests.find(r => r.id === payment.feeRequestId);
@@ -408,7 +474,7 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                       </div>
                     </div>
                   </div>
-                  <div className="p-4">
+                  <div className="p-4 space-y-2">
                     <button
                       onClick={() => handlePayNow(currentRequest)}
                       className="w-full py-3.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl text-sm font-bold active:scale-95 transition-transform shadow-lg flex items-center justify-center gap-2"
@@ -416,6 +482,27 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                       <CreditCard className="w-4 h-4" />
                       Pay Now — ₹{(currentRequest.totalAmount + currentFineForRequest - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0)).toLocaleString()}
                     </button>
+                    {currentRequest.status !== 'paid' && !currentRequest.partialPaymentRequest && (
+                      <button
+                        onClick={() => {
+                          const remaining = currentRequest.totalAmount - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0);
+                          setPartialReqModal({ isOpen: true, requestId: currentRequest.id, maxAmount: remaining });
+                          setPartialReqData({ amount: '', reason: '', committedDate: '' });
+                        }}
+                        className="w-full py-2.5 border border-violet-200 bg-violet-50 text-violet-700 rounded-xl text-xs font-bold active:scale-95 transition-transform flex items-center justify-center gap-1.5"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        Request Partial Payment
+                      </button>
+                    )}
+                    {currentRequest.partialPaymentRequest?.status === 'pending' && (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl">
+                        <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <p className="text-[11px] text-amber-700 font-medium">
+                          Partial request of ₹{currentRequest.partialPaymentRequest.requestedAmount.toLocaleString()} pending — accountant will process it.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -918,6 +1005,66 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
             )}
           </FormField>
         </div>
+      </Modal>
+
+      {/* Partial Payment Request Modal */}
+      <Modal
+        isOpen={partialReqModal.isOpen}
+        onClose={() => !partialReqLoading && setPartialReqModal({ isOpen: false, requestId: '', maxAmount: 0 })}
+        title="Request Partial Payment"
+        subtitle="The accountant will process your request and collect the amount"
+        size="sm"
+        footer={
+          <div className="flex items-center justify-end gap-3">
+            <Button variant="secondary" onClick={() => setPartialReqModal({ isOpen: false, requestId: '', maxAmount: 0 })} disabled={partialReqLoading}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={partialReqLoading} onClick={(e: any) => {
+              const form = document.querySelector('form[data-partial-req-form]') as HTMLFormElement;
+              if (form) form.requestSubmit();
+            }}>
+              Submit Request
+            </Button>
+          </div>
+        }
+      >
+        <form onSubmit={handleSubmitPartialRequest} data-partial-req-form className="space-y-4">
+          <FormField label={`Amount to Pay Now (₹)`} required hint={`Must be less than the full balance of ₹${partialReqModal.maxAmount.toLocaleString()}`}>
+            <Input
+              type="number"
+              required
+              min={1}
+              max={partialReqModal.maxAmount - 1}
+              value={partialReqData.amount}
+              onChange={e => setPartialReqData(d => ({ ...d, amount: e.target.value }))}
+              placeholder="e.g. 2000"
+            />
+          </FormField>
+          <FormField label="Reason for Partial Payment" required>
+            <Textarea
+              required
+              rows={2}
+              value={partialReqData.reason}
+              onChange={e => setPartialReqData(d => ({ ...d, reason: e.target.value }))}
+              placeholder="e.g. Financial difficulty this month — will pay balance next week"
+            />
+          </FormField>
+          <FormField label="Committed Date for Remaining Balance" required hint="Date by which you commit to pay the remaining amount">
+            <Input
+              type="date"
+              required
+              value={partialReqData.committedDate}
+              min={new Date().toISOString().split('T')[0]}
+              onChange={e => setPartialReqData(d => ({ ...d, committedDate: e.target.value }))}
+            />
+          </FormField>
+          <div className="flex items-start gap-2.5 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+            <AlertCircle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+            <p className="text-[10px] text-blue-700">
+              This is a request — not a payment. The accountant will review and collect the amount. You will receive a WhatsApp confirmation.
+            </p>
+          </div>
+        </form>
       </Modal>
     </>
   );
