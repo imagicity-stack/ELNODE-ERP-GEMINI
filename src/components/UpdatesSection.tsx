@@ -14,7 +14,7 @@ import {
   Calendar,
   User
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
@@ -191,14 +191,17 @@ export default function UpdatesSection({ user, className, maxItems = 10 }: Updat
                     <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium whitespace-nowrap">
                       <Clock className="w-3 h-3" />
                       {(() => {
-                        if (!activity.timestamp) return 'Just now';
+                        if (!activity.timestamp) return format(new Date(), 'MMM dd, h:mm a');
                         const d = typeof activity.timestamp.toDate === 'function'
                           ? activity.timestamp.toDate()
                           : new Date(activity.timestamp);
-                        // Guard against Invalid Date — Firestore serverTimestamp resolves null
-                        // initially, malformed strings give NaN, both crash date-fns.
-                        if (!d || isNaN(d.getTime())) return 'Just now';
-                        return formatDistanceToNow(d, { addSuffix: true });
+                        if (!d || isNaN(d.getTime())) return format(new Date(), 'MMM dd, h:mm a');
+                        const ageMs = Date.now() - d.getTime();
+                        return ageMs < 60_000
+                          ? format(d, 'h:mm a')
+                          : ageMs < 86_400_000
+                          ? formatDistanceToNow(d, { addSuffix: true })
+                          : format(d, 'MMM dd, h:mm a');
                       })()}
                     </div>
                   </div>

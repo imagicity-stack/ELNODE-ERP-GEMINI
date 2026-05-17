@@ -291,6 +291,13 @@ export interface FeeRequest {
   waivedBy?: string;
   waivedAt?: string;
   waiverReason?: string;
+  partialPaymentRequest?: {
+    requestedAmount: number;
+    reason: string;
+    committedDate: string;
+    requestedAt: string;
+    status: 'pending' | 'acknowledged';
+  };
 }
 
 export type PaymentMethod = 'bank_transfer' | 'cheque' | 'cash' | 'upi' | 'net_banking' | 'online';

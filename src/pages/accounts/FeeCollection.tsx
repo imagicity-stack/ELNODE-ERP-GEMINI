@@ -1,7 +1,7 @@
 import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure, PaymentMethod, FeeHead, FineConfig } from '../../types';
 import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale, MessageSquare, Search, Users, ChevronDown, ChevronUp, Wallet, CalendarDays } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc, runTransaction, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc, updateDoc, doc, setDoc, deleteDoc, getDoc, runTransaction, onSnapshot } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { getSchoolSettings } from '../../services/settingsService';
@@ -121,7 +121,11 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     const unsubs = [
       onSnapshot(collection(db, 'students'), (s) => setStudents(s.docs.map(d => ({ id: d.id, ...d.data() } as Student))), onErr),
       onSnapshot(collection(db, 'feeRequests'), (s) => { setFeeRequests(s.docs.map(d => ({ id: d.id, ...d.data() } as FeeRequest))); setLoading(false); }, onErr),
-      onSnapshot(query(collection(db, 'feePayments'), orderBy('date', 'desc')), (s) => setPayments(s.docs.map(d => ({ id: d.id, ...d.data() } as FeePayment))), onErr),
+      onSnapshot(collection(db, 'feePayments'), (s) => {
+        const sorted = s.docs.map(d => ({ id: d.id, ...d.data() } as FeePayment))
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        setPayments(sorted);
+      }, onErr),
       onSnapshot(collection(db, 'feeStructures'), (s) => setFeeStructures(s.docs.map(d => ({ id: d.id, ...d.data() } as FeeStructure))), onErr),
       onSnapshot(collection(db, 'classes'), (s) => setClasses(s.docs.map(d => ({ id: d.id, ...d.data() } as Class))), onErr),
       onSnapshot(collection(db, 'feeHeads'), (s) => setGlobalHeads(s.docs.map(d => ({ ...d.data() } as FeeHead))), onErr),
@@ -378,13 +382,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       const paymentDoc = txResult.paymentDoc;
 
-      logActivity(
-        user,
-        'Recorded Fee Payment',
-        'Accounts',
-        `Collected ₹${payAmount.toLocaleString()} from ${selectedStudent.name} for ${paymentData.head}`,
-        { studentId: selectedStudent.id, feeHead: paymentData.head, amount: payAmount }
-      );
+      // activity logged below after student.feeStatus update
 
       // Recompute student.feeStatus from the latest set of requests (best-effort,
       // derived field — done after the atomic write so it never blocks payment).
@@ -406,10 +404,10 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       await logActivity(
         user,
-        'RECORD_PAYMENT',
+        txResult.newStatus === 'paid' ? 'Full Payment Collected' : 'Partial Payment Collected',
         'Accounts',
-        `Recorded payment of ₹${payAmount} for ${selectedStudent.name} (${selectedStudent.schoolNumber})`,
-        { studentId: selectedStudent.id }
+        `Collected ₹${payAmount.toLocaleString('en-IN')} from ${selectedStudent.name} (${selectedStudent.schoolNumber}) via ${paymentData.method.replace('_', ' ')} — status: ${txResult.newStatus.replace('_', ' ')}`,
+        { studentId: selectedStudent.id, amount: payAmount, method: paymentData.method, status: txResult.newStatus }
       );
 
       setIsModalOpen(false);
@@ -616,12 +614,15 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     return months;
   };
 
-  // For the currently selected student, derive available heads from feeStructures
+  // Merge class-specific heads with global heads for advance modal.
+  // Class structure amounts take precedence; global heads not in the structure are appended.
   const getAvailableHeadsForAdvance = (student: Student | null) => {
     if (!student) return [] as FeeHead[];
     const structure = feeStructures.find(s => s.classId === student.classId);
-    if (structure && structure.heads.length > 0) return structure.heads;
-    return globalHeads;
+    const classHeads: FeeHead[] = structure?.heads || [];
+    const classHeadNames = new Set(classHeads.map(h => h.name));
+    const extraGlobal = globalHeads.filter(h => !classHeadNames.has(h.name));
+    return [...classHeads, ...extraGlobal];
   };
 
   const calcAdvanceTotal = (): { perMonth: number; total: number } => {
@@ -1027,14 +1028,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           ) : (
             filteredStudents.slice(0, 50).map((student) => {
               const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
-              const totalFee = studentRequests.reduce((sum, r) => sum + r.totalAmount, 0);
-              const currentFine = studentRequests.reduce((sum, r) => sum + (fineConfig ? calculateFine(r, fineConfig) : 0), 0);
-              const waiverAmount = studentRequests.reduce((sum, r) => sum + (r.waivedAmount || 0), 0);
-              const paidAmount = studentRequests.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
-              // Fee balance excludes fine — fine is shown separately and waived independently
-              const feeBalance = Math.max(0, totalFee - waiverAmount - paidAmount);
-              const balance = feeBalance; // kept for legacy references in this block
               const studentRequest = studentRequests[0];
+              const currentFine = studentRequest ? (fineConfig ? calculateFine(studentRequest, fineConfig) : 0) : 0;
+              // balance = remaining on the CURRENT (first pending) request only, fine excluded
+              const balance = studentRequest
+                ? Math.max(0, (studentRequest.totalAmount || 0) - (studentRequest.waivedAmount || 0) - (studentRequest.paidAmount || 0))
+                : 0;
               const className = classes.find(c => c.id === student.classId)?.name || student.classId;
 
               return (
@@ -1047,28 +1046,42 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                         {className} • {student.section} • #{student.schoolNumber}
                       </p>
                     </div>
-                    <Badge
-                      variant={student.feeStatus === 'paid' ? 'success' : student.feeStatus === 'overdue' ? 'error' : 'warning'}
-                      className="text-[9px] shrink-0"
-                    >
-                      {studentRequest?.status?.replace('_', ' ') || student.feeStatus}
-                    </Badge>
+                    {studentRequest && (
+                      <Badge
+                        variant={studentRequest.status === 'paid' ? 'success' : studentRequest.status === 'overdue' ? 'error' : 'warning'}
+                        className="text-[9px] shrink-0"
+                      >
+                        {studentRequest.status.replace('_', ' ')}
+                      </Badge>
+                    )}
                   </div>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-slate-50 rounded-lg py-1.5">
-                      <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Due</p>
-                      <p className="text-xs font-bold text-slate-900">₹{(totalFee - waiverAmount).toLocaleString()}</p>
+                  {/* Partial payment request banner */}
+                  {studentRequest?.partialPaymentRequest?.status === 'pending' && (
+                    <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 bg-amber-50 border border-amber-100 rounded-xl">
+                      <Clock className="w-3 h-3 text-amber-500 shrink-0" />
+                      <p className="text-[10px] text-amber-700 font-bold flex-1">
+                        Parent requested ₹{studentRequest.partialPaymentRequest.requestedAmount.toLocaleString()} partial — committed by {new Date(studentRequest.partialPaymentRequest.committedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      </p>
                     </div>
-                    <div className="bg-emerald-50 rounded-lg py-1.5">
-                      <p className="text-[9px] text-emerald-700 uppercase tracking-widest font-bold">Paid</p>
-                      <p className="text-xs font-bold text-emerald-700">₹{paidAmount.toLocaleString()}</p>
+                  )}
+
+                  {studentRequest && (
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-slate-50 rounded-lg py-1.5">
+                        <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Total</p>
+                        <p className="text-xs font-bold text-slate-900">₹{(studentRequest.totalAmount || 0).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-emerald-50 rounded-lg py-1.5">
+                        <p className="text-[9px] text-emerald-700 uppercase tracking-widest font-bold">Paid</p>
+                        <p className="text-xs font-bold text-emerald-700">₹{(studentRequest.paidAmount || 0).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-rose-50 rounded-lg py-1.5">
+                        <p className="text-[9px] text-rose-700 uppercase tracking-widest font-bold">Balance</p>
+                        <p className="text-xs font-bold text-rose-700">₹{balance.toLocaleString()}</p>
+                      </div>
                     </div>
-                    <div className="bg-rose-50 rounded-lg py-1.5">
-                      <p className="text-[9px] text-rose-700 uppercase tracking-widest font-bold">Balance</p>
-                      <p className="text-xs font-bold text-rose-700">₹{balance.toLocaleString()}</p>
-                    </div>
-                  </div>
+                  )}
 
                   <div className="mt-3 flex items-center gap-2">
                     {!studentRequest ? (
@@ -1089,19 +1102,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                         <button
                           onClick={() => {
                             setSelectedStudent(student);
-                            const pending = feeRequests.find(r => r.studentId === student.id && r.status !== 'paid');
-                            const structure = feeStructures.find(fs => fs.classId === student.classId);
-                            const defaultHead =
-                              pending?.heads?.[0]?.name ||
-                              structure?.heads?.[0]?.name ||
-                              globalHeads[0]?.name ||
-                              'Tuition Fees';
+                            const defaultHead = studentRequest?.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
                             setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
                             setIsModalOpen(true);
                           }}
                           className="flex-1 py-2 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform shadow-sm"
                         >
-                          <IndianRupee className="w-3.5 h-3.5" /> Collect ₹{balance.toLocaleString()}
+                          <IndianRupee className="w-3.5 h-3.5" /> Collect ₹{(studentRequest?.totalAmount || 0).toLocaleString()}
                         </button>
                       </>
                     )}
@@ -1256,13 +1263,11 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
             <Tbody>
               {filteredStudents.map((student) => {
                 const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
-                const totalFee = studentRequests.reduce((sum, r) => sum + r.totalAmount, 0);
-                const currentFine = studentRequests.reduce((sum, r) => sum + (fineConfig ? calculateFine(r, fineConfig) : 0), 0);
-                const waiverAmount = studentRequests.reduce((sum, r) => sum + (r.waivedAmount || 0), 0);
-                const paidAmount = studentRequests.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
-                // Fee balance excludes fine — fine shown separately and waived independently
-                const balance = Math.max(0, totalFee - waiverAmount - paidAmount);
                 const studentRequest = studentRequests[0];
+                const currentFine = studentRequest ? (fineConfig ? calculateFine(studentRequest, fineConfig) : 0) : 0;
+                const balance = studentRequest
+                  ? Math.max(0, (studentRequest.totalAmount || 0) - (studentRequest.waivedAmount || 0) - (studentRequest.paidAmount || 0))
+                  : 0;
 
                 const studentPayments = payments.filter(p => p.studentId === student.id);
                 const isExpanded = expandedStudentId === student.id;
@@ -1280,33 +1285,38 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                     </Td>
                     <Td>{student.schoolNumber}</Td>
                     <Td>
-                      <div className="space-y-1">
-                        <p className="font-bold text-slate-900 leading-none">₹{(totalFee || 0).toLocaleString()}</p>
-                        {currentFine > 0 && (
-                          <p className="text-[10px] text-rose-500 font-bold flex items-center gap-1">
-                            <Scale className="w-2.5 h-2.5" />
-                            +₹{currentFine.toLocaleString()} Fine
-                          </p>
-                        )}
-                        {waiverAmount > 0 && (
-                          <p className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
-                            <ShieldOff className="w-2.5 h-2.5" />
-                            -₹{waiverAmount.toLocaleString()} Waived
-                          </p>
-                        )}
-                      </div>
+                      {studentRequest ? (
+                        <div className="space-y-1">
+                          <p className="font-bold text-slate-900 leading-none">₹{(studentRequest.totalAmount || 0).toLocaleString()}</p>
+                          {currentFine > 0 && (
+                            <p className="text-[10px] text-rose-500 font-bold flex items-center gap-1">
+                              <Scale className="w-2.5 h-2.5" />
+                              +₹{currentFine.toLocaleString()} Fine
+                            </p>
+                          )}
+                          {(studentRequest.waivedAmount || 0) > 0 && (
+                            <p className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                              <ShieldOff className="w-2.5 h-2.5" />
+                              -₹{studentRequest.waivedAmount!.toLocaleString()} Waived
+                            </p>
+                          )}
+                          {studentRequest.partialPaymentRequest?.status === 'pending' && (
+                            <p className="text-[10px] text-amber-600 font-bold flex items-center gap-1">
+                              <Clock className="w-2.5 h-2.5" />
+                              Partial req: ₹{studentRequest.partialPaymentRequest.requestedAmount.toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      ) : <span className="text-slate-400 text-sm">—</span>}
                     </Td>
-                    <Td className="font-bold text-emerald-600">₹{(paidAmount || 0).toLocaleString()}</Td>
+                    <Td className="font-bold text-emerald-600">₹{(studentRequest?.paidAmount || 0).toLocaleString()}</Td>
                     <Td className="font-bold text-red-600">₹{(balance || 0).toLocaleString()}</Td>
                     <Td>
-                      <Badge
-                        variant={
-                          student.feeStatus === 'paid' ? 'success' :
-                            student.feeStatus === 'overdue' ? 'error' : 'warning'
-                        }
-                      >
-                        {studentRequest?.status || student.feeStatus}
-                      </Badge>
+                      {studentRequest ? (
+                        <Badge variant={studentRequest.status === 'paid' ? 'success' : studentRequest.status === 'overdue' ? 'error' : 'warning'}>
+                          {studentRequest.status.replace('_', ' ')}
+                        </Badge>
+                      ) : <span className="text-slate-400 text-xs">No request</span>}
                     </Td>
                     <Td className="text-right">
                       {!studentRequest ? (
@@ -1364,7 +1374,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                             icon={Plus}
                             onClick={() => {
                               setSelectedStudent(student);
-                              setPaymentData({ ...paymentData, amount: balance.toString() });
+                              const defaultHead = studentRequest?.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
+                              setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
                               setIsModalOpen(true);
                             }}
                           >
@@ -1678,35 +1689,28 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         }
       >
         <form onSubmit={handleRecordPayment} data-payment-form className="space-y-5">
-          <FormField label="Fee Category (Head)" required>
-            <Select
-              value={paymentData.head}
-              onChange={(e) => setPaymentData({ ...paymentData, head: e.target.value })}
-            >
-              {(() => {
-                // Prefer heads from the active pending fee request for this student.
-                // Fall back to the student's class fee structure, then to the global heads.
-                const pending = selectedStudent
-                  ? feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid')
-                  : null;
-                const structure = selectedStudent
-                  ? feeStructures.find(fs => fs.classId === selectedStudent.classId)
-                  : null;
-
-                const sourceHeads =
-                  (pending?.heads && pending.heads.length > 0 && pending.heads.map(h => h.name)) ||
-                  (structure?.heads && structure.heads.length > 0 && structure.heads.map(h => h.name)) ||
-                  (globalHeads.length > 0 && globalHeads.map(h => h.name)) ||
-                  ['Tuition Fees', 'Transport Fees', 'Examination Fees', 'Hostel Fees', 'Academic Fees', 'Miscellaneous'];
-
-                const unique = Array.from(new Set(sourceHeads as string[]));
-                return unique.map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ));
-              })()}
-            </Select>
-          </FormField>
-          <FormField label="Amount (₹)" required hint="Enter partial or full fee amount — fine is handled separately">
+          {/* Request summary — show all heads from the fee request */}
+          {(() => {
+            const pending = selectedStudent
+              ? feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid')
+              : null;
+            if (!pending?.heads?.length) return null;
+            return (
+              <div className="bg-slate-50 rounded-xl border border-slate-100 divide-y divide-slate-100">
+                {pending.heads.map((h, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2">
+                    <span className="text-xs text-slate-600 font-medium">{h.name}</span>
+                    <span className="text-xs font-bold text-slate-900">₹{(h.finalAmount || h.amount || 0).toLocaleString()}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between px-3 py-2 bg-white rounded-b-xl">
+                  <span className="text-xs font-bold text-slate-900">Total Invoiced</span>
+                  <span className="text-sm font-black text-slate-900">₹{(pending.totalAmount || 0).toLocaleString()}</span>
+                </div>
+              </div>
+            );
+          })()}
+          <FormField label="Amount to Collect (₹)" required hint="Enter partial or full fee amount — fine is handled separately via waive button">
             <Input
               type="number"
               required
