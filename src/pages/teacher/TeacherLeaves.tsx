@@ -426,7 +426,7 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Casual Available</p>
                 <h3 className="text-2xl font-black text-teal-600">{availableCasual}</h3>
-                <p className="text-[10px] text-slate-400">of {CASUAL_LEAVE_QUOTA} remaining</p>
+                <p className="text-[10px] text-slate-400">of {casualLeaveQuota} remaining</p>
               </div>
             </div>
           </Card>
@@ -598,7 +598,7 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
             <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <p className="text-xs text-amber-800">
-                You have used all {CASUAL_LEAVE_QUOTA} casual leave days for this year.
+                You have used all {casualLeaveQuota} casual leave days for this year.
               </p>
             </div>
           )}
