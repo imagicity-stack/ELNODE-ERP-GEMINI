@@ -5,6 +5,7 @@ import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { logActivity } from '../../services/activityService';
 import {
   PageHeader,
   Card,
@@ -79,10 +80,27 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
         amount: Number(formData.amount),
       };
 
+      let expenseId: string;
       if (isEditMode && editingExpense) {
         await updateDoc(doc(db, 'expenses', editingExpense.id), data);
+        expenseId = editingExpense.id;
+        logActivity(
+          user,
+          'Expense Updated',
+          'Accounts',
+          `Updated expense "${formData.category}" of ₹${formData.amount}`,
+          { expenseId, amount: Number(formData.amount), category: formData.category }
+        );
       } else {
-        await addDoc(collection(db, 'expenses'), data);
+        const newRef = await addDoc(collection(db, 'expenses'), data);
+        expenseId = newRef.id;
+        logActivity(
+          user,
+          'Expense Created',
+          'Accounts',
+          `Recorded expense "${formData.category}" of ₹${formData.amount}`,
+          { expenseId, amount: Number(formData.amount), category: formData.category }
+        );
       }
 
       // Fire WhatsApp confirmation to vendor — only for non-salary expenses
@@ -189,6 +207,20 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
       }
 
       await deleteDoc(doc(db, 'expenses', deletingId));
+      const deletedExpense = expenses.find(e => e.id === deletingId);
+      logActivity(
+        user,
+        'Expense Deleted',
+        'Accounts',
+        deletedExpense
+          ? `Deleted expense "${deletedExpense.category}" of ₹${deletedExpense.amount}`
+          : `Deleted expense ${deletingId}`,
+        {
+          expenseId: deletingId,
+          amount: deletedExpense?.amount,
+          category: deletedExpense?.category,
+        }
+      );
       fetchExpenses();
       setIsDeleteModalOpen(false);
       setDeletingId(null);

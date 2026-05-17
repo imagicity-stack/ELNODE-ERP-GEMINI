@@ -12,6 +12,7 @@ import {
   Plus, AlertTriangle, CheckCircle2, X, Send,
 } from 'lucide-react';
 import { cn, fmtMonthYear } from '../../lib/utils';
+import { logActivity } from '../../services/activityService';
 
 const statusColor: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
@@ -138,6 +139,14 @@ export default function FeeFollowup({ user }: { user: UserProfile }) {
 
       setLogForm({ note: '', method: 'phone', promisedDate: '' });
       showToast('Contact logged successfully', 'success');
+      const studentName = student?.name || '';
+      logActivity(
+        user,
+        'Fee Followup Logged',
+        'Accounts',
+        `Contacted parent of ${studentName} regarding fee`,
+        { studentId: selected.studentId, type: logForm.method, outcome: logForm.note.trim() }
+      );
     } catch {
       showToast('Failed to log contact', 'error');
     } finally {
@@ -173,6 +182,15 @@ export default function FeeFollowup({ user }: { user: UserProfile }) {
         setFollowups(prev => ({ ...prev, [requestId]: record }));
       }
       showToast('Case escalated', 'success');
+      const escStudent = selected ? studentMap[selected.studentId] : null;
+      const escStudentName = escStudent?.name || '';
+      logActivity(
+        user,
+        'Fee Case Escalated',
+        'Accounts',
+        `Escalated fee case for ${escStudentName} due to non-payment`,
+        { studentId: selected?.studentId || '', escalationLevel: 1 }
+      );
     } catch {
       showToast('Failed to escalate', 'error');
     } finally {
@@ -207,6 +225,14 @@ export default function FeeFollowup({ user }: { user: UserProfile }) {
       });
       if (res.ok) {
         showToast('WhatsApp reminder sent', 'success');
+        const studentName = student?.name || '';
+        logActivity(
+          user,
+          'Fee Reminder Sent (WhatsApp)',
+          'Accounts',
+          `WhatsApp reminder sent to ${studentName}`,
+          { studentId: request.studentId, phone }
+        );
         // log it automatically
         const log: FollowupLog = {
           id: Date.now().toString(),

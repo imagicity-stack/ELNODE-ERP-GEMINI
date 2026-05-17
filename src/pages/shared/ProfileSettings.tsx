@@ -26,6 +26,8 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { Button, Input, FormField, Avatar, Badge, Card } from '../../components/ui';
 import { UserProfile, Student, Teacher, House } from '../../types';
+import { logActivity } from '../../services/activityService';
+import type { ActivitySection } from '../../types';
 
 interface ProfileSettingsProps {
   user: UserProfile;
@@ -191,6 +193,27 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
           });
         });
       }
+
+      const roleSectionMap: Record<string, ActivitySection> = {
+        super_admin: 'Super Admin',
+        accountant: 'Accounts',
+        teacher: 'Teachers',
+        student: 'Students',
+        parent: 'Parents',
+        principal: 'Principal',
+      };
+      const section: ActivitySection = roleSectionMap[user.role] || 'Staff';
+      const fieldsChanged: string[] = [];
+      if (profileData.name !== (user.name || '')) fieldsChanged.push('name');
+      if (profileData.phone !== (user.phone || '')) fieldsChanged.push('phone');
+      if (profileData.address !== (user.address || '')) fieldsChanged.push('address');
+      logActivity(
+        user,
+        'Profile Updated',
+        section,
+        `Updated own profile`,
+        { fieldsChanged }
+      );
 
       setSuccess('Profile updated successfully!');
       setTimeout(() => setSuccess(null), 3000);

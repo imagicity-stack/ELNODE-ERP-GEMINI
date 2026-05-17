@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { logActivity } from '../../services/activityService';
 import {
   validateStaffInput,
   ensureUniqueEmail,
@@ -181,10 +182,30 @@ export default function StaffManagement({ user }: { user: any }) {
           staffId: staffRef.id,
           createdAt: new Date().toISOString(),
         });
+        logActivity(
+          user,
+          'Staff User Provisioned',
+          'Staff',
+          `Provisioned portal user account for ${normalizedEmail}`,
+          { email: normalizedEmail, role: portalRole, staffId: staffRef.id }
+        );
       } catch (err) {
         handleFirestoreError(err, OperationType.WRITE, `users/${staffUid}`);
         throw err;
       }
+
+      logActivity(
+        user,
+        'Staff Member Added',
+        'Staff',
+        `Added staff member ${formData.name.trim()} as ${formData.role}`,
+        {
+          name: formData.name.trim(),
+          role: formData.role,
+          email: normalizedEmail,
+          employeeId: formData.employeeId.trim(),
+        }
+      );
 
       setIsModalOpen(false);
       fetchStaff();

@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy, updateDoc, doc, arrayUnion } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
+import { logActivity } from '../../services/activityService';
 import {
   PageHeader,
   Card,
@@ -80,6 +81,13 @@ export default function StudentHomework({ user }: StudentHomeworkProps) {
           submittedAt: new Date().toISOString(),
         }),
       });
+      logActivity(
+        user,
+        'Homework Submitted',
+        'Students',
+        `Submitted homework for ${selectedHw.subjectId}`,
+        { homeworkId: selectedHw.id, subject: selectedHw.subjectId }
+      );
       showToast('Homework submitted successfully!', 'success');
       setSelectedHw(null);
       setSubmitText('');

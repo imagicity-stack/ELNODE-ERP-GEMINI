@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { logActivity } from '../../services/activityService';
 import { GradingScale, UserProfile } from '../../types';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
@@ -76,11 +77,25 @@ export default function GradingScaleManagement({ user }: { user: UserProfile }) 
     try {
       if (editingScale) {
         await updateDoc(doc(db, 'gradingScales', editingScale.id), formData);
+        logActivity(
+          user,
+          'Grading Scale Updated',
+          'Academic',
+          `Updated grading scale "${formData.name}"`,
+          { scaleId: editingScale.id, name: formData.name, rangeCount: formData.ranges.length }
+        );
       } else {
-        await addDoc(collection(db, 'gradingScales'), {
+        const newRef = await addDoc(collection(db, 'gradingScales'), {
           ...formData,
           createdAt: new Date().toISOString(),
         });
+        logActivity(
+          user,
+          'Grading Scale Created',
+          'Academic',
+          `Created grading scale "${formData.name}"`,
+          { scaleId: newRef.id, name: formData.name, rangeCount: formData.ranges.length }
+        );
       }
       setIsModalOpen(false);
       setEditingScale(null);
@@ -103,7 +118,17 @@ export default function GradingScaleManagement({ user }: { user: UserProfile }) 
   const performDelete = async () => {
     if (!deletingId) return;
     try {
+      const deletedScale = scales.find(s => s.id === deletingId);
       await deleteDoc(doc(db, 'gradingScales', deletingId));
+      logActivity(
+        user,
+        'Grading Scale Deleted',
+        'Academic',
+        deletedScale
+          ? `Deleted grading scale "${deletedScale.name}"`
+          : `Deleted grading scale ${deletingId}`,
+        { scaleId: deletingId, name: deletedScale?.name }
+      );
       fetchScales();
       setIsDeleteModalOpen(false);
       setDeletingId(null);

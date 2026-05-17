@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, getDocs, query, where, doc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
+import { logActivity } from '../../services/activityService';
 import { Exam, Class, Subject, GradingScale, Student, UserProfile } from '../../types';
 import {
   Plus,
@@ -147,7 +148,7 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
         syllabusPhotoUrl = await getDownloadURL(uploadResult.ref);
       }
 
-      await addDoc(collection(db, 'exams'), {
+      const examRef = await addDoc(collection(db, 'exams'), {
         name: examForm.name,
         term: examForm.term,
         startDate: examForm.startDate || new Date().toISOString().split('T')[0],
@@ -166,6 +167,19 @@ export default function ExamManagement({ user }: { user: UserProfile }) {
         createdAt: new Date().toISOString(),
         createdBy: user.uid
       });
+      logActivity(
+        user,
+        'Exam Created',
+        'Exam',
+        `Scheduled exam "${examForm.name}" (${examForm.term}) for ${examForm.classIds.length} class(es) starting ${examForm.startDate}`,
+        {
+          examId: examRef.id,
+          name: examForm.name,
+          term: examForm.term,
+          startDate: examForm.startDate,
+          classCount: examForm.classIds.length,
+        }
+      );
       setIsExamModalOpen(false);
       setValidationIssues([]);
       setConflicts([]);

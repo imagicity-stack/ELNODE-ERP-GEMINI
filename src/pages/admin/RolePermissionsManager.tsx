@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useToast } from '../../components/Toast';
+import { logActivity } from '../../services/activityService';
 
 const MODULES = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
@@ -120,6 +121,23 @@ export default function RolePermissionsManager({ user }: { user: UserProfile }) 
         ...permissions,
         updatedAt: new Date().toISOString()
       });
+      const enabledModules = Object.entries(permissions.modules)
+        .filter(([_, m]) => m.enabled)
+        .map(([id]) => id);
+      const readOnlyModules = Object.entries(permissions.modules)
+        .filter(([_, m]) => m.enabled && m.readOnly)
+        .map(([id]) => id);
+      logActivity(
+        user,
+        'Role Permissions Updated',
+        'Super Admin',
+        `Updated permissions for role: ${targetRole}`,
+        {
+          role: targetRole,
+          enabledCount: enabledModules.length,
+          readOnlyCount: readOnlyModules.length,
+        }
+      );
       showToast('Permissions updated successfully', 'success');
     } catch (error) {
       console.error('Error saving permissions:', error);

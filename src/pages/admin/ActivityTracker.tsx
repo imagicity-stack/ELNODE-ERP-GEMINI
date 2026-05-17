@@ -19,6 +19,7 @@ import {
   ChevronDown,
   ChevronUp,
   MonitorSmartphone,
+  Sparkles,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -141,6 +142,7 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
           (log.userName || '').toLowerCase().includes(q) ||
           (log.action || '').toLowerCase().includes(q) ||
           (log.details || '').toLowerCase().includes(q) ||
+          (log.aiDescription || '').toLowerCase().includes(q) ||
           (log.ip || '').toLowerCase().includes(q) ||
           (log.location || '').toLowerCase().includes(q)
         );
@@ -280,7 +282,14 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
                       </span>
                     </div>
                     <p className="text-xs font-bold text-slate-700 mb-0.5">{log.action}</p>
-                    <p className="text-[10px] text-slate-500 line-clamp-2">{log.details}</p>
+                    {log.aiDescription ? (
+                      <div className="flex items-start gap-1 mb-1">
+                        <Sparkles className="w-3 h-3 text-violet-500 mt-0.5 shrink-0" />
+                        <p className="text-[11px] text-slate-700 leading-snug">{log.aiDescription}</p>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-500 line-clamp-2">{log.details}</p>
+                    )}
                     {log.ip && (
                       <div className="flex items-center gap-1 mt-1">
                         <Globe className="w-3 h-3 text-slate-300" />
@@ -289,7 +298,7 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
                       </div>
                     )}
                     <p className="text-[10px] text-slate-400 mt-1 font-mono">
-                      {safeFormat(log.timestamp, 'MMM dd, h:mm a')}
+                      {safeFormat(log.timestamp, 'EEE, dd MMM yyyy · HH:mm:ss')}
                     </p>
                   </div>
                 </div>
@@ -479,11 +488,14 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
                     >
                       <Td className="whitespace-nowrap">
                         <div className="flex flex-col">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                            {safeFormat(log.timestamp, 'EEEE')}
+                          </span>
                           <span className="text-sm font-bold text-slate-900">
-                            {safeFormat(log.timestamp, 'MMM dd, h:mm a')}
+                            {safeFormat(log.timestamp, 'dd MMM yyyy')}
                           </span>
                           <span className="text-[10px] text-slate-400 font-mono">
-                            {safeFormat(log.timestamp, 'yyyy')}
+                            {safeFormat(log.timestamp, 'HH:mm:ss')}
                           </span>
                         </div>
                       </Td>
@@ -506,10 +518,24 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
                       <Td>
                         <span className="text-sm font-semibold text-slate-700">{log.action}</span>
                       </Td>
-                      <Td className="max-w-xs">
-                        <span className="text-xs text-slate-500 line-clamp-1" title={log.details}>
-                          {log.details}
-                        </span>
+                      <Td className="max-w-md">
+                        {log.aiDescription ? (
+                          <div className="flex items-start gap-1.5">
+                            <Sparkles className="w-3 h-3 text-violet-500 mt-0.5 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-xs text-slate-700 leading-snug line-clamp-2" title={log.aiDescription}>
+                                {log.aiDescription}
+                              </p>
+                              <p className="text-[10px] text-slate-400 italic line-clamp-1 mt-0.5" title={log.details}>
+                                {log.details}
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-500 line-clamp-2" title={log.details}>
+                            {log.details}
+                          </span>
+                        )}
                       </Td>
                       <Td>
                         {log.ip ? (
@@ -538,12 +564,20 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
                         <td colSpan={6} className="px-6 py-4">
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Full Details</p>
+                              {log.aiDescription && (
+                                <div className="mb-3 p-3 bg-violet-50 border border-violet-200 rounded-lg">
+                                  <p className="text-[10px] font-bold text-violet-700 uppercase mb-1 flex items-center gap-1">
+                                    <Sparkles className="w-3 h-3" /> AI-Generated Description
+                                  </p>
+                                  <p className="text-sm text-violet-900 leading-relaxed">{log.aiDescription}</p>
+                                </div>
+                              )}
+                              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Raw Details</p>
                               <p className="text-sm text-slate-700 leading-relaxed">{log.details}</p>
                               {log.metadata && (
                                 <div className="mt-2">
                                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Metadata</p>
-                                  <pre className="text-[10px] text-slate-600 bg-white border border-slate-200 rounded-lg p-2 overflow-x-auto max-h-24">
+                                  <pre className="text-[10px] text-slate-600 bg-white border border-slate-200 rounded-lg p-2 overflow-x-auto max-h-32">
                                     {JSON.stringify(log.metadata, null, 2)}
                                   </pre>
                                 </div>

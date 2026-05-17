@@ -10,6 +10,7 @@ import { db, storage, handleFirestoreError, OperationType } from '../../firebase
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { useToast } from '../../components/Toast';
+import { logActivity } from '../../services/activityService';
 import {
   PageHeader,
   StatCard,
@@ -195,7 +196,7 @@ export default function ExamManagement({ user }: ExamManagementProps) {
         syllabusPhotoUrl = await getDownloadURL(uploadResult.ref);
       }
 
-      await addDoc(collection(db, 'exams'), {
+      const examDocRef = await addDoc(collection(db, 'exams'), {
         name: newExam.name,
         term: newExam.term,
         startDate: newExam.startDate || new Date().toISOString().split('T')[0],
@@ -217,6 +218,15 @@ export default function ExamManagement({ user }: ExamManagementProps) {
         createdAt: new Date().toISOString(),
         createdBy: user.uid
       });
+      const scheduledClassId = newExam.classIds[0] || '';
+      const scheduledDate = newExam.startDate || new Date().toISOString().split('T')[0];
+      logActivity(
+        user,
+        'Exam Scheduled',
+        'Exam',
+        `Scheduled exam "${newExam.name}" for Class ${scheduledClassId} on ${scheduledDate}`,
+        { examId: examDocRef.id, classId: scheduledClassId, date: scheduledDate }
+      );
       setIsModalOpen(false);
       setValidationIssues([]);
       setConflicts([]);
