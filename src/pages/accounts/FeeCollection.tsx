@@ -487,10 +487,17 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         showToast('Fee request updated successfully!', 'success');
         await logActivity(
           user,
-          'UPDATE_FEE_REQUEST',
+          'Fee Request Updated',
           'Accounts',
-          `Updated fee request for ${selectedStudent.name} (${fmtMonthYear(requestData.month)})`,
-          { studentId: selectedStudent.id, month: requestData.month }
+          `Updated fee request for ${selectedStudent.name} (${fmtMonthYear(requestData.month)}) — total ₹${totalAmount.toLocaleString('en-IN')}`,
+          {
+            studentId: selectedStudent.id,
+            studentName: selectedStudent.name,
+            studentClass: selectedStudent.class,
+            month: requestData.month,
+            totalAmount,
+            heads: requestData.heads.map(h => ({ name: h.name, amount: h.amount, discount: h.discount, finalAmount: h.finalAmount })),
+          }
         );
       } else {
         const newRequest: Omit<FeeRequest, 'id'> = {
@@ -569,10 +576,18 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         showToast(`Fee request generated successfully${advNote}`, 'success');
         await logActivity(
           user,
-          'GENERATE_FEE_REQUEST',
+          'Fee Request Generated',
           'Accounts',
-          `Generated fee request for ${selectedStudent.name} (${fmtMonthYear(requestData.month)})${advNote}`,
-          { studentId: selectedStudent.id, month: requestData.month, advanceApplied }
+          `Generated fee request for ${selectedStudent.name} (${fmtMonthYear(requestData.month)}) — ₹${totalAmount.toLocaleString('en-IN')} total${advNote}`,
+          {
+            studentId: selectedStudent.id,
+            studentName: selectedStudent.name,
+            studentClass: selectedStudent.class,
+            month: requestData.month,
+            totalAmount,
+            advanceApplied: advanceApplied > 0 ? advanceApplied : undefined,
+            heads: requestData.heads.map(h => ({ name: h.name, amount: h.amount, discount: h.discount, finalAmount: h.finalAmount })),
+          }
         );
       }
 
@@ -739,10 +754,20 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       logActivity(
         user,
-        'RECORD_ADVANCE_PAYMENT',
+        'Advance Payment Recorded',
         'Accounts',
-        `Recorded advance ₹${total} for ${advanceStudent.name} covering ${advanceData.selectedMonths.length} month(s)`,
-        { studentId: advanceStudent.id, advanceId, total, months: advanceData.selectedMonths },
+        `Recorded advance payment of ₹${total.toLocaleString('en-IN')} for ${advanceStudent.name} via ${advanceData.method.replace('_', ' ')}, covering ${advanceData.selectedMonths.length} month(s) — receipt ${receiptNumber}`,
+        {
+          studentId: advanceStudent.id,
+          studentName: advanceStudent.name,
+          studentClass: advanceStudent.class,
+          advanceId,
+          totalAmount: total,
+          method: advanceData.method,
+          receiptNumber,
+          months: advanceData.selectedMonths,
+          heads: advanceData.selectedHeads,
+        },
       );
 
       // WhatsApp notification to parent (non-fatal)
@@ -788,12 +813,19 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       
       showToast('Fee request cancelled', 'success');
       
+      const cancelledReq = feeRequests.find(r => r.id === requestId);
       await logActivity(
         user,
-        'CANCEL_FEE_REQUEST',
+        'Fee Request Cancelled',
         'Accounts',
-        `Cancelled fee request for ${student?.name || studentId}`,
-        { studentId }
+        `Cancelled fee request for ${student?.name || studentId}${cancelledReq ? ` — ₹${cancelledReq.totalAmount.toLocaleString('en-IN')} for ${fmtMonthYear(cancelledReq.month)}` : ''}`,
+        {
+          studentId,
+          studentName: student?.name,
+          feeRequestId: requestId,
+          totalAmount: cancelledReq?.totalAmount,
+          month: cancelledReq?.month,
+        }
       );
       
       fetchData();
@@ -859,10 +891,16 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       await logActivity(
         user,
-        'DELETE_PAYMENT',
+        'Payment Record Deleted',
         'Super Admin',
-        `Deleted payment record ${payment.receiptNumber} for ₹${payment.amount}`,
-        { studentId: payment.studentId }
+        `Deleted payment record ${payment.receiptNumber} for ₹${payment.amount.toLocaleString('en-IN')} — ${payment.method?.replace('_', ' ')} payment reversed`,
+        {
+          studentId: payment.studentId,
+          receiptNumber: payment.receiptNumber,
+          amount: payment.amount,
+          method: payment.method,
+          feeRequestId: payment.feeRequestId,
+        }
       );
 
       showToast('Payment record deleted successfully', 'success');
@@ -896,10 +934,16 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       await updateDoc(doc(db, 'feeRequests', request.id), updatedRequest);
       logActivity(
         user,
-        'Waived Penalty',
-        user.role === 'super_admin' ? 'Super Admin' : 'Accountant',
-        `Waived ₹${waiverData.amount} for ${waiverData.studentName}`,
-        { studentId: request.studentId, amount: waiverData.amount }
+        'Fine Waived',
+        user.role === 'super_admin' ? 'Super Admin' : 'Accounts',
+        `Waived penalty of ₹${Number(waiverData.amount).toLocaleString('en-IN')} for ${waiverData.studentName} — reason: ${waiverData.reason || 'not specified'}`,
+        {
+          studentId: request.studentId,
+          studentName: waiverData.studentName,
+          waivedAmount: Number(waiverData.amount),
+          reason: waiverData.reason,
+          feeRequestId: request.id,
+        }
       );
       showToast('Penalty waived successfully', 'success');
       setWaiverData({ ...waiverData, isOpen: false });
