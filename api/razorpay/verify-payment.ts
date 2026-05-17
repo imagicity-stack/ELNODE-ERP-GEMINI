@@ -403,7 +403,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (cExists) classSection = `${cls.name} - ${student.section || ''}`.trim();
         } catch { /* best-effort */ }
 
-        await sendWhatsApp(student.parentDetails.phone, 'payment_confirmed', [
+        await sendWhatsApp(student.parentDetails.phone, 'payments_confirmed', [
           student.parentDetails?.fatherName || 'Parent',
           `₹${amount.toLocaleString('en-IN')}`,
           student.name,

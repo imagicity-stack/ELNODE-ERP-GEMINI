@@ -5,12 +5,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { amountInPaise, feeRequestId, studentId } = req.body;
+  const { amountInPaise, feeRequestId, studentId, kind } = req.body;
 
   if (!amountInPaise || typeof amountInPaise !== 'number' || amountInPaise < 100) {
     return res.status(400).json({ error: 'Invalid amount' });
   }
-  if (!feeRequestId || !studentId) {
+  // Two flows: regular fee payment requires feeRequestId; advance payment does not.
+  if (kind === 'advance') {
+    if (!studentId) {
+      return res.status(400).json({ error: 'Missing studentId for advance order' });
+    }
+  } else if (!feeRequestId || !studentId) {
     return res.status(400).json({ error: 'Missing feeRequestId or studentId' });
   }
 
@@ -34,8 +39,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         amount: amountInPaise,
         currency: 'INR',
-        receipt: `rcpt_${feeRequestId}`.slice(0, 40),
-        notes: { feeRequestId, studentId },
+        receipt: kind === 'advance'
+          ? `adv_${studentId}_${Date.now()}`.slice(0, 40)
+          : `rcpt_${feeRequestId}`.slice(0, 40),
+        notes: kind === 'advance'
+          ? { kind: 'advance', studentId }
+          : { feeRequestId, studentId },
       }),
     });
 
