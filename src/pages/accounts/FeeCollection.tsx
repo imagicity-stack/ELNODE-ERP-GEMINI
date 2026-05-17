@@ -100,10 +100,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     studentName: ''
   });
 
+  const [customHeadForm, setCustomHeadForm] = useState({ name: '', amount: '' });
+  const [addGlobalHeadId, setAddGlobalHeadId] = useState('');
   const [requestData, setRequestData] = useState<{
     month: string;
     dueDate: string;
-    heads: { name: string; amount: number; discount: number; finalAmount: number }[];
+    heads: { name: string; amount: number; discount: number; discountReason?: string; finalAmount: number; isCustom?: boolean }[];
   }>({
     month: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
     dueDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0],
@@ -453,6 +455,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   const handleCreateOrUpdateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedStudent) return;
+
+    // Validate all discounts have a reason
+    const missingReason = requestData.heads.find(h => h.discount > 0 && !h.discountReason?.trim());
+    if (missingReason) {
+      showToast(`Please enter a reason for the discount on "${missingReason.name}"`, 'error');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -1571,26 +1580,35 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Fee Heads</h3>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Synced from super admin — discount only</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Add/remove heads · discount with reason</span>
             </div>
 
-            {requestData.heads.length === 0 ? (
-              <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 font-medium">
-                No fee structure found for this class. Please set one up in Super Admin → Fee Heads.
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              {/* Column header */}
+              <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 border-b border-slate-200">
+                <span className="flex-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Head</span>
+                <span className="w-24 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">Amount</span>
+                <span className="w-24 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">Discount</span>
+                <span className="w-24 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">Final</span>
+                <span className="w-7" />
               </div>
-            ) : (
-              <div className="rounded-xl border border-slate-200 overflow-hidden">
-                <div className="grid grid-cols-12 bg-slate-50 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                  <span className="col-span-5">Head</span>
-                  <span className="col-span-3 text-right">Amount</span>
-                  <span className="col-span-2 text-right">Discount</span>
-                  <span className="col-span-2 text-right">Final</span>
+
+              {/* Head rows */}
+              {requestData.heads.length === 0 ? (
+                <div className="px-4 py-6 text-center text-xs text-amber-700 bg-amber-50">
+                  No heads yet. Add a global head or a custom head below.
                 </div>
-                {requestData.heads.map((head, index) => (
-                  <div key={index} className="grid grid-cols-12 items-center px-4 py-3 border-b border-slate-100 last:border-0">
-                    <span className="col-span-5 text-sm font-bold text-slate-900">{head.name}</span>
-                    <span className="col-span-3 text-right text-sm font-medium text-slate-600">₹{(head.amount || 0).toLocaleString()}</span>
-                    <div className="col-span-2 flex justify-end">
+              ) : (
+                requestData.heads.map((head, index) => (
+                  <div key={index} className="border-b border-slate-100 last:border-0">
+                    <div className="flex items-center gap-2 px-4 py-3">
+                      <div className="flex-1 flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-bold text-slate-900 truncate">{head.name}</span>
+                        {head.isCustom && (
+                          <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-black bg-violet-100 text-violet-700 rounded-md uppercase tracking-wide">Custom</span>
+                        )}
+                      </div>
+                      <span className="w-24 text-right text-sm font-medium text-slate-500 shrink-0">₹{(head.amount || 0).toLocaleString()}</span>
                       <input
                         type="number"
                         min={0}
@@ -1602,29 +1620,122 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                           newHeads[index].finalAmount = newHeads[index].amount - newHeads[index].discount;
                           setRequestData({ ...requestData, heads: newHeads });
                         }}
-                        className="w-20 text-right px-2 py-1 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-400 bg-white"
+                        className="w-24 text-right px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-400 bg-white shrink-0"
                         placeholder="0"
                       />
+                      <span className={`w-24 text-right text-sm font-black shrink-0 ${head.discount > 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                        ₹{(head.finalAmount || 0).toLocaleString()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newHeads = requestData.heads.filter((_, i) => i !== index);
+                          setRequestData({ ...requestData, heads: newHeads });
+                        }}
+                        className="w-7 h-7 shrink-0 flex items-center justify-center rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                        title="Remove head"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <span className={`col-span-2 text-right text-sm font-black ${head.discount > 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
-                      ₹{(head.finalAmount || 0).toLocaleString()}
-                    </span>
+                    {head.discount > 0 && (
+                      <div className="px-4 pb-3 -mt-1">
+                        <input
+                          type="text"
+                          value={head.discountReason || ''}
+                          onChange={(e) => {
+                            const newHeads = [...requestData.heads];
+                            newHeads[index].discountReason = e.target.value;
+                            setRequestData({ ...requestData, heads: newHeads });
+                          }}
+                          placeholder="Reason for discount (required)"
+                          className="w-full px-3 py-1.5 text-xs border border-amber-200 bg-amber-50 rounded-lg focus:outline-none focus:border-amber-400 text-slate-700 placeholder:text-amber-400"
+                        />
+                      </div>
+                    )}
                   </div>
-                ))}
-                <div className="grid grid-cols-12 px-4 py-2.5 bg-slate-50 border-t border-slate-200">
-                  <span className="col-span-5 text-xs font-bold text-slate-700">Total</span>
-                  <span className="col-span-3 text-right text-xs font-bold text-slate-500">
-                    ₹{requestData.heads.reduce((s, h) => s + (h.amount || 0), 0).toLocaleString()}
-                  </span>
-                  <span className="col-span-2 text-right text-xs font-bold text-rose-500">
-                    -₹{requestData.heads.reduce((s, h) => s + (h.discount || 0), 0).toLocaleString()}
-                  </span>
-                  <span className="col-span-2 text-right text-sm font-black text-slate-900">
-                    ₹{requestData.heads.reduce((s, h) => s + (h.finalAmount || 0), 0).toLocaleString()}
-                  </span>
+                ))
+              )}
+
+              {/* Totals row */}
+              {requestData.heads.length > 0 && (
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-t border-slate-200">
+                  <span className="flex-1 text-xs font-bold text-slate-700">Total</span>
+                  <span className="w-24 text-right text-xs font-bold text-slate-500">₹{requestData.heads.reduce((s, h) => s + (h.amount || 0), 0).toLocaleString()}</span>
+                  <span className="w-24 text-right text-xs font-bold text-rose-500">-₹{requestData.heads.reduce((s, h) => s + (h.discount || 0), 0).toLocaleString()}</span>
+                  <span className="w-24 text-right text-sm font-black text-slate-900">₹{requestData.heads.reduce((s, h) => s + (h.finalAmount || 0), 0).toLocaleString()}</span>
+                  <span className="w-7" />
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+
+            {/* Add Global Head */}
+            {(() => {
+              const available = globalHeads.filter(gh => !requestData.heads.some(h => h.name === gh.name));
+              if (available.length === 0) return null;
+              return (
+                <div className="flex items-center gap-2 pt-1">
+                  <select
+                    value={addGlobalHeadId}
+                    onChange={(e) => setAddGlobalHeadId(e.target.value)}
+                    className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 bg-white text-slate-700"
+                  >
+                    <option value="">Add a global head...</option>
+                    {available.map(h => (
+                      <option key={h.name} value={h.name}>{h.name} — ₹{h.amount.toLocaleString()}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!addGlobalHeadId) return;
+                      const gh = globalHeads.find(h => h.name === addGlobalHeadId);
+                      if (!gh) return;
+                      setRequestData({ ...requestData, heads: [...requestData.heads, { name: gh.name, amount: gh.amount, discount: 0, finalAmount: gh.amount }] });
+                      setAddGlobalHeadId('');
+                    }}
+                    disabled={!addGlobalHeadId}
+                    className="px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-colors flex items-center gap-1 shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Global
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* Add Custom Head */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={customHeadForm.name}
+                onChange={(e) => setCustomHeadForm({ ...customHeadForm, name: e.target.value })}
+                placeholder="Custom head name..."
+                className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400 bg-white"
+              />
+              <input
+                type="number"
+                value={customHeadForm.amount}
+                onChange={(e) => setCustomHeadForm({ ...customHeadForm, amount: e.target.value })}
+                placeholder="₹ Amount"
+                min={1}
+                className="w-32 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400 bg-white"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const amt = Number(customHeadForm.amount);
+                  if (!customHeadForm.name.trim() || amt <= 0) return;
+                  setRequestData({ ...requestData, heads: [...requestData.heads, { name: customHeadForm.name.trim(), amount: amt, discount: 0, finalAmount: amt, isCustom: true }] });
+                  setCustomHeadForm({ name: '', amount: '' });
+                }}
+                disabled={!customHeadForm.name.trim() || Number(customHeadForm.amount) <= 0}
+                className="px-3 py-2 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-700 disabled:opacity-40 transition-colors flex items-center gap-1 shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Custom
+              </button>
+            </div>
           </div>
         </form>
       </Modal>
