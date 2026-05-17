@@ -510,6 +510,41 @@ export interface PaymentAllocation {
   amount: number;          // Portion of FeePayment.amount applied to this head
 }
 
+// ─── Advance Payment ──────────────────────────────────────────────────────────
+// Parents can pay 1+ months of fees in advance for one or more fee heads.
+// When the fee request for a covered month is later generated, the matching
+// heads are auto-deducted (consumed) from the advance, in FIFO order across
+// any active advance payments for the student.
+
+export interface AdvanceMonthlyEntry {
+  month: string;                                  // e.g. "June 2025" — must match FeeRequest.month verbatim
+  heads: { name: string; amount: number }[];      // heads paid for this month at this advance
+  consumed: boolean;                              // true once a feeRequest for this month was generated and applied
+  consumedAt?: string;
+  consumedRequestId?: string;                     // back-link to the feeRequest
+  consumedPaymentId?: string;                     // back-link to the synthetic feePayment that applied the advance
+}
+
+export interface AdvancePayment {
+  id: string;
+  studentId: string;
+  classId: string;
+  parentId?: string;            // populated when parent initiated, undefined when accountant recorded
+  academicYear: string;
+  monthlyBreakdown: AdvanceMonthlyEntry[];
+  totalAmount: number;
+  paymentMethod: PaymentMethod;
+  referenceNumber?: string;
+  voucherNumber?: string;
+  voucherImageUrl?: string;
+  receiptNumber: string;
+  date: string;                 // payment date (yyyy-mm-dd)
+  remarks?: string;
+  createdBy: string;            // uid
+  createdAt: string;            // ISO timestamp
+  status: 'active' | 'fully_consumed';
+}
+
 export interface FeePayment {
   id: string;
   studentId: string;
@@ -525,6 +560,11 @@ export interface FeePayment {
   transactionId?: string;
   receiptNumber: string;
   remarks?: string;
+  // Cash payments only — voucher number written on the physical receipt + optional photo
+  voucherNumber?: string;
+  voucherImageUrl?: string;
+  // Set when payment was recorded from an advance payment top-up (not a normal request)
+  advancePaymentId?: string;
 }
 
 export interface LessonLog {

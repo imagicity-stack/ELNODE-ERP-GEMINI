@@ -13,10 +13,16 @@ import { FineConfig, FeeRequest } from '../types';
  */
 export const calculateFine = (invoice: FeeRequest, config: FineConfig, today: Date = new Date()): number => {
   if (!config.isEnabled) return 0;
-  
+
+  // Already-paid requests never accrue fresh fines. Critical for advance
+  // payments: when a fee request is generated for a month that was paid
+  // ahead, status flips to 'paid' on creation and no penalty should apply
+  // even if the dueDate later passes or the request was generated late.
+  if (invoice.status === 'paid') return 0;
+
   const dueDate = parseISO(invoice.dueDate);
   const daysOverdue = differenceInDays(today, dueDate);
-  
+
   if (daysOverdue <= config.gracePeriodDays) return 0;
   
   // Find applicable slab

@@ -246,6 +246,21 @@ service cloud.firestore {
       allow delete: if isAdmin() || isAccountant();
     }
 
+    // Advance payments — recorded by accountant (or parent online), consumed when
+    // a future monthly fee request is generated for a covered month.
+    match /advancePayments/{id} {
+      allow get: if isSignedIn() && (
+        isAdmin() || isAccountant() || isGrievanceOfficer() ||
+        isLinkedToStudent(resource.data.get('studentId', ''))
+      );
+      allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isParent() || isStudent();
+      allow create: if isSignedIn() && (isAdmin() || isAccountant());
+      // Updates only mutate monthlyBreakdown / status as advance is consumed;
+      // the consumed flag is set by the same accountant or by the auto-apply flow.
+      allow update: if isSignedIn() && (isAdmin() || isAccountant());
+      allow delete: if isAdmin();
+    }
+
     // Broadcast logs — written by grievance officer / super admin after WhatsApp blasts
     match /broadcastLogs/{id} {
       allow read: if isAdmin() || isAccountant() || isGrievanceOfficer();
