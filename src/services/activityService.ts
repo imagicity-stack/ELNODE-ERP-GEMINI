@@ -14,8 +14,9 @@ interface LocationInfo {
 let _locationCache: LocationInfo | null = null;
 
 const fetchLocationOnce = () => {
-  // Race against a 3-second timeout so a slow/blocked ipapi.co never stalls anything.
-  const fetchPromise = fetch('https://ipapi.co/json/', { cache: 'no-store' })
+  // Call our own server-side proxy — CSP-safe because it's same-origin ('self').
+  // Race against a 5-second timeout so a slow response never stalls anything.
+  const fetchPromise = fetch('/api/ip-info', { cache: 'no-store' })
     .then(r => (r.ok ? r.json() : null))
     .then(d => {
       if (!d) return;
@@ -23,13 +24,13 @@ const fetchLocationOnce = () => {
         ip: d.ip || 'unknown',
         city: d.city,
         region: d.region,
-        country: d.country_name,
-        isp: d.org,
+        country: d.country,
+        isp: d.isp,
       };
     })
     .catch(() => {});
 
-  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 5000));
   Promise.race([fetchPromise, timeout]).catch(() => {});
 };
 
