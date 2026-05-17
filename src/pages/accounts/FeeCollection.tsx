@@ -916,24 +916,17 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       setIsEditingRequest(false);
       setCurrentRequestId(null);
       const structure = feeStructures.find(s => s.classId === student.classId);
-      if (structure) {
-        setRequestData({
-          month: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
-          dueDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0],
-          heads: structure.heads.map(h => ({
-            name: h.name,
-            amount: h.amount,
-            discount: 0,
-            finalAmount: h.amount
-          }))
-        });
-      } else {
-        setRequestData({
-          month: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
-          dueDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0],
-          heads: []
-        });
-      }
+      const sourceHeads = (structure?.heads?.length ? structure.heads : globalHeads).map(h => ({
+        name: h.name,
+        amount: h.amount,
+        discount: 0,
+        finalAmount: h.amount,
+      }));
+      setRequestData({
+        month: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
+        dueDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0],
+        heads: sourceHeads,
+      });
     }
     setIsRequestModalOpen(true);
   };
@@ -1099,17 +1092,23 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                         >
                           <Receipt className="w-3.5 h-3.5" /> Edit
                         </button>
-                        <button
-                          onClick={() => {
-                            setSelectedStudent(student);
-                            const defaultHead = studentRequest?.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
-                            setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
-                            setIsModalOpen(true);
-                          }}
-                          className="flex-1 py-2 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform shadow-sm"
-                        >
-                          <IndianRupee className="w-3.5 h-3.5" /> Collect ₹{(studentRequest?.totalAmount || 0).toLocaleString()}
-                        </button>
+                        {studentRequest?.partialPaymentRequest?.status === 'pending' && user.role !== 'super_admin' ? (
+                          <div className="flex-1 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold flex items-center justify-center gap-1 text-center px-2">
+                            <Clock className="w-3 h-3 shrink-0" /> Partial req pending — super admin only
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setSelectedStudent(student);
+                              const defaultHead = studentRequest?.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
+                              setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
+                              setIsModalOpen(true);
+                            }}
+                            className="flex-1 py-2 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform shadow-sm"
+                          >
+                            <IndianRupee className="w-3.5 h-3.5" /> Collect ₹{(studentRequest?.totalAmount || 0).toLocaleString()}
+                          </button>
+                        )}
                       </>
                     )}
                   </div>
@@ -1368,19 +1367,25 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                               })}
                             />
                           )}
-                          <Button
-                            variant="primary"
-                            size="xs"
-                            icon={Plus}
-                            onClick={() => {
-                              setSelectedStudent(student);
-                              const defaultHead = studentRequest?.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
-                              setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
-                              setIsModalOpen(true);
-                            }}
-                          >
-                            Collect
-                          </Button>
+                          {studentRequest?.partialPaymentRequest?.status === 'pending' && user.role !== 'super_admin' ? (
+                            <Button variant="secondary" size="xs" disabled title="Partial request pending — only super admin can collect">
+                              Locked
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="primary"
+                              size="xs"
+                              icon={Plus}
+                              onClick={() => {
+                                setSelectedStudent(student);
+                                const defaultHead = studentRequest?.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
+                                setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
+                                setIsModalOpen(true);
+                              }}
+                            >
+                              Collect
+                            </Button>
+                          )}
                           <Button
                             variant="secondary"
                             size="xs"
@@ -1563,110 +1568,63 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
             </FormField>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Fee Heads</h3>
-              <div className="flex items-center gap-3">
-                {globalHeads.length > 0 && (
-                  <Select
-                    value=""
-                    onChange={(e) => {
-                      const head = globalHeads.find(h => h.name === e.target.value);
-                      if (head) {
-                        setRequestData({
-                          ...requestData,
-                          heads: [...requestData.heads, { name: head.name, amount: head.amount, discount: 0, finalAmount: head.amount }]
-                        });
-                      }
-                    }}
-                    className="w-48 text-xs"
-                  >
-                    <option value="">Select Global Head</option>
-                    {globalHeads.map(h => (
-                      <option key={h.name} value={h.name}>{h.name} (₹{h.amount})</option>
-                    ))}
-                  </Select>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setRequestData({
-                    ...requestData,
-                    heads: [...requestData.heads, { name: '', amount: 0, discount: 0, finalAmount: 0 }]
-                  })}
-                  className="text-xs font-bold text-amber-600 hover:underline flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" />
-                  Custom Head
-                </button>
-              </div>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Synced from super admin — discount only</span>
             </div>
 
-            <div className="space-y-3">
-              {requestData.heads.map((head, index) => (
-                <div key={index} className="grid grid-cols-12 gap-3 items-end p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="col-span-4">
-                    <FormField label="Head Name" required>
-                      <Input
-                        type="text"
-                        required
-                        value={head.name}
-                        onChange={(e) => {
-                          const newHeads = [...requestData.heads];
-                          newHeads[index].name = e.target.value;
-                          setRequestData({ ...requestData, heads: newHeads });
-                        }}
-                      />
-                    </FormField>
-                  </div>
-                  <div className="col-span-2">
-                    <FormField label="Amount" required>
-                      <Input
+            {requestData.heads.length === 0 ? (
+              <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 font-medium">
+                No fee structure found for this class. Please set one up in Super Admin → Fee Heads.
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="grid grid-cols-12 bg-slate-50 px-4 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                  <span className="col-span-5">Head</span>
+                  <span className="col-span-3 text-right">Amount</span>
+                  <span className="col-span-2 text-right">Discount</span>
+                  <span className="col-span-2 text-right">Final</span>
+                </div>
+                {requestData.heads.map((head, index) => (
+                  <div key={index} className="grid grid-cols-12 items-center px-4 py-3 border-b border-slate-100 last:border-0">
+                    <span className="col-span-5 text-sm font-bold text-slate-900">{head.name}</span>
+                    <span className="col-span-3 text-right text-sm font-medium text-slate-600">₹{(head.amount || 0).toLocaleString()}</span>
+                    <div className="col-span-2 flex justify-end">
+                      <input
                         type="number"
-                        required
-                        value={head.amount}
-                        onChange={(e) => {
-                          const newHeads = [...requestData.heads];
-                          newHeads[index].amount = Number(e.target.value);
-                          newHeads[index].finalAmount = newHeads[index].amount - newHeads[index].discount;
-                          setRequestData({ ...requestData, heads: newHeads });
-                        }}
-                      />
-                    </FormField>
-                  </div>
-                  <div className="col-span-2">
-                    <FormField label="Discount">
-                      <Input
-                        type="number"
+                        min={0}
+                        max={head.amount}
                         value={head.discount}
                         onChange={(e) => {
                           const newHeads = [...requestData.heads];
-                          newHeads[index].discount = Number(e.target.value);
+                          newHeads[index].discount = Math.min(Number(e.target.value), head.amount);
                           newHeads[index].finalAmount = newHeads[index].amount - newHeads[index].discount;
                           setRequestData({ ...requestData, heads: newHeads });
                         }}
+                        className="w-20 text-right px-2 py-1 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-400 bg-white"
+                        placeholder="0"
                       />
-                    </FormField>
+                    </div>
+                    <span className={`col-span-2 text-right text-sm font-black ${head.discount > 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                      ₹{(head.finalAmount || 0).toLocaleString()}
+                    </span>
                   </div>
-                  <div className="col-span-3">
-                    <FormField label="Final">
-                      <div className="px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-900">
-                        ₹{(head.finalAmount || 0).toLocaleString()}
-                      </div>
-                    </FormField>
-                  </div>
-                  <div className="col-span-1 pb-1">
-                    <IconButton
-                      icon={Trash2}
-                      variant="danger"
-                      onClick={() => {
-                        const newHeads = requestData.heads.filter((_, i) => i !== index);
-                        setRequestData({ ...requestData, heads: newHeads });
-                      }}
-                    />
-                  </div>
+                ))}
+                <div className="grid grid-cols-12 px-4 py-2.5 bg-slate-50 border-t border-slate-200">
+                  <span className="col-span-5 text-xs font-bold text-slate-700">Total</span>
+                  <span className="col-span-3 text-right text-xs font-bold text-slate-500">
+                    ₹{requestData.heads.reduce((s, h) => s + (h.amount || 0), 0).toLocaleString()}
+                  </span>
+                  <span className="col-span-2 text-right text-xs font-bold text-rose-500">
+                    -₹{requestData.heads.reduce((s, h) => s + (h.discount || 0), 0).toLocaleString()}
+                  </span>
+                  <span className="col-span-2 text-right text-sm font-black text-slate-900">
+                    ₹{requestData.heads.reduce((s, h) => s + (h.finalAmount || 0), 0).toLocaleString()}
+                  </span>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         </form>
       </Modal>
