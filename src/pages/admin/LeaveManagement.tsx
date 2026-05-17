@@ -108,8 +108,9 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
 
       await updateDoc(leaveDocRef, updateData);
 
+      let syncedCount = 0;
       if (status === 'approved' || status === 'regularized') {
-        await syncAttendanceWithLeave(selectedLeave, status);
+        syncedCount = await syncAttendanceWithLeave(selectedLeave, status);
       } else if (status === 'rejected' && (selectedLeave.status === 'approved' || selectedLeave.status === 'regularized')) {
         await clearAttendanceForLeave(selectedLeave);
       }
@@ -120,14 +121,50 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
         'Leave Request Status Updated',
         'Principal',
         `${status.charAt(0).toUpperCase() + status.slice(1)} leave for ${selectedLeave.studentName}`,
-        { 
-          studentId: selectedLeave.studentId, 
+        {
+          studentId: selectedLeave.studentId,
           status,
-          leaveId: selectedLeave.id 
+          leaveId: selectedLeave.id,
         }
       );
 
-      showToast(`Leave request ${status} successfully`, 'success');
+      // WhatsApp notification to parent on approval / rejection
+      if (status === 'approved' || status === 'rejected') {
+        try {
+          const studentSnap = await getDoc(doc(db, 'students', selectedLeave.studentId));
+          const phone = studentSnap.exists() ? studentSnap.data()?.parentDetails?.phone : null;
+          if (phone) {
+            await fetch('/api/whatsapp/send-template', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone,
+                templateName: 'leave_status_update',
+                parameters: [
+                  studentSnap.data()?.parentDetails?.fatherName || 'Parent',
+                  selectedLeave.studentName,
+                  selectedLeave.leaveType.replace('_', ' '),
+                  `${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)}`,
+                  status === 'approved' ? 'Approved ✅' : 'Rejected ❌',
+                  remarks || 'No remarks',
+                ],
+              }),
+            });
+          }
+        } catch { /* non-fatal — leave processing already succeeded */ }
+      }
+
+      // Toast — surface sync count so admin knows if attendance was actually updated
+      if (status === 'approved' || status === 'regularized') {
+        if (syncedCount === 0) {
+          showToast(`Leave ${status} — no attendance records found for this period yet. They will sync when teacher marks attendance.`, 'success');
+        } else {
+          showToast(`Leave ${status} — ${syncedCount} attendance record(s) updated`, 'success');
+        }
+      } else {
+        showToast(`Leave request ${status} successfully`, 'success');
+      }
+
       setProcessModalOpen(false);
       setRemarks('');
       setSelectedLeave(null);
@@ -140,7 +177,7 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
     }
   };
 
-  const syncAttendanceWithLeave = async (leave: StudentLeaveRequest, status: LeaveStatus) => {
+  const syncAttendanceWithLeave = async (leave: StudentLeaveRequest, status: LeaveStatus): Promise<number> => {
     const leaveDocRef = doc(db, 'studentLeaves', leave.id);
     try {
       const batch = writeBatch(db);
@@ -160,9 +197,11 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
       });
       await batch.commit();
       await updateDoc(leaveDocRef, { attendanceConnectionStatus: 'connected' });
+      return snap.docs.length;
     } catch (error) {
       console.error('Error syncing attendance:', error);
       try { await updateDoc(leaveDocRef, { attendanceConnectionStatus: 'failed' }); } catch {}
+      return 0;
     }
   };
 

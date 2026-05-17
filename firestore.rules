@@ -323,7 +323,7 @@ service cloud.firestore {
                data.startDate is string &&
                data.endDate is string &&
                data.totalDays is number && data.totalDays > 0 && data.totalDays <= 30 &&
-               data.status in ["submitted", "pending", "approved", "rejected", "document_required", "regularized", "unregularized", "cancelled"] &&
+               data.status in ["submitted", "pending", "approved", "rejected", "document_required", "regularized", "cancelled"] &&
                data.isEmergency is bool &&
                data.parentDeclaration is bool &&
                data.get('attendanceConnectionStatus', 'pending') in ['pending', 'connected', 'failed'];
