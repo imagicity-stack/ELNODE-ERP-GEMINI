@@ -285,17 +285,22 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         }
 
         const currentFine = fineConfig ? calculateFine(freshData, fineConfig) : 0;
-        const totalRequired = freshData.totalAmount + currentFine - (freshData.waivedAmount || 0);
+        // Fine is a separate obligation handled via waiver — cash payments apply
+        // to fee heads only so partial payments are never inflated by the fine.
+        const feeTotal = freshData.totalAmount - (freshData.waivedAmount || 0);
         const alreadyPaid = freshData.paidAmount || 0;
-        const remaining = totalRequired - alreadyPaid;
+        const feeRemaining = Math.max(0, feeTotal - alreadyPaid);
 
-        if (payAmount > remaining + 0.001) {
-          throw new Error(`Payment amount exceeds remaining balance (₹${remaining.toFixed(2)})`);
+        if (payAmount > feeRemaining + 0.001) {
+          throw new Error(
+            `Payment amount exceeds remaining fee balance of ₹${feeRemaining.toFixed(2)}.` +
+            (currentFine > 0 ? ` Outstanding fine of ₹${currentFine} must be waived separately.` : '')
+          );
         }
 
         const newPaidAmount = alreadyPaid + payAmount;
         const newStatus: FeeRequest['status'] =
-          newPaidAmount + 0.001 >= totalRequired ? 'paid' : 'partially_paid';
+          newPaidAmount + 0.001 >= feeTotal ? 'paid' : 'partially_paid';
 
         // ── Allocate the new payment across the request's heads (FIFO).
         // Uses balances derived from prior payments' allocations. Falls back to
@@ -1026,7 +1031,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               const currentFine = studentRequests.reduce((sum, r) => sum + (fineConfig ? calculateFine(r, fineConfig) : 0), 0);
               const waiverAmount = studentRequests.reduce((sum, r) => sum + (r.waivedAmount || 0), 0);
               const paidAmount = studentRequests.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
-              const balance = totalFee + currentFine - waiverAmount - paidAmount;
+              // Fee balance excludes fine — fine is shown separately and waived independently
+              const feeBalance = Math.max(0, totalFee - waiverAmount - paidAmount);
+              const balance = feeBalance; // kept for legacy references in this block
               const studentRequest = studentRequests[0];
               const className = classes.find(c => c.id === student.classId)?.name || student.classId;
 
@@ -1051,7 +1058,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                     <div className="bg-slate-50 rounded-lg py-1.5">
                       <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Due</p>
-                      <p className="text-xs font-bold text-slate-900">₹{(totalFee + currentFine - waiverAmount).toLocaleString()}</p>
+                      <p className="text-xs font-bold text-slate-900">₹{(totalFee - waiverAmount).toLocaleString()}</p>
                     </div>
                     <div className="bg-emerald-50 rounded-lg py-1.5">
                       <p className="text-[9px] text-emerald-700 uppercase tracking-widest font-bold">Paid</p>
@@ -1253,8 +1260,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                 const currentFine = studentRequests.reduce((sum, r) => sum + (fineConfig ? calculateFine(r, fineConfig) : 0), 0);
                 const waiverAmount = studentRequests.reduce((sum, r) => sum + (r.waivedAmount || 0), 0);
                 const paidAmount = studentRequests.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
-                const balance = totalFee + currentFine - waiverAmount - paidAmount;
-                const studentRequest = studentRequests[0]; 
+                // Fee balance excludes fine — fine shown separately and waived independently
+                const balance = Math.max(0, totalFee - waiverAmount - paidAmount);
+                const studentRequest = studentRequests[0];
 
                 const studentPayments = payments.filter(p => p.studentId === student.id);
                 const isExpanded = expandedStudentId === student.id;
@@ -1698,7 +1706,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               })()}
             </Select>
           </FormField>
-          <FormField label="Amount (₹)" required>
+          <FormField label="Amount (₹)" required hint="Enter partial or full fee amount — fine is handled separately">
             <Input
               type="number"
               required
@@ -1706,6 +1714,22 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
             />
           </FormField>
+          {(() => {
+            const pendingReqs = selectedStudent
+              ? feeRequests.filter(r => r.studentId === selectedStudent.id && r.status !== 'paid')
+              : [];
+            const outstandingFine = pendingReqs.reduce((sum, r) => sum + (fineConfig ? calculateFine(r, fineConfig) : 0), 0);
+            if (outstandingFine <= 0) return null;
+            return (
+              <div className="flex items-start gap-2.5 p-3 bg-rose-50 border border-rose-100 rounded-xl">
+                <Scale className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-rose-700">Outstanding Fine: ₹{outstandingFine.toLocaleString()}</p>
+                  <p className="text-[10px] text-rose-500 mt-0.5">Fine is not included in this payment. Use the waive button (shield icon) to clear it after collecting fees.</p>
+                </div>
+              </div>
+            );
+          })()}
           <FormField label="Payment Method" required>
             <Select
               value={paymentData.method}
