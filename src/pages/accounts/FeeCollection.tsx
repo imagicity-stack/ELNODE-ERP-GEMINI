@@ -1779,14 +1779,34 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               </div>
             );
           })()}
-          <FormField label="Amount to Collect (₹)" required hint="Enter partial or full fee amount — fine is handled separately via waive button">
-            <Input
-              type="number"
-              required
-              value={paymentData.amount}
-              onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
-            />
-          </FormField>
+          {(() => {
+            const isSuperAdmin = user?.role === 'super_admin';
+            if (isSuperAdmin) {
+              return (
+                <FormField label="Amount to Collect (₹)" required hint="Super admin override — partial collection allowed. Fine is waived separately.">
+                  <Input
+                    type="number"
+                    required
+                    value={paymentData.amount}
+                    onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                  />
+                </FormField>
+              );
+            }
+            // Accounts role: amount is locked to the full pending balance.
+            // Partial payments require super_admin approval.
+            return (
+              <FormField label="Amount to Collect (₹)" hint="Locked to full pending balance. Partial payments require super admin approval.">
+                <Input
+                  type="number"
+                  value={paymentData.amount}
+                  readOnly
+                  disabled
+                  className="bg-slate-50 cursor-not-allowed"
+                />
+              </FormField>
+            );
+          })()}
           {(() => {
             const pendingReqs = selectedStudent
               ? feeRequests.filter(r => r.studentId === selectedStudent.id && r.status !== 'paid')

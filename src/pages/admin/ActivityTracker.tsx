@@ -87,6 +87,7 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [liveCount, setLiveCount] = useState(0);
+  const [subError, setSubError] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -105,14 +106,28 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
 
   useEffect(() => {
     setLoading(true);
+    setSubError(null);
     const unsub = subscribeActivityLogs({
       limitCount: 1000,
       onData: (docs) => {
         setLogs(docs);
         setLiveCount(prev => prev + 1);
         setLoading(false);
+        setSubError(null);
       },
-      onError: () => setLoading(false),
+      onError: (err) => {
+        setLoading(false);
+        const code = err?.code || '';
+        const msg = err?.message || String(err);
+        if (code === 'permission-denied' || /Missing or insufficient permissions/i.test(msg)) {
+          setSubError(
+            'Firestore denied read access to activityLogs. The new security rules have not been deployed yet. ' +
+            'Run: firebase deploy --only firestore:rules'
+          );
+        } else {
+          setSubError(`Could not load activity logs: ${msg}`);
+        }
+      },
     });
     return unsub;
   }, []);
@@ -347,6 +362,16 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
             </div>
           }
         />
+
+        {subError && (
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3">
+            <X className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-rose-700">Activity log unavailable</p>
+              <p className="text-xs text-rose-600 mt-1 font-mono">{subError}</p>
+            </div>
+          </div>
+        )}
 
         {/* Stats cards */}
         <div className="grid grid-cols-5 gap-4">
