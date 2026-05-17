@@ -34,8 +34,9 @@ export const calculateFine = (invoice: FeeRequest, config: FineConfig, today: Da
   
   if (!slab) return 0;
   
+  const netAmount = invoice.totalAmount - (invoice.waivedAmount || 0);
   let fixed = slab.fixedPenalty;
-  let percent = (invoice.totalAmount * slab.percentagePenalty) / 100;
+  let percent = (netAmount * slab.percentagePenalty) / 100;
   
   let penalty = slab.isHigherOf ? Math.max(fixed, percent) : (fixed + percent);
   
