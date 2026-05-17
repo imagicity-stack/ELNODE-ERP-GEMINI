@@ -136,6 +136,39 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
       return;
     }
 
+    // Planned leave must be applied at least 2 days in advance
+    if (formData.leaveType === 'planned') {
+      const minDate = new Date();
+      minDate.setDate(minDate.getDate() + 2);
+      if (formData.startDate < minDate.toISOString().split('T')[0]) {
+        showToast('Planned leave must be applied at least 2 days in advance.', 'info');
+        return;
+      }
+    }
+
+    // Per-type max duration
+    const maxDays: Record<LeaveType, number> = {
+      half_day: 1,
+      emergency: 3,
+      planned: 14,
+      medical: 30,
+      regularization: 30,
+    };
+    if (days > maxDays[formData.leaveType]) {
+      showToast(`${formData.leaveType.replace('_', ' ')} leave cannot exceed ${maxDays[formData.leaveType]} day(s).`, 'info');
+      return;
+    }
+
+    // Overlap check against existing active leaves
+    const hasOverlap = leaves.some(l => {
+      if (['cancelled', 'rejected'].includes(l.status)) return false;
+      return formData.startDate <= l.endDate && formData.endDate >= l.startDate;
+    });
+    if (hasOverlap) {
+      showToast('You already have a leave request covering these dates. Please check your leave history.', 'error');
+      return;
+    }
+
     if (!formData.parentDeclaration) {
       showToast('Please confirm the parent declaration', 'info');
       return;
@@ -561,6 +594,31 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
             <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100 flex items-center justify-between">
               <p className="text-xs font-bold text-indigo-700">Total Leave Duration:</p>
               <p className="text-sm font-black text-indigo-900">{calculateDays()} {calculateDays() === 1 ? 'Day' : 'Days'}</p>
+            </div>
+          )}
+
+          {formData.leaveType === 'planned' && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-amber-800 font-medium">Planned leave must be applied at least <strong>2 days in advance</strong> and cannot exceed 14 days.</p>
+            </div>
+          )}
+          {formData.leaveType === 'medical' && calculateDays() > 3 && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-2">
+              <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-blue-800 font-medium">Medical leave over 3 days requires a <strong>doctor's certificate</strong>. The school may ask you to upload it after submission.</p>
+            </div>
+          )}
+          {formData.leaveType === 'half_day' && calculateDays() > 1 && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-rose-800 font-medium">Half day leave can only be for <strong>1 day</strong>.</p>
+            </div>
+          )}
+          {formData.leaveType === 'emergency' && calculateDays() > 3 && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-rose-800 font-medium">Emergency leave cannot exceed <strong>3 days</strong>. For longer absence please use Medical or Planned leave.</p>
             </div>
           )}
 

@@ -17,16 +17,17 @@ import {
   Eye,
   MessageSquare
 } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  getDocs, 
-  updateDoc, 
-  doc, 
-  where, 
+import {
+  collection,
+  query,
+  getDocs,
+  updateDoc,
+  doc,
+  where,
   orderBy,
   getDoc,
-  writeBatch
+  writeBatch,
+  QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { StudentLeaveRequest, UserProfile, LeaveStatus } from '../../types';
@@ -151,7 +152,7 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
       );
       const snap = await getDocs(q);
       const targetStatus = status === 'regularized' ? 'regularized' : 'approved_leave';
-      snap.docs.forEach(d => {
+      snap.docs.forEach((d: QueryDocumentSnapshot) => {
         batch.update(d.ref, {
           status: targetStatus,
           remarks: `Leave ${status}: ${leave.reasonCategory}`,
@@ -175,7 +176,7 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
         where('date', '<=', leave.endDate)
       );
       const snap = await getDocs(q);
-      snap.docs.forEach(d => {
+      snap.docs.forEach((d: QueryDocumentSnapshot) => {
         if (['approved_leave', 'regularized'].includes(d.data().status)) {
           batch.update(d.ref, { status: 'absent', remarks: 'Leave rejected by admin' });
         }

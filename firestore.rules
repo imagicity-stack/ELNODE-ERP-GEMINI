@@ -322,7 +322,7 @@ service cloud.firestore {
                data.reason is string && data.reason.size() <= 1000 &&
                data.startDate is string &&
                data.endDate is string &&
-               data.totalDays is number &&
+               data.totalDays is number && data.totalDays > 0 && data.totalDays <= 30 &&
                data.status in ["submitted", "pending", "approved", "rejected", "document_required", "regularized", "unregularized", "cancelled"] &&
                data.isEmergency is bool &&
                data.parentDeclaration is bool &&
