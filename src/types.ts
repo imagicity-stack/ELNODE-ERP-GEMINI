@@ -323,7 +323,7 @@ export interface Attendance {
   id: string;
   date: string;
   studentId: string;
-  status: 'present' | 'absent' | 'late' | 'approved_leave' | 'leave_pending' | 'uninformed_absence';
+  status: 'present' | 'absent' | 'late' | 'approved_leave' | 'leave_pending' | 'uninformed_absence' | 'regularized';
   type: 'student' | 'staff';
   remarks?: string;
   classId?: string; // Add classId for better searching
@@ -557,7 +557,7 @@ export interface LessonLog {
 }
 
 export type LeaveType = 'planned' | 'medical' | 'emergency' | 'half_day' | 'regularization';
-export type LeaveStatus = 'submitted' | 'pending' | 'approved' | 'rejected' | 'document_required' | 'regularized' | 'unregularized' | 'cancelled';
+export type LeaveStatus = 'submitted' | 'pending' | 'approved' | 'rejected' | 'document_required' | 'regularized' | 'cancelled';
 export type LeaveReasonCategory = 'Medical' | 'Family Function' | 'Travel' | 'Emergency' | 'Religious Reason' | 'Personal Reason' | 'Exam-related' | 'Other';
 
 export interface StudentLeaveRequest {
@@ -583,7 +583,7 @@ export interface StudentLeaveRequest {
   updatedAt: string;
   processedBy?: string;
   processedAt?: string;
-  attendanceConnectionStatus: 'pending' | 'connected' | 'not_applicable';
+  attendanceConnectionStatus: 'pending' | 'connected' | 'failed';
 }
 
 // ─── Teacher Leave Management ─────────────────────────────────────────────────

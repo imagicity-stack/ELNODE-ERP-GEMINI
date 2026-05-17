@@ -17,16 +17,17 @@ import {
   Eye,
   MessageSquare
 } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  getDocs, 
-  updateDoc, 
-  doc, 
-  where, 
+import {
+  collection,
+  query,
+  getDocs,
+  updateDoc,
+  doc,
+  where,
   orderBy,
   getDoc,
-  writeBatch
+  writeBatch,
+  QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { StudentLeaveRequest, UserProfile, LeaveStatus } from '../../types';
@@ -99,16 +100,19 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
         processedAt: new Date().toISOString(),
       };
 
-      // Connect to attendance if approved
       if (status === 'approved' || status === 'regularized') {
+        updateData.attendanceConnectionStatus = 'pending';
+      } else if (status === 'rejected' && (selectedLeave.status === 'approved' || selectedLeave.status === 'regularized')) {
         updateData.attendanceConnectionStatus = 'pending';
       }
 
       await updateDoc(leaveDocRef, updateData);
-      
-      // Sync Attendance if approved
+
+      let syncedCount = 0;
       if (status === 'approved' || status === 'regularized') {
-        await syncAttendanceWithLeave(selectedLeave, status);
+        syncedCount = await syncAttendanceWithLeave(selectedLeave, status);
+      } else if (status === 'rejected' && (selectedLeave.status === 'approved' || selectedLeave.status === 'regularized')) {
+        await clearAttendanceForLeave(selectedLeave);
       }
 
       // Log Activity
@@ -117,14 +121,50 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
         'Leave Request Status Updated',
         'Principal',
         `${status.charAt(0).toUpperCase() + status.slice(1)} leave for ${selectedLeave.studentName}`,
-        { 
-          studentId: selectedLeave.studentId, 
+        {
+          studentId: selectedLeave.studentId,
           status,
-          leaveId: selectedLeave.id 
+          leaveId: selectedLeave.id,
         }
       );
 
-      showToast(`Leave request ${status} successfully`, 'success');
+      // WhatsApp notification to parent on approval / rejection
+      if (status === 'approved' || status === 'rejected') {
+        try {
+          const studentSnap = await getDoc(doc(db, 'students', selectedLeave.studentId));
+          const phone = studentSnap.exists() ? studentSnap.data()?.parentDetails?.phone : null;
+          if (phone) {
+            await fetch('/api/whatsapp/send-template', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone,
+                templateName: 'leave_status_update',
+                parameters: [
+                  studentSnap.data()?.parentDetails?.fatherName || 'Parent',
+                  selectedLeave.studentName,
+                  selectedLeave.leaveType.replace('_', ' '),
+                  `${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)}`,
+                  status === 'approved' ? 'Approved ✅' : 'Rejected ❌',
+                  remarks || 'No remarks',
+                ],
+              }),
+            });
+          }
+        } catch { /* non-fatal — leave processing already succeeded */ }
+      }
+
+      // Toast — surface sync count so admin knows if attendance was actually updated
+      if (status === 'approved' || status === 'regularized') {
+        if (syncedCount === 0) {
+          showToast(`Leave ${status} — no attendance records found for this period yet. They will sync when teacher marks attendance.`, 'success');
+        } else {
+          showToast(`Leave ${status} — ${syncedCount} attendance record(s) updated`, 'success');
+        }
+      } else {
+        showToast(`Leave request ${status} successfully`, 'success');
+      }
+
       setProcessModalOpen(false);
       setRemarks('');
       setSelectedLeave(null);
@@ -137,32 +177,52 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
     }
   };
 
-  const syncAttendanceWithLeave = async (leave: StudentLeaveRequest, status: LeaveStatus) => {
+  const syncAttendanceWithLeave = async (leave: StudentLeaveRequest, status: LeaveStatus): Promise<number> => {
+    const leaveDocRef = doc(db, 'studentLeaves', leave.id);
     try {
       const batch = writeBatch(db);
-      const attendanceRef = collection(db, 'attendance');
-      
-      // Find attendance records within the leave dates for this student
       const q = query(
-        attendanceRef,
+        collection(db, 'attendance'),
         where('studentId', '==', leave.studentId),
         where('date', '>=', leave.startDate),
         where('date', '<=', leave.endDate)
       );
-      
       const snap = await getDocs(q);
       const targetStatus = status === 'regularized' ? 'regularized' : 'approved_leave';
-
-      snap.docs.forEach(d => {
-        batch.update(d.ref, { 
+      snap.docs.forEach((d: QueryDocumentSnapshot) => {
+        batch.update(d.ref, {
           status: targetStatus,
-          remarks: `Leave ${status}: ${leave.reasonCategory}`
+          remarks: `Leave ${status}: ${leave.reasonCategory}`,
         });
       });
-      
       await batch.commit();
+      await updateDoc(leaveDocRef, { attendanceConnectionStatus: 'connected' });
+      return snap.docs.length;
     } catch (error) {
       console.error('Error syncing attendance:', error);
+      try { await updateDoc(leaveDocRef, { attendanceConnectionStatus: 'failed' }); } catch {}
+      return 0;
+    }
+  };
+
+  const clearAttendanceForLeave = async (leave: StudentLeaveRequest) => {
+    try {
+      const batch = writeBatch(db);
+      const q = query(
+        collection(db, 'attendance'),
+        where('studentId', '==', leave.studentId),
+        where('date', '>=', leave.startDate),
+        where('date', '<=', leave.endDate)
+      );
+      const snap = await getDocs(q);
+      snap.docs.forEach((d: QueryDocumentSnapshot) => {
+        if (['approved_leave', 'regularized'].includes(d.data().status)) {
+          batch.update(d.ref, { status: 'absent', remarks: 'Leave rejected by admin' });
+        }
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error('Error clearing attendance for rejected leave:', error);
     }
   };
 
@@ -185,7 +245,9 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
       case 'document_required':
         return <Badge variant="info" className="flex items-center gap-1"><FileText className="w-3 h-3" /> Doc Required</Badge>;
       case 'regularized':
-        return <Badge className="flex items-center gap-1 tracking-tight">Regularized</Badge>;
+        return <Badge className="flex items-center gap-1 tracking-tight bg-violet-100 text-violet-700">Regularized</Badge>;
+      case 'cancelled':
+        return <Badge variant="default" className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Cancelled</Badge>;
       default:
         return <Badge variant="default">{status}</Badge>;
     }
@@ -229,7 +291,7 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
         </div>
 
         <div className="px-4 pt-3 overflow-x-auto flex gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {['all', 'submitted', 'approved', 'rejected', 'document_required', 'regularized'].map(s => (
+          {['all', 'submitted', 'approved', 'rejected', 'document_required', 'regularized', 'cancelled'].map(s => (
             <button
               key={s}
               onClick={() => setFilterStatus(s as any)}
@@ -355,7 +417,7 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
       <Card className="p-4">
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-4">
           <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-            {['all', 'submitted', 'approved', 'rejected', 'document_required', 'regularized'].map((status) => (
+            {['all', 'submitted', 'approved', 'rejected', 'document_required', 'regularized', 'cancelled'].map((status) => (
               <button
                 key={status}
                 onClick={() => setFilterStatus(status as any)}
@@ -609,32 +671,42 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
 
           <div className="flex flex-col gap-2 pt-2">
             <div className="grid grid-cols-2 gap-2">
-              <Button 
-                variant="primary" 
-                loading={isProcessing} 
+              <Button
+                variant="primary"
+                loading={isProcessing}
                 onClick={() => handleProcessLeave('approved')}
                 className="bg-emerald-600 hover:bg-emerald-700 h-10 font-bold uppercase tracking-wider"
               >
                 Approve
               </Button>
-              <Button 
-                variant="danger" 
-                loading={isProcessing} 
+              <Button
+                variant="danger"
+                loading={isProcessing}
                 onClick={() => handleProcessLeave('rejected')}
                 className="h-10 font-bold uppercase tracking-wider"
               >
                 Reject
               </Button>
             </div>
-            <Button 
-              variant="secondary" 
-              loading={isProcessing} 
-              onClick={() => handleProcessLeave('document_required')}
-              className="h-10 font-bold uppercase tracking-wider"
-              icon={FileText}
-            >
-              Request Document
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="secondary"
+                loading={isProcessing}
+                onClick={() => handleProcessLeave('document_required')}
+                className="h-10 font-bold uppercase tracking-wider"
+                icon={FileText}
+              >
+                Request Doc
+              </Button>
+              <Button
+                variant="secondary"
+                loading={isProcessing}
+                onClick={() => handleProcessLeave('regularized')}
+                className="h-10 font-bold uppercase tracking-wider border-violet-200 text-violet-700 hover:bg-violet-50"
+              >
+                Regularize
+              </Button>
+            </div>
           </div>
         </div>
       </Modal>
