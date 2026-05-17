@@ -10,16 +10,15 @@ interface LocationInfo {
   isp?: string;
 }
 
+// Module-level cache. Geolocation is best-effort; we NEVER block log writes on it.
 let _locationCache: LocationInfo | null = null;
-let _locationFetchPromise: Promise<LocationInfo | null> | null = null;
 
-const getLocationInfo = (): Promise<LocationInfo | null> => {
-  if (_locationCache) return Promise.resolve(_locationCache);
-  if (_locationFetchPromise) return _locationFetchPromise;
-
-  _locationFetchPromise = fetch('https://ipapi.co/json/', { cache: 'no-store' })
-    .then(r => r.json())
+const fetchLocationOnce = () => {
+  // Race against a 3-second timeout so a slow/blocked ipapi.co never stalls anything.
+  const fetchPromise = fetch('https://ipapi.co/json/', { cache: 'no-store' })
+    .then(r => (r.ok ? r.json() : null))
     .then(d => {
+      if (!d) return;
       _locationCache = {
         ip: d.ip || 'unknown',
         city: d.city,
@@ -27,28 +26,24 @@ const getLocationInfo = (): Promise<LocationInfo | null> => {
         country: d.country_name,
         isp: d.org,
       };
-      return _locationCache;
     })
-    .catch(() => null);
+    .catch(() => {});
 
-  return _locationFetchPromise;
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+  Promise.race([fetchPromise, timeout]).catch(() => {});
 };
 
-// Pre-warm on module load (best-effort)
-getLocationInfo().catch(() => {});
+// Kick off geolocation immediately, but never await it from logActivity.
+fetchLocationOnce();
 
 /**
- * Fire-and-forget enhancement: ask Gemini (server-side endpoint) to generate a richer
- * one-sentence description for this audit log, then patch it onto the log document.
- *
- * The endpoint receives ONLY this single event's metadata — it never sees data from
- * other portals or other users.
+ * Fire-and-forget Gemini enhancement. Patches `aiDescription` onto the log doc.
+ * Receives ONLY this single event's metadata — no cross-portal data leakage.
  */
 const enhanceWithGemini = (
   logId: string,
   ctx: { userRole: string; userName: string; section: string; action: string; details: string; metadata?: any }
 ) => {
-  // Fully detached — never block logActivity
   (async () => {
     try {
       const res = await fetch('/api/ai/describe-activity', {
@@ -63,7 +58,7 @@ const enhanceWithGemini = (
         await updateDoc(doc(db, 'activityLogs', logId), { aiDescription: description });
       }
     } catch {
-      // Silent: the basic log is already persisted
+      // Silent — basic log already persisted
     }
   })();
 };
@@ -78,7 +73,9 @@ export const logActivity = async (
   if (!user) return;
 
   try {
-    const loc = await getLocationInfo();
+    // Synchronous read — never await geolocation. First few logs may lack IP data;
+    // subsequent logs (after the cache populates) will have it.
+    const loc = _locationCache;
 
     const rawLog: Record<string, any> = {
       timestamp: serverTimestamp(),

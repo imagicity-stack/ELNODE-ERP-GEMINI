@@ -1362,7 +1362,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                             size="sm"
                             onClick={() => handleCancelRequest(studentRequest.id, student.id)}
                           />
-                          {(user.role === 'super_admin' || user.role === 'accountant') && currentFine > 0 && (
+                          {(user.role === 'super_admin' || user.role === 'accounts') && currentFine > 0 && (
                             <IconButton
                               icon={ShieldOff}
                               variant="secondary"
