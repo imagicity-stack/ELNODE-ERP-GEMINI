@@ -1,11 +1,18 @@
 import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure, PaymentMethod, FeeHead, FineConfig } from '../../types';
-import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale, MessageSquare, Search, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale, MessageSquare, Search, Users, ChevronDown, ChevronUp, Wallet, CalendarDays } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc, runTransaction, onSnapshot } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { getSchoolSettings } from '../../services/settingsService';
 import { getNextReceiptNumber } from '../../services/receiptCounterService';
+import {
+  getUnconsumedForMonth,
+  consumeAdvanceEntry,
+  createAdvancePayment,
+  buildAdvanceApplicationPayment,
+  getAdvancePaymentsForStudent,
+} from '../../services/advancePaymentService';
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
@@ -68,6 +75,22 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     voucherNumber: '',
     voucherImage: null as File | null,
   });
+
+  // Advance payment modal state
+  const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
+  const [advanceStudent, setAdvanceStudent] = useState<Student | null>(null);
+  const [advanceData, setAdvanceData] = useState({
+    selectedMonths: [] as string[],   // e.g. ["June 2025", "July 2025"]
+    selectedHeads: [] as string[],    // head names from the student's fee structure
+    method: 'cash' as PaymentMethod,
+    date: new Date().toISOString().split('T')[0],
+    referenceNumber: '',
+    voucherNumber: '',
+    voucherImage: null as File | null,
+    remarks: '',
+  });
+  const [advanceLoading, setAdvanceLoading] = useState(false);
+  const [advancePayments, setAdvancePayments] = useState<any[]>([]);  // for showing existing advances
 
   const [waiverData, setWaiverData] = useState({
     amount: '',
@@ -463,15 +486,81 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           paidAmount: 0,
           createdAt: new Date().toISOString(),
         } as Omit<FeeRequest, 'id'>;
-        await addDoc(collection(db, 'feeRequests'), newRequest);
-        await updateDoc(doc(db, 'students', selectedStudent.id), { feeStatus: 'pending' });
-        showToast('Fee request generated successfully!', 'success');
+        const newReqRef = await addDoc(collection(db, 'feeRequests'), newRequest);
+
+        // ── Auto-apply matching advance payments for this month ──────────────
+        // For each unconsumed advance entry covering this request's month, sum
+        // up the amounts that overlap with the request's heads, create a
+        // synthetic FeePayment that "spends" the advance against the request,
+        // then mark the advance entry as consumed. FIFO across multiple
+        // advances so the oldest advance is applied first.
+        let advanceApplied = 0;
+        try {
+          const matches = await getUnconsumedForMonth(selectedStudent.id, requestData.month);
+          const requestHeadNames = new Set(requestData.heads.map(h => h.name));
+          const requestHeadAmounts = new Map(requestData.heads.map(h => [h.name, h.finalAmount]));
+
+          for (const { advance, entry, entryIndex } of matches) {
+            // Sum advance amounts that overlap with request heads, capped at
+            // the request's per-head finalAmount so we never over-apply.
+            let entryApplied = 0;
+            const allocations: { headName: string; amount: number }[] = [];
+            for (const h of entry.heads) {
+              if (!requestHeadNames.has(h.name)) continue;
+              const cap = requestHeadAmounts.get(h.name) || 0;
+              const take = Math.min(h.amount, cap);
+              if (take <= 0) continue;
+              entryApplied += take;
+              allocations.push({ headName: h.name, amount: Number(take.toFixed(2)) });
+              // Reduce the remaining cap so a second advance entry can't double-apply
+              requestHeadAmounts.set(h.name, cap - take);
+            }
+            if (entryApplied <= 0.001) continue;
+
+            const settings = await getSchoolSettings();
+            const advReceipt = await getNextReceiptNumber(
+              settings.receiptPrefix || 'EHSREC',
+              settings.receiptStartNumber ?? 1,
+            );
+            const synthetic = buildAdvanceApplicationPayment({
+              request: { id: newReqRef.id, studentId: selectedStudent.id, classId: selectedStudent.classId },
+              advance,
+              entry: { ...entry, heads: allocations.map(a => ({ name: a.headName, amount: a.amount })) },
+              totalApplied: Number(entryApplied.toFixed(2)),
+              receiptNumber: advReceipt,
+            });
+            const payRef = await addDoc(collection(db, 'feePayments'), synthetic);
+            await consumeAdvanceEntry(advance.id, entryIndex, newReqRef.id, payRef.id);
+            advanceApplied += entryApplied;
+          }
+
+          if (advanceApplied > 0.001) {
+            const newPaid = Number(advanceApplied.toFixed(2));
+            const newStatus: FeeRequest['status'] =
+              newPaid + 0.001 >= totalAmount ? 'paid' : 'partially_paid';
+            await updateDoc(newReqRef, {
+              paidAmount: newPaid,
+              status: newStatus,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        } catch (advErr) {
+          console.error('[FeeCollection] auto-apply advance failed (non-fatal):', advErr);
+        }
+
+        await updateDoc(doc(db, 'students', selectedStudent.id), {
+          feeStatus: advanceApplied >= totalAmount - 0.001 && totalAmount > 0 ? 'paid' : 'pending',
+        });
+        const advNote = advanceApplied > 0
+          ? ` — ₹${advanceApplied.toFixed(2)} auto-applied from advance`
+          : '';
+        showToast(`Fee request generated successfully${advNote}`, 'success');
         await logActivity(
           user,
           'GENERATE_FEE_REQUEST',
           'Accounts',
-          `Generated fee request for ${selectedStudent.name} (${fmtMonthYear(requestData.month)})`,
-          { studentId: selectedStudent.id, month: requestData.month }
+          `Generated fee request for ${selectedStudent.name} (${fmtMonthYear(requestData.month)})${advNote}`,
+          { studentId: selectedStudent.id, month: requestData.month, advanceApplied }
         );
       }
 
@@ -483,6 +572,191 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       handleFirestoreError(err, OperationType.WRITE, 'feeRequests');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── Advance payment helpers ────────────────────────────────────────────────
+
+  const openAdvanceModal = async (student: Student) => {
+    setAdvanceStudent(student);
+    setAdvanceData({
+      selectedMonths: [],
+      selectedHeads: [],
+      method: 'cash',
+      date: new Date().toISOString().split('T')[0],
+      referenceNumber: '',
+      voucherNumber: '',
+      voucherImage: null,
+      remarks: '',
+    });
+    // Load existing advance payments for visibility (so accountant can see what's already paid)
+    try {
+      const existing = await getAdvancePaymentsForStudent(student.id);
+      setAdvancePayments(existing);
+    } catch (err) {
+      console.warn('Failed to load existing advance payments:', err);
+      setAdvancePayments([]);
+    }
+    setIsAdvanceModalOpen(true);
+  };
+
+  // Build the list of months available to pay in advance (next 12 starting this month)
+  const getUpcomingMonths = (): string[] => {
+    const months: string[] = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      months.push(d.toLocaleString('default', { month: 'long', year: 'numeric' }));
+    }
+    return months;
+  };
+
+  // For the currently selected student, derive available heads from feeStructures
+  const getAvailableHeadsForAdvance = (student: Student | null) => {
+    if (!student) return [] as FeeHead[];
+    const structure = feeStructures.find(s => s.classId === student.classId);
+    if (structure && structure.heads.length > 0) return structure.heads;
+    return globalHeads;
+  };
+
+  const calcAdvanceTotal = (): { perMonth: number; total: number } => {
+    const heads = getAvailableHeadsForAdvance(advanceStudent);
+    const selectedHeadAmounts = heads
+      .filter(h => advanceData.selectedHeads.includes(h.name))
+      .reduce((s, h) => s + (h.amount || 0), 0);
+    return {
+      perMonth: selectedHeadAmounts,
+      total: selectedHeadAmounts * advanceData.selectedMonths.length,
+    };
+  };
+
+  const handleRecordAdvance = async () => {
+    if (!advanceStudent) return;
+    if (advanceData.selectedMonths.length === 0) {
+      showToast('Pick at least one month to pay in advance', 'info');
+      return;
+    }
+    if (advanceData.selectedHeads.length === 0) {
+      showToast('Pick at least one fee head', 'info');
+      return;
+    }
+    if (advanceData.method !== 'cash' && !advanceData.referenceNumber.trim()) {
+      showToast('Reference number required for non-cash payments', 'info');
+      return;
+    }
+
+    // Block paying in advance for months that already have an unconsumed advance
+    try {
+      const existing = await getAdvancePaymentsForStudent(advanceStudent.id);
+      const alreadyCovered = new Set<string>();
+      existing.forEach(a =>
+        (a.monthlyBreakdown || []).forEach(e => {
+          if (!e.consumed) alreadyCovered.add(e.month);
+        })
+      );
+      const dupes = advanceData.selectedMonths.filter(m => alreadyCovered.has(m));
+      if (dupes.length > 0) {
+        showToast(`Already paid in advance for: ${dupes.join(', ')}`, 'error');
+        return;
+      }
+    } catch (e) {
+      console.warn('overlap check failed', e);
+    }
+
+    setAdvanceLoading(true);
+    try {
+      const heads = getAvailableHeadsForAdvance(advanceStudent).filter(h =>
+        advanceData.selectedHeads.includes(h.name)
+      );
+      const { total } = calcAdvanceTotal();
+
+      // Upload voucher photo first (if any) so URL is in the doc
+      let voucherImageUrl: string | undefined;
+      if (advanceData.method === 'cash' && advanceData.voucherImage) {
+        try {
+          const file = advanceData.voucherImage;
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const path = `fee_vouchers/${advanceStudent.id}/advance_${Date.now()}_${safeName}`;
+          const r = storageRef(storage, path);
+          await uploadBytes(r, file);
+          voucherImageUrl = await getDownloadURL(r);
+        } catch (err) {
+          console.error('Advance voucher upload failed:', err);
+          showToast('Voucher upload failed', 'error');
+          setAdvanceLoading(false);
+          return;
+        }
+      }
+
+      // Receipt
+      const settings = await getSchoolSettings();
+      const receiptNumber = await getNextReceiptNumber(
+        settings.receiptPrefix || 'EHSREC',
+        settings.receiptStartNumber ?? 1,
+      );
+
+      // monthlyBreakdown: each selected month gets the same head set / amounts
+      const monthlyBreakdown = advanceData.selectedMonths.map(m => ({
+        month: m,
+        heads: heads.map(h => ({ name: h.name, amount: h.amount })),
+        consumed: false,
+      }));
+
+      const advanceId = await createAdvancePayment({
+        studentId: advanceStudent.id,
+        classId: advanceStudent.classId,
+        academicYear: '2024-25',
+        monthlyBreakdown,
+        totalAmount: total,
+        paymentMethod: advanceData.method,
+        referenceNumber: advanceData.referenceNumber || undefined,
+        voucherNumber: advanceData.method === 'cash' && advanceData.voucherNumber
+          ? advanceData.voucherNumber : undefined,
+        voucherImageUrl,
+        receiptNumber,
+        date: advanceData.date,
+        remarks: advanceData.remarks || undefined,
+        createdBy: user.uid,
+        createdAt: new Date().toISOString(),
+      });
+
+      showToast(`Advance payment of ₹${total.toLocaleString('en-IN')} recorded — receipt ${receiptNumber}`, 'success');
+
+      logActivity(
+        user,
+        'RECORD_ADVANCE_PAYMENT',
+        'Accounts',
+        `Recorded advance ₹${total} for ${advanceStudent.name} covering ${advanceData.selectedMonths.length} month(s)`,
+        { studentId: advanceStudent.id, advanceId, total, months: advanceData.selectedMonths },
+      );
+
+      // WhatsApp notification to parent (non-fatal)
+      const phone = advanceStudent.parentDetails?.phone;
+      if (phone) {
+        try {
+          await fetch('/api/whatsapp/send-template', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone,
+              templateName: 'payments_confirmed',
+              parameters: [
+                advanceStudent.parentDetails?.fatherName || 'Parent',
+                `₹${total.toLocaleString('en-IN')}`,
+                receiptNumber,
+                fmtDate(advanceData.date),
+                `Advance for ${advanceData.selectedMonths.join(', ')}`,
+              ],
+            }),
+          });
+        } catch { /* non-fatal */ }
+      }
+
+      setIsAdvanceModalOpen(false);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'advancePayments');
+    } finally {
+      setAdvanceLoading(false);
     }
   };
 
@@ -826,6 +1100,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                     )}
                   </div>
 
+                  <button
+                    onClick={() => openAdvanceModal(student)}
+                    className="mt-2 w-full py-1.5 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-[11px] font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
+                  >
+                    <Wallet className="w-3.5 h-3.5" /> Record Advance Payment
+                  </button>
+
                   {/* Payment history toggle */}
                   <button
                     onClick={() => setExpandedStudentId(expandedStudentId === student.id ? null : student.id)}
@@ -1021,14 +1302,24 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                     </Td>
                     <Td className="text-right">
                       {!studentRequest ? (
-                        <Button
-                          variant="success"
-                          size="xs"
-                          icon={Plus}
-                          onClick={() => openRequestModal(student)}
-                        >
-                          Request
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="success"
+                            size="xs"
+                            icon={Plus}
+                            onClick={() => openRequestModal(student)}
+                          >
+                            Request
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="xs"
+                            icon={Wallet}
+                            onClick={() => openAdvanceModal(student)}
+                          >
+                            Advance
+                          </Button>
+                        </div>
                       ) : (
                         <div className="flex items-center justify-end gap-2">
                           <Button
@@ -1070,6 +1361,14 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                             }}
                           >
                             Collect
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="xs"
+                            icon={Wallet}
+                            onClick={() => openAdvanceModal(student)}
+                          >
+                            Advance
                           </Button>
                         </div>
                       )}
@@ -1484,6 +1783,202 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
             />
           </FormField>
         </form>
+      </Modal>
+
+      {/* Advance Payment Modal */}
+      <Modal
+        isOpen={isAdvanceModalOpen}
+        onClose={() => setIsAdvanceModalOpen(false)}
+        title="Record Advance Payment"
+        subtitle={advanceStudent ? `For ${advanceStudent.name}` : ''}
+        size="lg"
+        footer={
+          <div className="flex items-center justify-between gap-3 w-full">
+            <div className="text-xs text-slate-500">
+              <span className="font-bold text-slate-700">
+                {advanceData.selectedMonths.length} month(s) × ₹{calcAdvanceTotal().perMonth.toLocaleString('en-IN')}
+              </span>
+              <span className="mx-1.5">=</span>
+              <span className="text-base font-black text-emerald-700">
+                ₹{calcAdvanceTotal().total.toLocaleString('en-IN')}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => setIsAdvanceModalOpen(false)}>Cancel</Button>
+              <Button variant="primary" loading={advanceLoading} onClick={handleRecordAdvance}>
+                Record Advance
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        {advanceStudent && (
+          <div className="space-y-5">
+            {/* Existing advance payments — context for the accountant */}
+            {advancePayments.length > 0 && (
+              <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl">
+                <p className="text-[10px] font-bold text-violet-700 uppercase tracking-widest mb-2">Existing Advance Payments</p>
+                <div className="space-y-1">
+                  {advancePayments.map(adv => (
+                    <div key={adv.id} className="text-[11px] text-violet-900">
+                      <span className="font-bold">{adv.receiptNumber}</span> · ₹{adv.totalAmount?.toLocaleString('en-IN')} ·
+                      {' '}{(adv.monthlyBreakdown || []).map((e: any) => (
+                        <span key={e.month} className={e.consumed ? 'line-through opacity-60' : 'font-bold'}>{e.month}{' '}</span>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Months */}
+            <FormField label="Months to Pay In Advance" required hint="Pick all months you want to pre-pay for. Already-covered months are blocked.">
+              <div className="grid grid-cols-3 md:grid-cols-4 gap-2 mt-1">
+                {getUpcomingMonths().map(m => {
+                  const alreadyCovered = advancePayments.some(adv =>
+                    (adv.monthlyBreakdown || []).some((e: any) => e.month === m && !e.consumed)
+                  );
+                  const selected = advanceData.selectedMonths.includes(m);
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      disabled={alreadyCovered}
+                      onClick={() => {
+                        setAdvanceData(prev => ({
+                          ...prev,
+                          selectedMonths: selected
+                            ? prev.selectedMonths.filter(x => x !== m)
+                            : [...prev.selectedMonths, m],
+                        }));
+                      }}
+                      className={`px-2 py-2 rounded-lg text-[11px] font-bold border transition-all ${
+                        alreadyCovered
+                          ? 'bg-slate-100 text-slate-400 border-slate-200 line-through cursor-not-allowed'
+                          : selected
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50'
+                      }`}
+                    >
+                      <CalendarDays className="w-3 h-3 inline mb-0.5 mr-1" />
+                      {m.split(' ')[0].slice(0, 3)} '{m.split(' ')[1]?.slice(-2)}
+                    </button>
+                  );
+                })}
+              </div>
+            </FormField>
+
+            {/* Heads */}
+            <FormField label="Fee Heads to Include" required hint="Synced from the class fee structure">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
+                {getAvailableHeadsForAdvance(advanceStudent).map(h => {
+                  const selected = advanceData.selectedHeads.includes(h.name);
+                  return (
+                    <button
+                      key={h.name}
+                      type="button"
+                      onClick={() => {
+                        setAdvanceData(prev => ({
+                          ...prev,
+                          selectedHeads: selected
+                            ? prev.selectedHeads.filter(x => x !== h.name)
+                            : [...prev.selectedHeads, h.name],
+                        }));
+                      }}
+                      className={`flex items-center justify-between px-3 py-2 rounded-lg border text-left transition-all ${
+                        selected
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50'
+                      }`}
+                    >
+                      <span className="text-xs font-bold">{h.name}</span>
+                      <span className={`text-xs font-bold ${selected ? 'text-white' : 'text-emerald-600'}`}>
+                        ₹{h.amount.toLocaleString('en-IN')}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {getAvailableHeadsForAdvance(advanceStudent).length === 0 && (
+                <p className="text-xs text-rose-600 mt-2">No fee structure set for this class. Ask the admin to configure one first.</p>
+              )}
+            </FormField>
+
+            {/* Payment Method */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField label="Payment Method" required>
+                <Select
+                  value={advanceData.method}
+                  onChange={(e) => setAdvanceData({ ...advanceData, method: e.target.value as any })}
+                >
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="upi">UPI</option>
+                  <option value="net_banking">Net Banking</option>
+                </Select>
+              </FormField>
+              <FormField label="Date" required>
+                <Input
+                  type="date"
+                  required
+                  value={advanceData.date}
+                  onChange={(e) => setAdvanceData({ ...advanceData, date: e.target.value })}
+                />
+              </FormField>
+            </div>
+
+            {advanceData.method !== 'cash' && (
+              <FormField label="Reference Number" required>
+                <Input
+                  type="text"
+                  required
+                  placeholder="Transaction ID / Cheque No."
+                  value={advanceData.referenceNumber}
+                  onChange={(e) => setAdvanceData({ ...advanceData, referenceNumber: e.target.value })}
+                />
+              </FormField>
+            )}
+
+            {advanceData.method === 'cash' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField label="Cash Voucher Number" hint="Optional — from physical book">
+                  <Input
+                    type="text"
+                    placeholder="e.g. CV-0042"
+                    value={advanceData.voucherNumber}
+                    onChange={(e) => setAdvanceData({ ...advanceData, voucherNumber: e.target.value })}
+                  />
+                </FormField>
+                <FormField label="Cash Voucher Photo" hint="Optional">
+                  <div className="flex items-center gap-3">
+                    <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200">
+                      <Receipt className="w-3.5 h-3.5" />
+                      {advanceData.voucherImage ? 'Change' : 'Attach'}
+                      <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        className="hidden"
+                        onChange={(e) => setAdvanceData({ ...advanceData, voucherImage: e.target.files?.[0] || null })}
+                      />
+                    </label>
+                    {advanceData.voucherImage && (
+                      <span className="text-xs text-slate-600 truncate max-w-[160px]">{advanceData.voucherImage.name}</span>
+                    )}
+                  </div>
+                </FormField>
+              </div>
+            )}
+
+            <FormField label="Remarks" hint="Optional">
+              <Textarea
+                value={advanceData.remarks}
+                onChange={(e) => setAdvanceData({ ...advanceData, remarks: e.target.value })}
+                rows={2}
+              />
+            </FormField>
+          </div>
+        )}
       </Modal>
 
       {/* Waive Fine Modal */}

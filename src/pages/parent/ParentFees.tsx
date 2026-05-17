@@ -1,8 +1,9 @@
-import { UserProfile, Student, FeeRequest, FeePayment, FineConfig } from '../../types';
-import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Download, Wallet, Scale, ShieldOff } from 'lucide-react';
+import { UserProfile, Student, FeeRequest, FeePayment, FineConfig, AdvancePayment, FeeStructure, FeeHead } from '../../types';
+import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Download, Wallet, Scale, ShieldOff, CalendarDays } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, doc, orderBy, getDoc } from 'firebase/firestore';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
+import { getAdvancePaymentsForStudent } from '../../services/advancePaymentService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { fmtDate } from '../../lib/utils';
@@ -41,6 +42,8 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [fineConfig, setFineConfig] = useState<FineConfig | null>(null);
+  const [advancePayments, setAdvancePayments] = useState<AdvancePayment[]>([]);
+  const [availableHeads, setAvailableHeads] = useState<FeeHead[]>([]);
   const [loading, setLoading] = useState(false);
   const { showToast } = useToast();
 
@@ -51,16 +54,29 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
       const requestsQuery = query(collection(db, 'feeRequests'), where('studentId', '==', selectedStudent.id));
       const paymentsQuery = query(collection(db, 'feePayments'), where('studentId', '==', selectedStudent.id), orderBy('date', 'desc'));
 
-      const [requestsSnap, paymentsSnap, fineSnap] = await Promise.all([
+      const [requestsSnap, paymentsSnap, fineSnap, advances, structSnap] = await Promise.all([
         getDocs(requestsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feeRequests'); throw err; }),
         getDocs(paymentsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feePayments'); throw err; }),
-        getDoc(doc(db, 'fine-config', 'global'))
+        getDoc(doc(db, 'fine-config', 'global')),
+        getAdvancePaymentsForStudent(selectedStudent.id).catch(() => [] as AdvancePayment[]),
+        getDocs(query(collection(db, 'feeStructures'), where('classId', '==', selectedStudent.classId))).catch(() => null),
       ]);
 
       setFeeRequests(requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
       setPayments(paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeePayment)));
       if (fineSnap.exists()) {
         setFineConfig(fineSnap.data() as FineConfig);
+      }
+      setAdvancePayments(advances);
+      if (structSnap && !structSnap.empty) {
+        const struct = structSnap.docs[0].data() as FeeStructure;
+        setAvailableHeads(struct.heads || []);
+      } else {
+        // Fallback to global heads if no class structure
+        try {
+          const ghSnap = await getDocs(collection(db, 'feeHeads'));
+          setAvailableHeads(ghSnap.docs.map(d => d.data() as FeeHead));
+        } catch { setAvailableHeads([]); }
       }
     } catch (err) {
       console.error('Error fetching parent fee data:', err);
@@ -262,6 +278,65 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                 </div>
               )}
 
+              {/* Advance Payments */}
+              <div>
+                <div className="flex items-center justify-between px-1 mb-3">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Advance Payments</p>
+                  <span className="text-[10px] font-bold text-violet-600">{advancePayments.length} record(s)</span>
+                </div>
+                {advancePayments.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-slate-100 p-4">
+                    <p className="text-xs text-slate-500 font-medium">No advance payments made yet.</p>
+                    {availableHeads.length > 0 && (
+                      <>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-3 mb-2">Heads available to pay in advance</p>
+                        <div className="space-y-1">
+                          {availableHeads.map(h => (
+                            <div key={h.name} className="flex items-center justify-between text-xs py-1">
+                              <span className="text-slate-700">{h.name}</span>
+                              <span className="font-bold text-emerald-600">₹{h.amount.toLocaleString('en-IN')}/mo</span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-slate-400 italic mt-3">Contact the accounts office to record an advance payment.</p>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {advancePayments.map(adv => (
+                      <div key={adv.id} className="bg-white rounded-2xl border border-violet-100 shadow-sm p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Wallet className="w-4 h-4 text-violet-600" />
+                            <span className="text-xs font-bold text-slate-900">{adv.receiptNumber}</span>
+                          </div>
+                          <span className="text-sm font-black text-violet-700">₹{adv.totalAmount.toLocaleString('en-IN')}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          {fmtDate(adv.date)} · {adv.paymentMethod.replace('_', ' ')}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {(adv.monthlyBreakdown || []).map(e => (
+                            <span
+                              key={e.month}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                e.consumed
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-violet-100 text-violet-700'
+                              }`}
+                            >
+                              {e.month.split(' ')[0].slice(0, 3)} {e.month.split(' ')[1]?.slice(-2)}
+                              {e.consumed && ' ✓'}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Payment History */}
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Payment History</p>
@@ -388,6 +463,78 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
                 </div>
               </Card>
             )}
+
+            {/* Advance Payments — desktop */}
+            <Card padding="none">
+              <div className="p-6 border-b bg-slate-50/50 flex items-center justify-between">
+                <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-violet-600" />
+                  Advance Payments
+                </h3>
+                <span className="text-xs font-bold text-violet-600">{advancePayments.length} record(s)</span>
+              </div>
+              <div className="p-6">
+                {advancePayments.length === 0 ? (
+                  <div>
+                    <p className="text-sm text-slate-500 mb-4">No advance payments made yet.</p>
+                    {availableHeads.length > 0 && (
+                      <>
+                        <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Fee Heads Available for Advance Payment</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {availableHeads.map(h => (
+                            <div key={h.name} className="flex items-center justify-between px-4 py-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                              <span className="text-sm text-slate-700 font-medium">{h.name}</span>
+                              <span className="text-sm font-bold text-emerald-600">₹{h.amount.toLocaleString('en-IN')}<span className="text-[10px] text-slate-400 font-medium ml-1">/month</span></span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-slate-400 italic mt-4">Contact the accounts office to arrange an advance payment.</p>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {advancePayments.map(adv => {
+                      const monthsCovered = (adv.monthlyBreakdown || []).length;
+                      const monthsConsumed = (adv.monthlyBreakdown || []).filter(e => e.consumed).length;
+                      return (
+                        <div key={adv.id} className="p-4 rounded-xl border border-violet-100 bg-violet-50/30">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-bold text-slate-900">Receipt {adv.receiptNumber}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {fmtDate(adv.date)} · {adv.paymentMethod.replace('_', ' ')}
+                                {adv.voucherNumber && ` · Voucher ${adv.voucherNumber}`}
+                              </p>
+                              <div className="mt-3 flex flex-wrap gap-1.5">
+                                {(adv.monthlyBreakdown || []).map(e => (
+                                  <span
+                                    key={e.month}
+                                    className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                                      e.consumed
+                                        ? 'bg-emerald-100 text-emerald-700'
+                                        : 'bg-violet-100 text-violet-700'
+                                    }`}
+                                    title={e.consumed ? `Applied to fee request on ${fmtDate(e.consumedAt || '')}` : 'Not yet applied'}
+                                  >
+                                    <CalendarDays className="w-3 h-3 inline mr-1 -mt-0.5" />
+                                    {e.month}{e.consumed && ' ✓'}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-xl font-black text-violet-700">₹{adv.totalAmount.toLocaleString('en-IN')}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">{monthsConsumed}/{monthsCovered} consumed</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </Card>
 
             {/* Payment History */}
             <Card padding="none">
