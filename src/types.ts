@@ -525,6 +525,11 @@ export interface FeePayment {
   transactionId?: string;
   receiptNumber: string;
   remarks?: string;
+  // Cash payments only — voucher number written on the physical receipt + optional photo
+  voucherNumber?: string;
+  voucherImageUrl?: string;
+  // Set when payment was recorded from an advance payment top-up (not a normal request)
+  advancePaymentId?: string;
 }
 
 export interface LessonLog {

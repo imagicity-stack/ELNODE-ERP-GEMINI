@@ -78,6 +78,23 @@ service firebase.storage {
                       request.auth.uid == userId;
     }
 
+    // Leave documents (parent portal upload path). Parent uploads when admin
+    // sets a leave to 'document_required'. Anyone signed in can read so that
+    // teachers/admins can view the supporting document inline.
+    match /leave_documents/{leaveId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidFileSize() && isAllowedContentType();
+    }
+
+    // Cash voucher photos — accountants/admins upload; finance roles can read.
+    match /fee_vouchers/{studentId}/{allPaths=**} {
+      allow read: if isSignedIn() && (isAnyAdmin() || hasRole(['accounts', 'grievance_officer']));
+      allow write: if isSignedIn() &&
+                      isValidFileSize() &&
+                      isAllowedContentType() &&
+                      (isAnyAdmin() || hasRole(['accounts']));
+    }
+
     // Deny everything else
     match /{allPaths=**} {
       allow read, write: if false;

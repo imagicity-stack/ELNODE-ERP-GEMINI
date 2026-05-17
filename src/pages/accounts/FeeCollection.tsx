@@ -2,10 +2,11 @@ import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure,
 import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale, MessageSquare, Search, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, orderBy, setDoc, deleteDoc, getDoc, runTransaction, onSnapshot } from 'firebase/firestore';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { getSchoolSettings } from '../../services/settingsService';
 import { getNextReceiptNumber } from '../../services/receiptCounterService';
-import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { fmtMonthYear, fmtDate } from '../../lib/utils';
@@ -64,6 +65,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     date: new Date().toISOString().split('T')[0],
     referenceNumber: '',
     remarks: '',
+    voucherNumber: '',
+    voucherImage: null as File | null,
   });
 
   const [waiverData, setWaiverData] = useState({
@@ -227,6 +230,26 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       ));
       const priorPayments = priorPaymentsSnap.docs.map(d => d.data() as FeePayment);
 
+      // Upload cash voucher image (if attached) before the transaction so the
+      // resulting URL is part of the payment doc. Orphaned files on tx failure
+      // are acceptable — voucher photos are small and rare.
+      let voucherImageUrl: string | undefined;
+      if (paymentData.method === 'cash' && paymentData.voucherImage) {
+        try {
+          const file = paymentData.voucherImage;
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const path = `fee_vouchers/${selectedStudent.id}/${Date.now()}_${safeName}`;
+          const ref = storageRef(storage, path);
+          await uploadBytes(ref, file);
+          voucherImageUrl = await getDownloadURL(ref);
+        } catch (uploadErr) {
+          console.error('Voucher upload failed:', uploadErr);
+          showToast('Voucher upload failed — payment not recorded. Try again.', 'error');
+          setLoading(false);
+          return;
+        }
+      }
+
       // Atomic transaction: re-read the fee request, validate against latest state,
       // create payment + update request together. Prevents stale-read overpayments.
       const txResult = await runTransaction(db, async (tx) => {
@@ -307,6 +330,10 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           referenceNumber: paymentData.referenceNumber,
           receiptNumber,
           remarks: paymentData.remarks,
+          ...(paymentData.method === 'cash' && paymentData.voucherNumber
+            ? { voucherNumber: paymentData.voucherNumber }
+            : {}),
+          ...(voucherImageUrl ? { voucherImageUrl } : {}),
         };
 
         const newPayRef = doc(collection(db, 'feePayments'));
@@ -1402,6 +1429,44 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                 onChange={(e) => setPaymentData({ ...paymentData, referenceNumber: e.target.value })}
               />
             </FormField>
+          )}
+          {paymentData.method === 'cash' && (
+            <>
+              <FormField label="Cash Voucher Number" hint="Optional — written on the physical cash voucher / receipt book">
+                <Input
+                  type="text"
+                  placeholder="e.g. CV-0042"
+                  value={paymentData.voucherNumber}
+                  onChange={(e) => setPaymentData({ ...paymentData, voucherNumber: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Cash Voucher Photo" hint="Optional — attach a photo of the signed voucher">
+                <div className="flex items-center gap-3">
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition-colors">
+                    <Receipt className="w-3.5 h-3.5" />
+                    {paymentData.voucherImage ? 'Change Photo' : 'Attach Photo'}
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="hidden"
+                      onChange={(e) => setPaymentData({ ...paymentData, voucherImage: e.target.files?.[0] || null })}
+                    />
+                  </label>
+                  {paymentData.voucherImage && (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs text-slate-600 truncate max-w-[180px]">{paymentData.voucherImage.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentData({ ...paymentData, voucherImage: null })}
+                        className="text-rose-500 hover:text-rose-600 shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </FormField>
+            </>
           )}
           <FormField label="Date" required>
             <Input
