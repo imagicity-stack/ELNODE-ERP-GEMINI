@@ -13,7 +13,8 @@ import {
   ShieldCheck,
   ChevronRight,
   Eye,
-  Trash2
+  Trash2,
+  Upload
 } from 'lucide-react';
 import {
   collection,
@@ -24,9 +25,9 @@ import {
   doc,
   where,
   orderBy,
-  deleteDoc
 } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../firebase';
 import {
   StudentLeaveRequest,
   UserProfile,
@@ -68,6 +69,7 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
   const [isAdding, setIsAdding] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [viewingLeave, setViewingLeave] = useState<StudentLeaveRequest | null>(null);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
 
   const [formData, setFormData] = useState({
     leaveType: 'planned' as LeaveType,
@@ -124,6 +126,13 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
     const days = calculateDays();
     if (days <= 0) {
       showToast('End date must be after start date', 'info');
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const allowsPastDates = formData.leaveType === 'regularization' || formData.leaveType === 'emergency';
+    if (formData.startDate < today && !allowsPastDates) {
+      showToast('Start date cannot be in the past. Use "Regularize Absence" for past absences.', 'info');
       return;
     }
 
@@ -195,12 +204,38 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
   const handleCancelLeave = async (leaveId: string) => {
     if (!confirm('Are you sure you want to cancel this leave request?')) return;
     try {
-      await deleteDoc(doc(db, 'studentLeaves', leaveId));
+      await updateDoc(doc(db, 'studentLeaves', leaveId), {
+        status: 'cancelled',
+        updatedAt: new Date().toISOString(),
+      });
       showToast('Leave request cancelled', 'success');
       fetchStudentLeaves();
     } catch (error) {
       console.error('Error cancelling leave:', error);
       showToast('Failed to cancel leave request', 'error');
+    }
+  };
+
+  const handleUploadDocument = async (leaveId: string, file: File) => {
+    try {
+      setUploadingDoc(true);
+      const storageRef = ref(storage, `leave_documents/${leaveId}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+      await updateDoc(doc(db, 'studentLeaves', leaveId), {
+        documentUrl: downloadURL,
+        documentName: file.name,
+        status: 'submitted',
+        updatedAt: new Date().toISOString(),
+      });
+      showToast('Document uploaded — leave resubmitted for review', 'success');
+      setViewingLeave(null);
+      fetchStudentLeaves();
+    } catch (error) {
+      console.error('Error uploading document:', error);
+      showToast('Failed to upload document', 'error');
+    } finally {
+      setUploadingDoc(false);
     }
   };
 
@@ -215,6 +250,10 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
         return <Badge variant="error" className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Rejected</Badge>;
       case 'document_required':
         return <Badge variant="info" className="flex items-center gap-1"><FileText className="w-3 h-3" /> Docs Needed</Badge>;
+      case 'regularized':
+        return <Badge className="flex items-center gap-1 bg-violet-100 text-violet-700"><CheckCircle2 className="w-3 h-3" /> Regularized</Badge>;
+      case 'cancelled':
+        return <Badge variant="default" className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Cancelled</Badge>;
       default:
         return <Badge variant="default">{status}</Badge>;
     }
@@ -225,6 +264,8 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
       case 'approved': return { bg: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500', label: 'Approved' };
       case 'rejected': return { bg: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500', label: 'Rejected' };
       case 'document_required': return { bg: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500', label: 'Docs Needed' };
+      case 'regularized': return { bg: 'bg-violet-100 text-violet-700', dot: 'bg-violet-500', label: 'Regularized' };
+      case 'cancelled': return { bg: 'bg-slate-100 text-slate-500', dot: 'bg-slate-400', label: 'Cancelled' };
       default: return { bg: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500', label: 'Pending' };
     }
   };
@@ -313,6 +354,16 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
                       </button>
                     </div>
                   )}
+                  {leave.status === 'document_required' && (
+                    <div className="px-4 pb-3">
+                      <label className="cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold text-blue-600">
+                        <Upload className="w-3.5 h-3.5" />
+                        {uploadingDoc ? 'Uploading…' : 'Upload Document'}
+                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" disabled={uploadingDoc}
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadDocument(leave.id, f); }} />
+                      </label>
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -394,6 +445,13 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
                               <Button variant="danger" size="xs" onClick={() => handleCancelLeave(leave.id)}>
                                 <Trash2 className="w-3 h-3" />
                               </Button>
+                            )}
+                            {leave.status === 'document_required' && (
+                              <label className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-[10px] font-bold rounded-lg hover:bg-blue-700">
+                                <Upload className="w-3 h-3" /> Upload
+                                <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" disabled={uploadingDoc}
+                                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadDocument(leave.id, f); }} />
+                              </label>
                             )}
                           </div>
                         </div>
@@ -604,6 +662,30 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
                 <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
                   <p className="text-xs text-emerald-900 font-bold">{viewingLeave.adminRemarks}</p>
                 </div>
+              </div>
+            )}
+
+            {viewingLeave.status === 'document_required' && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-2">
+                <p className="text-xs font-bold text-blue-800">School has requested a supporting document</p>
+                <p className="text-[10px] text-blue-600">Upload a photo or PDF (medical certificate, application, etc.). Once uploaded, your leave will be resubmitted for review.</p>
+                <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors">
+                  <Upload className="w-3.5 h-3.5" />
+                  {uploadingDoc ? 'Uploading…' : 'Upload Document'}
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    className="hidden"
+                    disabled={uploadingDoc}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleUploadDocument(viewingLeave.id, file);
+                    }}
+                  />
+                </label>
+                {viewingLeave.documentUrl && (
+                  <p className="text-[10px] text-blue-600 font-medium">Previously uploaded: <a href={viewingLeave.documentUrl} target="_blank" rel="noreferrer" className="underline">{viewingLeave.documentName || 'View file'}</a></p>
+                )}
               </div>
             )}
 

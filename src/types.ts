@@ -583,7 +583,7 @@ export interface StudentLeaveRequest {
   updatedAt: string;
   processedBy?: string;
   processedAt?: string;
-  attendanceConnectionStatus: 'pending' | 'connected' | 'not_applicable';
+  attendanceConnectionStatus: 'pending' | 'connected' | 'failed';
 }
 
 // ─── Teacher Leave Management ─────────────────────────────────────────────────
