@@ -286,6 +286,10 @@ service cloud.firestore {
       allow get: if isAnyAdmin() || isAccountant();
       allow list: if isAnyAdmin() || isTeacher() || isParent() || isStudent() || isAccountant();
       allow create: if isSignedIn();
+      // Tamper-resistant: only the aiDescription field may be patched (used by the
+      // Gemini fire-and-forget enhancer). No other field can be modified after write.
+      allow update: if isSignedIn()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aiDescription']);
     }
 
     // Helper collections
