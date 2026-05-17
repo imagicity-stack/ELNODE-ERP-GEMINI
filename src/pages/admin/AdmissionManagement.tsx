@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { logActivity } from '../../services/activityService';
 import {
   Plus,
   UserPlus,
@@ -82,6 +83,7 @@ export default function AdmissionManagement({ user }: { user: any }) {
 
       setIsModalOpen(false);
       fetchData();
+      logActivity(user, 'Admission Enquiry Added', 'Super Admin', `New enquiry for ${formData.studentName} (parent: ${formData.parentName}) — ${formData.classInterested}`, { studentName: formData.studentName, parentName: formData.parentName });
       setFormData({
         studentName: '',
         parentName: '',
@@ -98,9 +100,11 @@ export default function AdmissionManagement({ user }: { user: any }) {
   };
 
   const updateStatus = async (leadId: string, newStatus: AdmissionLead['status']) => {
+    const lead = leads.find(l => l.id === leadId);
     try {
       await updateDoc(doc(db, 'admission_leads', leadId), { status: newStatus });
       fetchData();
+      logActivity(user, 'Admission Status Updated', 'Super Admin', `${lead?.studentName || leadId} → ${newStatus}`, { leadId, studentName: lead?.studentName, fromStatus: lead?.status, toStatus: newStatus });
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `admission_leads/${leadId}`);
     }

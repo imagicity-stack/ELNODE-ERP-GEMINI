@@ -65,8 +65,10 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
 
       if (isEditMode && editingClass) {
         await updateDoc(doc(db, 'classes', editingClass.id), classData);
+        logActivity(user, 'Class Updated', 'Super Admin', `Updated class "${formData.name}" with ${formData.sections.length} section(s)`, { classId: editingClass.id, name: formData.name });
       } else {
         await addDoc(collection(db, 'classes'), classData);
+        logActivity(user, 'Class Created', 'Super Admin', `Created class "${formData.name}" with ${formData.sections.length} section(s)`, { name: formData.name });
       }
       setIsModalOpen(false);
       setIsEditMode(false);
@@ -99,10 +101,12 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
   const performDelete = async () => {
     if (!deletingId) return;
     try {
+      const deletedClass = classes.find(c => c.id === deletingId);
       await deleteDoc(doc(db, 'classes', deletingId));
       fetchClasses();
       setIsDeleteModalOpen(false);
       setDeletingId(null);
+      logActivity(user, 'Class Deleted', 'Super Admin', `Deleted class "${deletedClass?.name || deletingId}"`, { classId: deletingId });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `classes/${deletingId}`);
     }

@@ -4,6 +4,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { UserProfile, Student, Grievance, GrievanceCategory, GrievancePriority } from '../../types';
+import { logActivity } from '../../services/activityService';
 import { Card, PageHeader } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { MessageSquare, Plus, Clock, CheckCircle2, AlertCircle, ChevronDown, X, Send } from 'lucide-react';
@@ -101,6 +102,7 @@ export default function ParentGrievance({ user, selectedStudent }: Props) {
       setForm({ title: '', description: '', category: 'other', priority: 'medium' });
       setShowForm(false);
       showToast('Grievance submitted successfully. We will get back to you shortly.', 'success');
+      logActivity(user, 'Grievance Submitted', 'Parents', `"${form.title.trim()}" — ${form.category} (${form.priority} priority) for ${selectedStudent?.name || 'student'}`, { category: form.category, priority: form.priority, studentId: selectedStudent?.id });
     } catch {
       showToast('Failed to submit grievance', 'error');
     } finally {
@@ -128,6 +130,7 @@ export default function ParentGrievance({ user, selectedStudent }: Props) {
       });
       setReplyText('');
       showToast('Reply added', 'success');
+      logActivity(user, 'Grievance Reply Sent', 'Parents', `Reply on "${selectedGrievance.title}": ${replyText.trim().slice(0, 80)}`, { grievanceId: selectedGrievance.id });
     } catch {
       showToast('Failed to add reply', 'error');
     } finally {

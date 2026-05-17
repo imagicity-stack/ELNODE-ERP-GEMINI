@@ -64,6 +64,7 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
     try {
       await setDoc(doc(db, 'feeHeads', newHead.name.replace(/\s+/g, '_').toLowerCase()), newHead);
       showToast('Global fee head saved!', 'success');
+      logActivity(user, 'Global Fee Head Saved', 'Accounts', `Fee head "${newHead.name}" set to ₹${newHead.amount}`, { name: newHead.name, amount: newHead.amount });
       fetchData();
       setNewHead({ name: '', amount: 0, description: '' });
     } catch (err) {
@@ -77,6 +78,7 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
     try {
       await deleteDoc(doc(db, 'feeHeads', name.replace(/\s+/g, '_').toLowerCase()));
       showToast('Fee head deleted', 'success');
+      logActivity(user, 'Global Fee Head Deleted', 'Accounts', `Deleted fee head "${name}"`, { name });
       fetchData();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'feeHeads');
@@ -141,6 +143,7 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
         updatedAt: new Date().toISOString(),
       };
 
+      const className = classes.find(c => c.id === selectedClassId)?.name || selectedClassId;
       if (feeStructure.id) {
         await setDoc(doc(db, 'feeStructures', feeStructure.id), structureData);
       } else {
@@ -148,6 +151,7 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
         setFeeStructure({ ...structureData, id: docRef.id });
       }
       showToast('Fee structure saved successfully!', 'success');
+      logActivity(user, 'Fee Structure Saved', 'Accounts', `Fee structure for Class ${className} saved — ${feeStructure.heads.length} heads, total ₹${totalAmount}`, { classId: selectedClassId, className, headsCount: feeStructure.heads.length, totalAmount });
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'feeStructures');
     } finally {

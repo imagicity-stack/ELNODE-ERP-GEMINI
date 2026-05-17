@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { UserProfile, Grievance, GrievanceNote, GrievanceStatus } from '../../types';
+import { logActivity } from '../../services/activityService';
 import { PageHeader, Card, Button } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import {
@@ -105,6 +106,7 @@ export default function GrievanceTracker({ user }: { user: UserProfile }) {
       }
       await updateDoc(doc(db, 'grievances', grievance.id), updates);
       showToast(`Status updated to ${newStatus.replace('_', ' ')}`, 'success');
+      logActivity(user, 'Grievance Status Updated', 'Super Admin', `"${grievance.title}" → ${newStatus.replace('_', ' ')} (${grievance.parentName} / ${grievance.studentName})`, { grievanceId: grievance.id, fromStatus: grievance.status, toStatus: newStatus });
     } catch {
       showToast('Failed to update status', 'error');
     } finally {
@@ -124,6 +126,7 @@ export default function GrievanceTracker({ user }: { user: UserProfile }) {
       });
       setSelectedGrievance(null);
       showToast('Grievance escalated to Principal', 'success');
+      logActivity(user, 'Grievance Escalated', 'Super Admin', `"${grievance.title}" escalated to Principal (${grievance.parentName} / ${grievance.studentName})`, { grievanceId: grievance.id });
     } catch {
       showToast('Failed to escalate', 'error');
     }
@@ -148,6 +151,7 @@ export default function GrievanceTracker({ user }: { user: UserProfile }) {
       });
       setNoteText('');
       showToast('Note added', 'success');
+      logActivity(user, isInternal ? 'Grievance Internal Note Added' : 'Grievance Note Added', 'Super Admin', `Note on "${selectedGrievance.title}" (${selectedGrievance.parentName} / ${selectedGrievance.studentName}): ${noteText.trim().slice(0, 80)}`, { grievanceId: selectedGrievance.id, isInternal });
     } catch {
       showToast('Failed to add note', 'error');
     } finally {
