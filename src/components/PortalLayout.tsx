@@ -36,6 +36,13 @@ import {
   Settings2,
   MessageSquare,
   IndianRupee,
+  CalendarDays,
+  BarChart3,
+  Banknote,
+  SlidersHorizontal,
+  AlertTriangle,
+  Cpu,
+  BadgePercent,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
@@ -139,6 +146,12 @@ const roleConfig: Record<UserRole, {
 
 // ─── Nav Items ────────────────────────────────────────────────────────────────
 
+// Section display order for super_admin and principal
+const ADMIN_SECTION_ORDER = [
+  'Overview', 'People', 'Academic', 'Attendance & Leaves',
+  'Finance', 'Communication', 'Grievance', 'System',
+];
+
 interface NavItem {
   label: string;
   icon: any;
@@ -146,90 +159,97 @@ interface NavItem {
   roles: UserRole[];
   section?: string;
   moduleId?: string;
+  profileItem?: boolean; // pinned to sidebar footer, not in scroll nav
 }
 
 const navItems: NavItem[] = [
-  // Overview first for all roles
+  // ── Overview ──────────────────────────────────────────────────────────────
   { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['super_admin', 'accounts', 'teacher', 'student', 'parent', 'principal', 'office_staff'], section: 'Overview', moduleId: 'dashboard' },
 
-  // Admin People
+  // ── People ────────────────────────────────────────────────────────────────
   { label: 'Students', icon: Users, path: '/students', roles: ['super_admin', 'principal', 'office_staff'], section: 'People', moduleId: 'students' },
   { label: 'Faculty', icon: Briefcase, path: '/teachers', roles: ['super_admin', 'principal', 'office_staff'], section: 'People', moduleId: 'teachers' },
   { label: 'Staff', icon: Shield, path: '/staff', roles: ['super_admin', 'principal', 'office_staff'], section: 'People', moduleId: 'staff' },
-  
-  // Admin Academic
+  { label: 'Admissions', icon: UserPlus, path: '/admissions', roles: ['super_admin', 'principal', 'office_staff'], section: 'People', moduleId: 'admissions' },
+
+  // ── Academic ──────────────────────────────────────────────────────────────
   { label: 'Classes', icon: GraduationCap, path: '/classes', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'classes' },
   { label: 'Subjects', icon: BookOpen, path: '/subjects', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'subjects' },
   { label: 'Houses', icon: Home, path: '/houses', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'houses' },
-  { label: 'Admissions', icon: UserPlus, path: '/admissions', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'admissions' },
+  { label: 'Timetable', icon: CalendarDays, path: '/timetable', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'timetable' },
   { label: 'Exams', icon: FileText, path: '/exams', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'exams' },
-  { label: 'Timetable', icon: Clock, path: '/timetable', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'timetable' },
-  { label: 'Student Leaves', icon: ClipboardCheck, path: '/leaves', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'leaves' },
-  { label: 'Teacher Leaves', icon: ClipboardCheck, path: '/teacher-leaves', roles: ['principal', 'super_admin'], section: 'Academic', moduleId: 'teacher-leaves' },
   { label: 'Grading', icon: CheckSquare, path: '/grading-scales', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'grading-scales' },
   { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'calendar' },
-  { label: 'Class Diary', icon: BookOpen, path: '/diary', roles: ['super_admin', 'principal', 'office_staff'], section: 'Academic', moduleId: 'diary' },
-  
-  // Admin Communication
-  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['super_admin', 'principal', 'office_staff'], section: 'Communication', moduleId: 'notices' },
-  { label: 'Activity Logs', icon: HistoryIcon, path: '/activity-logs', roles: ['super_admin', 'principal', 'office_staff'], section: 'Security', moduleId: 'activity-logs' },
-  
-  // Finance (Shared Admin/Accounts)
-  { label: 'Fee Structure', icon: Settings, path: '/fees', roles: ['super_admin'], section: 'Finance' },
+
+  // ── Attendance & Leaves ───────────────────────────────────────────────────
+  { label: 'Student Leaves', icon: ClipboardCheck, path: '/leaves', roles: ['super_admin', 'principal', 'office_staff'], section: 'Attendance & Leaves', moduleId: 'leaves' },
+  { label: 'Teacher Leaves', icon: ClipboardCheck, path: '/teacher-leaves', roles: ['super_admin', 'principal'], section: 'Attendance & Leaves', moduleId: 'teacher-leaves' },
+  { label: 'Class Diary', icon: BookOpen, path: '/diary', roles: ['super_admin', 'principal', 'office_staff'], section: 'Attendance & Leaves', moduleId: 'diary' },
+
+  // ── Finance (admin + accounts) ────────────────────────────────────────────
+  { label: 'Fee Structure', icon: SlidersHorizontal, path: '/fees', roles: ['super_admin'], section: 'Finance' },
   { label: 'Fee Collection', icon: Wallet, path: '/fee-collection', roles: ['super_admin', 'accounts'], section: 'Finance' },
   { label: 'Payment History', icon: HistoryIcon, path: '/payment-history', roles: ['super_admin', 'accounts'], section: 'Finance' },
-  { label: 'Payment Analytics', icon: TrendingUp, path: '/analytics', roles: ['super_admin', 'accounts'], section: 'Finance' },
+  { label: 'Analytics', icon: BarChart3, path: '/analytics', roles: ['super_admin', 'accounts'], section: 'Finance' },
   { label: 'Expenses', icon: CreditCard, path: '/expenses', roles: ['super_admin', 'accounts'], section: 'Finance' },
-  { label: 'Salaries', icon: DollarSign, path: '/salaries', roles: ['super_admin', 'accounts'], section: 'Finance' },
+  { label: 'Salaries', icon: Banknote, path: '/salaries', roles: ['super_admin', 'accounts'], section: 'Finance' },
+  { label: 'Fine Management', icon: BadgePercent, path: '/fine-settings', roles: ['super_admin'], section: 'Finance' },
   { label: 'Payroll Settings', icon: Settings, path: '/payroll-settings', roles: ['super_admin'], section: 'Finance' },
-  { label: 'Fine Management', icon: Shield, path: '/fine-settings', roles: ['super_admin'], section: 'Finance' },
   { label: 'Reports', icon: TrendingUp, path: '/reports', roles: ['super_admin', 'accounts'], section: 'Finance' },
 
-  // Super Admin Only Settings
-  { label: 'School Settings', icon: Settings2, path: '/school-settings', roles: ['super_admin'], section: 'Settings' },
-  { label: 'WhatsApp Notify', icon: MessageSquare, path: '/whatsapp', roles: ['super_admin', 'accounts'], section: 'Settings' },
-  { label: 'Role Permissions', icon: ShieldCheck, path: '/permissions', roles: ['super_admin'], section: 'Settings' },
+  // ── Communication ─────────────────────────────────────────────────────────
+  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['super_admin', 'principal', 'office_staff'], section: 'Communication', moduleId: 'notices' },
+  { label: 'Broadcast', icon: LayoutDashboard, path: '/broadcast', roles: ['super_admin', 'grievance_officer'], section: 'Communication' },
+  { label: 'WhatsApp', icon: MessageSquare, path: '/whatsapp', roles: ['super_admin', 'accounts'], section: 'Communication' },
 
-  // Grievance Officer specific
+  // ── Grievance ─────────────────────────────────────────────────────────────
+  { label: 'Grievances', icon: AlertTriangle, path: '/tracker', roles: ['super_admin', 'principal', 'grievance_officer'], section: 'Grievance' },
+  { label: 'Fee Follow-up', icon: Wallet, path: '/fee-followup', roles: ['super_admin', 'grievance_officer'], section: 'Grievance' },
+
+  // ── System (super admin only) ─────────────────────────────────────────────
+  { label: 'School Settings', icon: Settings2, path: '/school-settings', roles: ['super_admin'], section: 'System' },
+  { label: 'Role Permissions', icon: ShieldCheck, path: '/permissions', roles: ['super_admin'], section: 'System' },
+  { label: 'Activity Logs', icon: HistoryIcon, path: '/activity-logs', roles: ['super_admin', 'principal'], section: 'System', moduleId: 'activity-logs' },
+
+  // ── Profile (pinned to sidebar bottom — not in scroll nav) ────────────────
+  { label: 'Profile', icon: User, path: '/profile', roles: ['super_admin', 'accounts', 'teacher', 'student', 'parent', 'principal', 'grievance_officer'], profileItem: true },
+
+  // ── Grievance officer dashboard ───────────────────────────────────────────
   { label: 'Dashboard', icon: LayoutGrid, path: '', roles: ['grievance_officer'], section: 'Overview' },
-  { label: 'Grievances', icon: MessageSquare, path: '/tracker', roles: ['grievance_officer', 'principal', 'super_admin'], section: 'Grievance' },
-  { label: 'Fee Follow-up', icon: Wallet, path: '/fee-followup', roles: ['grievance_officer', 'super_admin'], section: 'Grievance' },
-  { label: 'Broadcast', icon: Megaphone, path: '/broadcast', roles: ['grievance_officer', 'super_admin'], section: 'Communication' },
 
-  // Teacher specific (already mostly covered by Overview)
+  // ── Teacher ───────────────────────────────────────────────────────────────
   { label: 'My Classes', icon: GraduationCap, path: '/classes', roles: ['teacher'], section: 'Academic' },
   { label: 'Attendance', icon: ClipboardCheck, path: '/attendance', roles: ['teacher'], section: 'Academic' },
-  { label: 'Timetable', icon: Clock, path: '/timetable', roles: ['teacher'], section: 'Academic' },
+  { label: 'Timetable', icon: CalendarDays, path: '/timetable', roles: ['teacher'], section: 'Academic' },
   { label: 'Class Diary', icon: BookOpen, path: '/diary', roles: ['teacher'], section: 'Academic' },
   { label: 'Study Materials', icon: BookOpen, path: '/notes', roles: ['teacher'], section: 'Academic' },
   { label: 'Exams', icon: FileText, path: '/exams', roles: ['teacher'], section: 'Academic' },
-  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['teacher'], section: 'Communication' },
-  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['teacher'], section: 'Academic' },
   { label: 'My Leaves', icon: ClipboardCheck, path: '/leaves', roles: ['teacher'], section: 'Academic' },
+  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['teacher'], section: 'Academic' },
+  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['teacher'], section: 'Communication' },
 
-  // Student specific
+  // ── Student ───────────────────────────────────────────────────────────────
   { label: 'My Subjects', icon: BookOpen, path: '/subjects', roles: ['student'], section: 'Academic' },
   { label: 'Attendance', icon: Clock, path: '/attendance', roles: ['student'], section: 'Academic' },
-  { label: 'Timetable', icon: Calendar, path: '/timetable', roles: ['student'], section: 'Academic' },
+  { label: 'Timetable', icon: CalendarDays, path: '/timetable', roles: ['student'], section: 'Academic' },
   { label: 'Leaves', icon: ClipboardCheck, path: '/leaves', roles: ['student'], section: 'Academic' },
-  { label: 'Fees', icon: Wallet, path: '/fees', roles: ['student'], section: 'Finance' },
   { label: 'Exams', icon: FileText, path: '/exams', roles: ['student'], section: 'Academic' },
-  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['student'], section: 'Communication' },
-  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['student'], section: 'Academic' },
   { label: 'Class Diary', icon: BookOpen, path: '/diary', roles: ['student'], section: 'Academic' },
+  { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['student'], section: 'Academic' },
+  { label: 'Fees', icon: Wallet, path: '/fees', roles: ['student'], section: 'Finance' },
+  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['student'], section: 'Communication' },
 
-  // Parent specific
-  { label: 'Attendance', icon: Clock, path: '/attendance', roles: ['parent'], section: 'Status' },
-  { label: 'Leaves', icon: ClipboardCheck, path: '/leaves', roles: ['parent'], section: 'Status' },
-  { label: 'Fees', icon: Wallet, path: '/fees', roles: ['parent'], section: 'Status' },
-  { label: 'Timetable', icon: Calendar, path: '/timetable', roles: ['parent'], section: 'Academic' },
+  // ── Parent ────────────────────────────────────────────────────────────────
+  { label: 'Attendance', icon: Clock, path: '/attendance', roles: ['parent'], section: 'My Child' },
+  { label: 'Leaves', icon: ClipboardCheck, path: '/leaves', roles: ['parent'], section: 'My Child' },
+  { label: 'Fees', icon: Wallet, path: '/fees', roles: ['parent'], section: 'My Child' },
+  { label: 'Timetable', icon: CalendarDays, path: '/timetable', roles: ['parent'], section: 'Academic' },
   { label: 'Subjects', icon: BookOpen, path: '/subjects', roles: ['parent'], section: 'Academic' },
   { label: 'Class Diary', icon: BookOpen, path: '/diary', roles: ['parent'], section: 'Academic' },
   { label: 'Exams', icon: FileText, path: '/exams', roles: ['parent'], section: 'Academic' },
-  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['parent'], section: 'Communication' },
   { label: 'Calendar', icon: Calendar, path: '/calendar', roles: ['parent'], section: 'Academic' },
-  { label: 'Grievances', icon: MessageSquare, path: '/grievances', roles: ['parent'], section: 'Communication' },
-  { label: 'Profile', icon: User, path: '/profile', roles: ['super_admin', 'accounts', 'teacher', 'student', 'parent', 'principal', 'grievance_officer'], section: 'Settings' },
+  { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['parent'], section: 'Communication' },
+  { label: 'Grievances', icon: AlertTriangle, path: '/grievances', roles: ['parent'], section: 'Communication' },
 ];
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -259,6 +279,9 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
     }
     return true;
   });
+
+  const profileItem = filteredItems.find(i => i.profileItem);
+  const navOnlyItems = filteredItems.filter(i => !i.profileItem);
 
   const getPortalPath = (r: string) => {
     switch (r) {
@@ -324,12 +347,23 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
     };
   }, [role]);
 
-  const groupedItems = filteredItems.reduce((acc, item) => {
+  const rawGroups = navOnlyItems.reduce((acc, item) => {
     const section = item.section || 'General';
     if (!acc[section]) acc[section] = [];
     acc[section].push(item);
     return acc;
   }, {} as Record<string, NavItem[]>);
+
+  // For admin/principal roles, enforce canonical section order; others keep insertion order
+  const isAdminRole = role === 'super_admin' || role === 'principal' || role === 'office_staff' || role === 'accounts';
+  const groupedItems: Record<string, NavItem[]> = isAdminRole
+    ? Object.fromEntries(
+        ADMIN_SECTION_ORDER
+          .filter(s => rawGroups[s])
+          .map(s => [s, rawGroups[s]])
+          .concat(Object.entries(rawGroups).filter(([s]) => !ADMIN_SECTION_ORDER.includes(s)))
+      )
+    : rawGroups;
 
   const handleLogout = async () => {
     try {
@@ -372,22 +406,16 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
         </button>
       </div>
 
-      {/* Role Badge */}
-      {!collapsed && (
-        <div className="mx-4 mt-4">
-          <div className={cn('px-3 py-1.5 rounded-lg border text-center', config.accentLight, config.accentBorder)}>
-            <p className={cn('text-xs font-bold uppercase tracking-widest', config.accentText)}>{config.label}</p>
-          </div>
-        </div>
-      )}
-
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-hide space-y-6">
+      <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-hide space-y-5">
         {Object.entries(groupedItems).map(([section, items]) => (
           <div key={section}>
             {!collapsed && section !== 'General' && (
-              <p className="px-3 mb-2 text-[10px] font-bold text-slate-500 uppercase tracking-[0.15em]">{section}</p>
+              <p className="px-3 mb-1.5 text-[9px] font-black text-slate-600 uppercase tracking-[0.18em]">
+                {section}
+              </p>
             )}
+            {collapsed && <div className="mx-3 mb-1.5 h-px bg-white/[0.06]" />}
             <div className="space-y-0.5">
               {items.map((item) => {
                 const fullPath = `${basePath}${item.path}`;
@@ -399,18 +427,19 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
                     onClick={() => setMobileOpen(false)}
                     title={collapsed ? item.label : undefined}
                     className={cn(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 group relative',
+                      'flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-150 group relative',
                       collapsed && 'lg:justify-center',
                       isActive
                         ? cn('text-white', config.accentLight, 'sidebar-item-active')
                         : 'text-slate-400 hover:text-white hover:bg-white/[0.06]'
                     )}
                   >
-                    <item.icon className={cn('w-[18px] h-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110',
+                    <item.icon className={cn(
+                      'w-[17px] h-[17px] shrink-0 transition-transform duration-150 group-hover:scale-110',
                       isActive ? config.accentText : ''
                     )} />
                     {!collapsed && (
-                      <span className={cn('text-sm font-medium whitespace-nowrap', isActive ? 'text-white' : '')}>
+                      <span className={cn('text-[13px] font-medium whitespace-nowrap', isActive ? 'text-white' : '')}>
                         {item.label}
                       </span>
                     )}
@@ -425,23 +454,44 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
         ))}
       </nav>
 
-      {/* User + Logout */}
-      <div className="border-t border-white/[0.06] p-3 space-y-1">
-        <div className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl', collapsed && 'lg:justify-center')}>
-          <div className={cn(`w-8 h-8 rounded-lg bg-gradient-to-br ${config.gradient} flex items-center justify-center shrink-0 text-white font-bold text-sm shadow overflow-hidden`)}>
-            {user.photoURL ? (
-              <img src={user.photoURL} alt={userName} className="w-full h-full object-cover" />
-            ) : (
-              userName.charAt(0).toUpperCase()
-            )}
-          </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="text-white text-sm font-semibold truncate leading-none">{userName}</p>
-              <p className={cn('text-[10px] mt-0.5 font-medium', config.accentText)}>{role.replace('_', ' ')}</p>
-            </div>
-          )}
-        </div>
+      {/* Footer: Profile + Logout */}
+      <div className="border-t border-white/[0.06] p-3 space-y-0.5">
+        {/* Profile link */}
+        {profileItem && (() => {
+          const fullPath = `${basePath}${profileItem.path}`;
+          const isActive = location.pathname === fullPath;
+          return (
+            <Link
+              to={fullPath}
+              onClick={() => setMobileOpen(false)}
+              title={collapsed ? 'Profile' : undefined}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 group',
+                collapsed && 'lg:justify-center',
+                isActive ? cn('text-white', config.accentLight, 'sidebar-item-active') : 'text-slate-400 hover:text-white hover:bg-white/[0.06]'
+              )}
+            >
+              <div className={cn(`w-7 h-7 rounded-lg bg-gradient-to-br ${config.gradient} flex items-center justify-center shrink-0 text-white font-bold text-xs shadow overflow-hidden`)}>
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt={userName} className="w-full h-full object-cover" />
+                ) : (
+                  userName.charAt(0).toUpperCase()
+                )}
+              </div>
+              {!collapsed && (
+                <div className="min-w-0 flex-1">
+                  <p className={cn('text-sm font-semibold truncate leading-none', isActive ? 'text-white' : 'text-slate-300')}>{userName}</p>
+                  <p className={cn('text-[10px] mt-0.5 font-medium capitalize', config.accentText)}>{role.replace('_', ' ')}</p>
+                </div>
+              )}
+              {!collapsed && isActive && (
+                <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', config.accent)} />
+              )}
+            </Link>
+          );
+        })()}
+
+        {/* Sign Out */}
         <button
           onClick={handleLogout}
           title={collapsed ? 'Sign Out' : undefined}
