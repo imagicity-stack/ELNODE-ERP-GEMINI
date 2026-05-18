@@ -210,44 +210,111 @@ export const generateFeeReceipt = async (
   // ── FEE PARTICULARS TABLE ────────────────────────────────────────────────────
   sectionHeader('FEE PARTICULARS');
 
-  const subTotal   = request.heads.reduce((s, h) => s + (h.finalAmount ?? h.amount ?? 0), 0);
-  const discount   = request.waivedAmount || 0;
-  const lateFee    = request.fineAmount || 0;
-  const grandTotal = subTotal - discount + lateFee;
+  const grossTotal    = request.heads.reduce((s, h) => s + (h.amount ?? 0), 0);
+  const headDiscounts = request.heads.reduce((s, h) => s + (h.discount ?? 0), 0);
+  const netFeeTotal   = request.heads.reduce((s, h) => s + (h.finalAmount ?? h.amount ?? 0), 0);
+  const fineWaiver    = request.waivedAmount || 0;
+  const netPayable    = Math.max(0, netFeeTotal - fineWaiver);
+  // Balance = net payable minus all payments INCLUDING this one
+  const totalPaid     = request.paidAmount || 0;
+  const balanceDue    = Math.max(0, netPayable - totalPaid);
+  const hasDiscount   = headDiscounts > 0;
 
-  const tableRows = request.heads.map((head, i) => [
-    String(i + 1).padStart(2, '0'),
-    head.name,
-    fmtMonthYear(request.month) || 'Annual',
-    (head.finalAmount ?? head.amount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+  // Build table rows — 5 cols when any discount exists, 4 cols otherwise
+  const tableRows = request.heads.map((head, i) => {
+    const gross    = head.amount ?? 0;
+    const disc     = head.discount ?? 0;
+    const net      = head.finalAmount ?? gross;
+    const rowBase  = [
+      String(i + 1).padStart(2, '0'),
+      head.name + (head.discountReason && disc > 0 ? `\n  Discount reason: ${head.discountReason}` : ''),
+      fmtMonthYear(request.month) || 'Annual',
+      gross.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+    ];
+    if (hasDiscount) {
+      rowBase.push(disc > 0 ? disc.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—');
+      rowBase.push(net.toLocaleString('en-IN', { minimumFractionDigits: 2 }));
+      return rowBase;
+    }
+    rowBase.push(net.toLocaleString('en-IN', { minimumFractionDigits: 2 }));
+    return rowBase;
+  });
+
+  const colStyles5: any = {
+    0: { halign: 'center', cellWidth: 14 },
+    2: { halign: 'center', cellWidth: 30 },
+    3: { halign: 'right',  cellWidth: 30 },
+    4: { halign: 'right',  cellWidth: 28, textColor: [5, 150, 105] },
+    5: { halign: 'right',  cellWidth: 34, fontStyle: 'bold' },
+  };
+  const colStyles4: any = {
+    0: { halign: 'center', cellWidth: 16 },
+    2: { halign: 'center', cellWidth: 36 },
+    3: { halign: 'right',  cellWidth: 40, fontStyle: 'bold' },
+  };
+
+  const footRows: any[] = [];
+  const pad = hasDiscount ? 4 : 2;
+
+  // Sub-total (gross)
+  footRows.push([
+    { content: '', colSpan: pad, styles: { fillColor: WHITE as any, lineWidth: 0 } },
+    { content: 'Gross Sub Total', styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } },
+    { content: `Rs. ${grossTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } },
   ]);
+
+  // Discount row (only if any)
+  if (hasDiscount) {
+    footRows.push([
+      { content: '', colSpan: pad, styles: { fillColor: WHITE as any, lineWidth: 0 } },
+      { content: 'Total Discount Applied', styles: { halign: 'right', fillColor: WHITE as any, textColor: [5, 150, 105] as any } },
+      { content: `- Rs. ${headDiscounts.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, styles: { halign: 'right', fillColor: WHITE as any, textColor: [5, 150, 105] as any } },
+    ]);
+    footRows.push([
+      { content: '', colSpan: pad, styles: { fillColor: WHITE as any, lineWidth: 0 } },
+      { content: 'Net Fee Total', styles: { halign: 'right', fontStyle: 'bold', fillColor: WHITE as any, textColor: DARK as any } },
+      { content: `Rs. ${netFeeTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, styles: { halign: 'right', fontStyle: 'bold', fillColor: WHITE as any, textColor: DARK as any } },
+    ]);
+  }
+
+  // Fine waiver row (only if applicable)
+  if (fineWaiver > 0) {
+    footRows.push([
+      { content: '', colSpan: pad, styles: { fillColor: WHITE as any, lineWidth: 0 } },
+      { content: 'Fine Waiver', styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } },
+      { content: `- Rs. ${fineWaiver.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } },
+    ]);
+  }
+
+  // Amount paid this receipt
+  footRows.push([
+    { content: 'AMOUNT PAID (THIS RECEIPT)', colSpan: hasDiscount ? 5 : 3, styles: { fontStyle: 'bold', halign: 'right', fillColor: NAVY as any, textColor: WHITE as any, fontSize: 10 } },
+    { content: `Rs. ${payment.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, styles: { fontStyle: 'bold', halign: 'right', fillColor: NAVY as any, textColor: WHITE as any, fontSize: 10 } },
+  ]);
+
+  // Balance due (only if unpaid balance remains)
+  if (balanceDue > 0.01) {
+    footRows.push([
+      { content: '', colSpan: pad, styles: { fillColor: WHITE as any, lineWidth: 0 } },
+      { content: 'Balance Due', styles: { halign: 'right', fillColor: WHITE as any, textColor: [220, 38, 38] as any, fontStyle: 'bold' } },
+      { content: `Rs. ${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, styles: { halign: 'right', fillColor: WHITE as any, textColor: [220, 38, 38] as any, fontStyle: 'bold' } },
+    ]);
+  }
+
+  const tableHead = hasDiscount
+    ? [['S.NO.', 'PARTICULARS', 'PERIOD', 'GROSS AMT', 'DISCOUNT', 'NET AMT (INR)']]
+    : [['S.NO.', 'PARTICULARS', 'PERIOD', 'AMOUNT (INR)']];
 
   autoTable(doc, {
     startY: y,
-    head: [['S.NO.', 'PARTICULARS', 'PERIOD', 'AMOUNT (INR)']],
+    head: tableHead,
     body: tableRows,
-    foot: [
-      [{ content: '', colSpan: 2, styles: { fillColor: WHITE as any, lineWidth: 0 } },
-       { content: 'Sub Total',             styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } },
-       { content: `Rs. ${subTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,  styles: { halign: 'right', fontStyle: 'bold', fillColor: LIGHT as any, textColor: DARK as any } }],
-      [{ content: '', colSpan: 2, styles: { fillColor: WHITE as any, lineWidth: 0 } },
-       { content: 'Discount / Concession', styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } },
-       { content: `Rs. ${discount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,  styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } }],
-      [{ content: '', colSpan: 2, styles: { fillColor: WHITE as any, lineWidth: 0 } },
-       { content: 'Late Fee',              styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } },
-       { content: `Rs. ${lateFee.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,   styles: { halign: 'right', fillColor: WHITE as any, textColor: SLATE as any } }],
-      [{ content: 'GRAND TOTAL', colSpan: 3, styles: { fontStyle: 'bold', halign: 'right', fillColor: NAVY as any, textColor: WHITE as any, fontSize: 10 } },
-       { content: `Rs. ${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, styles: { fontStyle: 'bold', halign: 'right', fillColor: NAVY as any, textColor: WHITE as any, fontSize: 10 } }],
-    ],
-    headStyles: { fillColor: NAVY as any, textColor: WHITE as any, fontStyle: 'bold', fontSize: 8.5, cellPadding: 3.5 },
-    bodyStyles: { fontSize: 9, cellPadding: 3 },
+    foot: footRows,
+    headStyles: { fillColor: NAVY as any, textColor: WHITE as any, fontStyle: 'bold', fontSize: 8, cellPadding: 3.5 },
+    bodyStyles: { fontSize: 8.5, cellPadding: 3 },
     alternateRowStyles: { fillColor: LIGHT as any },
-    footStyles: { fontSize: 9, cellPadding: 3 },
-    columnStyles: {
-      0: { halign: 'center', cellWidth: 16 },
-      2: { halign: 'center', cellWidth: 36 },
-      3: { halign: 'right',  cellWidth: 40, fontStyle: 'bold' },
-    },
+    footStyles: { fontSize: 8.5, cellPadding: 3 },
+    columnStyles: hasDiscount ? colStyles5 : colStyles4,
     theme: 'grid',
     tableLineColor: [200, 210, 225] as any,
     tableLineWidth: 0.15,
@@ -256,13 +323,13 @@ export const generateFeeReceipt = async (
 
   y = (doc as any).lastAutoTable.finalY + 5;
 
-  // ── AMOUNT IN WORDS ──────────────────────────────────────────────────────────
+  // ── AMOUNT IN WORDS (uses amount actually paid in this receipt) ──────────────
   doc.setFillColor(...LIGHT);
   doc.rect(ML, y, CW, 16, 'F');
   doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(...SLATE);
   doc.text('AMOUNT RECEIVED (IN WORDS)', ML + 3, y + 5.5);
   doc.setFontSize(9.5); doc.setFont('helvetica', 'bolditalic'); doc.setTextColor(...DARK);
-  doc.text(toWords(grandTotal), ML + 3, y + 12);
+  doc.text(toWords(payment.amount), ML + 3, y + 12);
   y += 20;
 
   // ── PAYMENT INFORMATION ──────────────────────────────────────────────────────

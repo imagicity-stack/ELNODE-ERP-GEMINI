@@ -463,6 +463,20 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       return;
     }
 
+    // Block duplicate fee requests for the same student + month (unless we're editing that same request)
+    if (!isEditingRequest) {
+      const duplicate = feeRequests.find(
+        r => r.studentId === selectedStudent.id && r.month === requestData.month
+      );
+      if (duplicate) {
+        showToast(
+          `A fee request for ${requestData.month} already exists for ${selectedStudent.name} (status: ${duplicate.status.replace('_', ' ')}). Edit the existing request instead.`,
+          'error'
+        );
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const totalAmount = requestData.heads.reduce((sum, h) => sum + h.finalAmount, 0);
@@ -957,6 +971,10 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
   const openRequestModal = (student: Student, request?: FeeRequest) => {
     setSelectedStudent(student);
+    // Pre-load advance payments so the coverage notice works in the modal
+    getAdvancePaymentsForStudent(student.id)
+      .then(setAdvancePayments)
+      .catch(() => setAdvancePayments([]));
     if (request) {
       setIsEditingRequest(true);
       setCurrentRequestId(request.id);
@@ -1620,6 +1638,27 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               />
             </FormField>
           </div>
+
+          {/* Advance coverage notice */}
+          {(() => {
+            if (!selectedStudent || !requestData.month || isEditingRequest) return null;
+            // Check for unconsumed advance covering this month
+            const coveredByAdvance = advancePayments.some(adv =>
+              (adv.monthlyBreakdown || []).some((e: any) => e.month === requestData.month && !e.consumed)
+            );
+            if (!coveredByAdvance) return null;
+            return (
+              <div className="flex items-start gap-2.5 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <IndianRupee className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-emerald-700">Advance payment found for {requestData.month}</p>
+                  <p className="text-[11px] text-emerald-600 mt-0.5">
+                    This student has an unconsumed advance covering this month. On submission, the advance will be automatically applied and the request may go directly to "paid" or "partially paid".
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
