@@ -9,7 +9,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, where, collection, limit, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { UserProfile, ActivitySection } from './types';
-import { SCHOOL_DOMAIN, LEGACY_DOMAIN } from './constants';
+import { SCHOOL_DOMAIN, LEGACY_DOMAIN, SUPER_ADMIN_UIDS } from './constants';
 import { logActivity } from './services/activityService';
 
 // Guard so login is logged once per browser session — onAuthStateChanged
@@ -249,19 +249,41 @@ export default function App() {
                   );
                 }
               } else {
-                // Google-authenticated user has no linked school profile.
-                // Sign out to prevent a stuck-authenticated-but-null loop.
-                const isProviderAuth = firebaseUser.providerData?.some(
-                  (p: any) => p.providerId !== 'password'
-                );
-                if (isProviderAuth) {
-                  sessionStorage.setItem(
-                    'auth_no_profile_error',
-                    `Your Google account (${firebaseUser.email}) is not linked to a school profile. Please contact the administrator or sign in with your school email and password.`
+                // No profile found by UID or email.
+                // If this UID is a known super admin, auto-provision their doc
+                // from their Google profile so they don't get stuck.
+                if (SUPER_ADMIN_UIDS.includes(firebaseUser.uid)) {
+                  const autoProfile: UserProfile = {
+                    uid: firebaseUser.uid,
+                    email: firebaseUser.email || '',
+                    name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Super Admin',
+                    role: 'super_admin',
+                    photoURL: firebaseUser.photoURL || '',
+                    createdAt: new Date().toISOString(),
+                  } as UserProfile;
+                  try {
+                    await setDoc(doc(db, 'users', firebaseUser.uid), autoProfile);
+                    setUser(autoProfile);
+                    logActivity(autoProfile, 'User Logged In', 'Super Admin',
+                      `${autoProfile.name} signed in (auto-provisioned super admin)`, { provider: 'google' });
+                  } catch (provisionErr) {
+                    console.error('Auto-provision failed:', provisionErr);
+                    setUser(null);
+                  }
+                } else {
+                  // Genuinely unknown Google account — sign out cleanly.
+                  const isProviderAuth = firebaseUser.providerData?.some(
+                    (p: any) => p.providerId !== 'password'
                   );
-                  try { await signOut(auth); } catch (_) {}
+                  if (isProviderAuth) {
+                    sessionStorage.setItem(
+                      'auth_no_profile_error',
+                      `Your Google account (${firebaseUser.email}) is not linked to a school profile. Please contact the administrator or sign in with your school email and password.`
+                    );
+                    try { await signOut(auth); } catch (_) {}
+                  }
+                  setUser(null);
                 }
-                setUser(null);
               }
             } else {
               setUser(null);
