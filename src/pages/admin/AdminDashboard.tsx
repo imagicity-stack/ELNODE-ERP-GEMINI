@@ -198,7 +198,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
         <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-6 text-white">
           <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">{greeting}, {user.name.split(' ')[0]}</h1>
+          <h1 className="text-xl font-bold mt-0.5">{greeting}, {(user.name || user.email || 'Admin').split(' ')[0]}</h1>
           <p className="text-xs text-indigo-100 mt-0.5">
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
@@ -318,7 +318,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Admin Dashboard</h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            {greeting}, {user.name.split(' ')[0]}! Here's an overview of your school.
+            {greeting}, {(user.name || user.email || 'Admin').split(' ')[0]}! Here's an overview of your school.
           </p>
         </div>
         <div className="flex items-center gap-3">

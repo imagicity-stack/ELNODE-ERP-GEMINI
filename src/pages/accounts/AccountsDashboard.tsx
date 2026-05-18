@@ -209,7 +209,7 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
       <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
         <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
           <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Hi, {user.name.split(' ')[0]}</h1>
+          <h1 className="text-xl font-bold mt-0.5">Hi, {(user.name || user.email || 'User').split(' ')[0]}</h1>
           <p className="text-[11px] text-emerald-100/80 mt-0.5">Here is today's financial snapshot</p>
 
           <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">

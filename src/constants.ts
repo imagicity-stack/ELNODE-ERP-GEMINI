@@ -4,6 +4,14 @@ export const SCHOOL_DOMAIN = "ehs.elnode.in";
 export const LEGACY_DOMAIN = "eldenheights.org";
 export const APP_LOGO = "/logo high res tp-01.png";
 
+// UIDs granted super_admin access at the Firestore rules level.
+// Must stay in sync with isSuperAdminByEmail() in firestore.rules.
+export const SUPER_ADMIN_UIDS: string[] = [
+  "Sev825sC9HSFIBUlYN3SGIWHMss1",
+  "8uTs7freEPaiVtywgpg5G9in4JF2",
+  "ldnsKSufIyOLFiyPhdmmIErNi7P2",
+];
+
 export const USER_ROLES = {
   SUPER_ADMIN: 'super_admin',
   STUDENT: 'student',

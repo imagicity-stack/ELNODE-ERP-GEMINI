@@ -262,7 +262,7 @@ interface PortalLayoutProps {
 
 export default function PortalLayout({ children, user, customHeader }: PortalLayoutProps) {
   const role = user.role;
-  const userName = user.name;
+  const userName = user.name || user.email || 'User';
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
