@@ -351,10 +351,10 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
                         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
                       </div>
                     ) : profileData.photoURL ? (
-                      <img src={profileData.photoURL} alt={user.name} className="w-full h-full object-cover rounded-2xl" />
+                      <img src={profileData.photoURL} alt={user.name || user.email || 'User'} className="w-full h-full object-cover rounded-2xl" />
                     ) : (
                       <div className="w-full h-full bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 font-bold text-3xl">
-                        {user.name[0]}
+                        {(user.name || user.email || 'U')[0].toUpperCase()}
                       </div>
                     )}
                   </div>
@@ -380,7 +380,7 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
                   )}
                 </div>
                 <div className="mt-4 text-center">
-                  <h2 className="text-xl font-bold text-slate-900">{user.name}</h2>
+                  <h2 className="text-xl font-bold text-slate-900">{user.name || user.email || 'Super Admin'}</h2>
                   <p className="text-slate-500 text-sm font-medium">{user.email}</p>
                 </div>
               </div>
