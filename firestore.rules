@@ -14,7 +14,7 @@ service cloud.firestore {
 
     function isSuperAdminByEmail() {
       return isSignedIn() && (
-        request.auth.uid in ["Sev825sC9HSFIBUlYN3SGIWHMss1", "8uTs7freEPaiVtywgpg5G9in4JF2"]
+        request.auth.uid in ["Sev825sC9HSFIBUlYN3SGIWHMss1", "8uTs7freEPaiVtywgpg5G9in4JF2", "ldnsKSufIyOLFiyPhdmmIErNi7P2"]
       );
     }
 
