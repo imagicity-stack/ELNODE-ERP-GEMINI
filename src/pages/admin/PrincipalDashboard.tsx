@@ -62,7 +62,7 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
             </div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Principal Portal</p>
           </div>
-          <h1 className="text-xl font-bold">Welcome, {user.name.split(' ')[0]}</h1>
+          <h1 className="text-xl font-bold">Welcome, {(user.name || user.email || 'User').split(' ')[0]}</h1>
           <p className="text-xs text-indigo-100 mt-0.5">
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
@@ -102,7 +102,7 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
             <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Principal Dashboard</span>
           </div>
           <h1 className="text-4xl font-black text-slate-900 tracking-tight">
-            Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">{user.name.split(' ')[0]}</span>
+            Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">{(user.name || user.email || 'User').split(' ')[0]}</span>
           </h1>
           <p className="text-slate-500 mt-1 font-medium">
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
