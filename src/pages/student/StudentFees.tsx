@@ -7,6 +7,7 @@ import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
+import { fmtDate } from '../../lib/utils';
 import {
   PageHeader,
   Card,

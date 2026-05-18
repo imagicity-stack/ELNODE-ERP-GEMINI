@@ -38,6 +38,7 @@ import {
 import { useToast } from '../../components/Toast';
 import { format, differenceInCalendarDays, parseISO } from 'date-fns';
 import { logActivity } from '../../services/activityService';
+import { fmtDate } from '../../lib/utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
