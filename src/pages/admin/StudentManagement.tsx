@@ -270,7 +270,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         await setDoc(doc(db, 'users', parentUid), {
           uid: parentUid,
           email: parentEmail,
-          name: `Parent of ${formData.name}`,
+          name: formData.fatherName?.trim() || formData.motherName?.trim() || `Parent of ${formData.name}`,
           role: 'parent',
           schoolNumber: schoolNumber, // Base school number for login
           studentIds: [studentRef.id],
@@ -480,7 +480,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           await setDoc(doc(db, 'users', parentUid), {
             uid: parentUid,
             email: parentEmail,
-            name: `Parent of ${name}`,
+            name: (row.fathername as string)?.trim() || (row.mothername as string)?.trim() || `Parent of ${name}`,
             role: 'parent',
             schoolNumber,
             studentIds: [studentRef.id],
