@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, setDoc, deleteDoc, getDoc, runTransaction, onSnapshot } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
-import { getSchoolSettings } from '../../services/settingsService';
+import { getSchoolSettings, computeDefaultFeeDueDate } from '../../services/settingsService';
 import { getNextReceiptNumber } from '../../services/receiptCounterService';
 import {
   getUnconsumedForMonth,
@@ -102,13 +102,15 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
   const [customHeadForm, setCustomHeadForm] = useState({ name: '', amount: '' });
   const [addGlobalHeadId, setAddGlobalHeadId] = useState('');
+  // Default fee due day comes from School Settings. Falls back to 10 until loaded.
+  const [defaultFeeDueDay, setDefaultFeeDueDay] = useState<number>(10);
   const [requestData, setRequestData] = useState<{
     month: string;
     dueDate: string;
     heads: { name: string; amount: number; discount: number; discountReason?: string; finalAmount: number; isCustom?: boolean }[];
   }>({
     month: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
-    dueDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0],
+    dueDate: computeDefaultFeeDueDate(10),
     heads: [],
   });
 
@@ -137,6 +139,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     getDoc(doc(db, 'fine-config', 'global')).then(fineSnap => {
       if (fineSnap.exists()) setFineConfig(fineSnap.data() as FineConfig);
     }).catch(onErr);
+
+    // Load school settings so we use the configured default fee due day
+    getSchoolSettings().then(s => {
+      if (s.defaultFeeDueDay && s.defaultFeeDueDay >= 1 && s.defaultFeeDueDay <= 28) {
+        setDefaultFeeDueDay(s.defaultFeeDueDay);
+      }
+    }).catch(() => {/* settings load is non-critical */});
 
     // Check for search param in URL
     const params = new URLSearchParams(window.location.search);
@@ -995,7 +1004,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       }));
       setRequestData({
         month: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
-        dueDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 10).toISOString().split('T')[0],
+        dueDate: computeDefaultFeeDueDate(defaultFeeDueDay),
         heads: sourceHeads,
       });
     }
