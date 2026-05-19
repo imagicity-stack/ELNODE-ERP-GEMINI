@@ -25,11 +25,14 @@ interface AIInsightsPanelProps {
 }
 
 const SUGGESTED_PROMPTS = [
-  'Summarise this month\'s financial health.',
-  'Which expense categories spiked the most?',
-  'Which classes have the most overdue fees?',
-  'Compare income vs costs over the last 6 months.',
-  'Suggest 3 concrete actions to improve our net position.',
+  "Give me a full school health summary — finance, attendance, and academics.",
+  "Which students are at risk of low attendance this month?",
+  "How is our fee collection rate and how much is overdue?",
+  "Which classes are performing best and worst in exams?",
+  "Are there any unresolved grievances I should act on?",
+  "Compare income vs expenses over the last 6 months.",
+  "Which teachers have pending leave requests?",
+  "Suggest 3 concrete actions I should take today.",
 ];
 
 // Tiny inline markdown -> JSX renderer (no deps)
@@ -271,22 +274,34 @@ export default function AIInsightsPanel({
               <div className="bg-white border border-slate-100 rounded-2xl p-4">
                 <p className="text-sm text-slate-700">
                   {greeting ||
-                    `Hi! I've loaded your school's data for ${context?.period?.label || period}. Ask me anything about finances, fees, expenses, payroll, or operational performance.`}
+                    `Hi! I've loaded a full snapshot of your school's data — students, attendance, exams, fees, payroll, leaves, grievances, and more. Ask me anything.`}
                 </p>
-                {summaryRenderer ? summaryRenderer(context) : context?.summary && (
+                {summaryRenderer ? summaryRenderer(context) : context?.school && (
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-indigo-50 rounded-lg p-2">
+                      <p className="text-[9px] text-indigo-700 font-bold uppercase">Students</p>
+                      <p className="text-xs font-black text-indigo-800 mt-0.5">{context.school.totalStudents}</p>
+                    </div>
                     <div className="bg-emerald-50 rounded-lg p-2">
-                      <p className="text-[9px] text-emerald-700 font-bold uppercase">Income</p>
-                      <p className="text-xs font-black text-emerald-800 mt-0.5">₹{(context.summary.totalIncome / 1000 | 0).toLocaleString()}k</p>
+                      <p className="text-[9px] text-emerald-700 font-bold uppercase">Attendance</p>
+                      <p className="text-xs font-black text-emerald-800 mt-0.5">{context.attendance?.today?.rate ?? '—'}%</p>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-2">
+                      <p className="text-[9px] text-amber-700 font-bold uppercase">Fee Rate</p>
+                      <p className="text-xs font-black text-amber-800 mt-0.5">{context.finance?.feeCollection?.collectionRate ?? '—'}%</p>
                     </div>
                     <div className="bg-rose-50 rounded-lg p-2">
-                      <p className="text-[9px] text-rose-700 font-bold uppercase">Costs</p>
-                      <p className="text-xs font-black text-rose-800 mt-0.5">₹{((context.summary.totalExpenses + context.summary.totalSalaries) / 1000 | 0).toLocaleString()}k</p>
+                      <p className="text-[9px] text-rose-700 font-bold uppercase">Overdue</p>
+                      <p className="text-xs font-black text-rose-800 mt-0.5">{context.finance?.feeCollection?.overdueCount ?? '—'}</p>
                     </div>
-                    <div className={`rounded-lg p-2 ${context.summary.netProfit >= 0 ? 'bg-blue-50' : 'bg-amber-50'}`}>
-                      <p className={`text-[9px] font-bold uppercase ${context.summary.netProfit >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>Net</p>
-                      <p className={`text-xs font-black mt-0.5 ${context.summary.netProfit >= 0 ? 'text-blue-800' : 'text-amber-800'}`}>
-                        ₹{(Math.abs(context.summary.netProfit) / 1000 | 0).toLocaleString()}k
+                    <div className="bg-violet-50 rounded-lg p-2">
+                      <p className="text-[9px] text-violet-700 font-bold uppercase">Grievances</p>
+                      <p className="text-xs font-black text-violet-800 mt-0.5">{context.grievances?.open ?? '—'} open</p>
+                    </div>
+                    <div className={`rounded-lg p-2 ${(context.finance?.period?.net ?? 0) >= 0 ? 'bg-blue-50' : 'bg-orange-50'}`}>
+                      <p className={`text-[9px] font-bold uppercase ${(context.finance?.period?.net ?? 0) >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>Net</p>
+                      <p className={`text-xs font-black mt-0.5 ${(context.finance?.period?.net ?? 0) >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>
+                        ₹{(Math.abs(context.finance?.period?.net ?? 0) / 1000 | 0).toLocaleString()}k
                       </p>
                     </div>
                   </div>
