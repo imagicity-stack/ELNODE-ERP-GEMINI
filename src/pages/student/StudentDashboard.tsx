@@ -142,7 +142,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
       bg: 'from-indigo-500 to-indigo-700',
     },
     {
-      to: '/student/leave',
+      to: '/student/leaves',
       label: 'Leave',
       icon: FileText,
       hint: 'Apply for leave',

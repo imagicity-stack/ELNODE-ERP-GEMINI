@@ -339,6 +339,35 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     'studentEmail', 'house', 'transport', 'medicalNotes', 'academicHistory', 'address',
   ];
 
+  const handleExportCSV = () => {
+    const rows = filteredStudents.map(s => [
+      s.name,
+      s.admissionNumber,
+      classes.find(c => c.id === s.classId)?.name || '',
+      s.section || '',
+      s.gender || '',
+      s.parentDetails?.fatherName || '',
+      s.parentDetails?.motherName || '',
+      s.parentDetails?.phone || '',
+      s.parentDetails?.email || '',
+      (s as any).email || '',
+      houses.find(h => h.id === s.houseId)?.name || '',
+      s.transportDetails || '',
+      s.medicalNotes || '',
+      s.academicHistory || '',
+      (s as any).address || '',
+    ]);
+    const lines = [CSV_HEADERS.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const suffix = activeFilterCount > 0 ? '_filtered' : '_all';
+    a.download = `students${suffix}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownloadTemplate = () => {
     const exampleRows = [
       ['Ravi Kumar', '1001', '5', 'A', 'male', 'Suresh Kumar', 'Priya Kumar', '9876543210', 'parent@example.com', 'ravi@example.com', 'Red House', 'School', '', '', '123 Main Street'],
@@ -933,7 +962,18 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         iconColor="gradient-indigo"
         actions={
           <>
-            <Button variant="secondary" size="sm" icon={Download}>Export</Button>
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:border-indigo-300 hover:text-indigo-700 transition-all"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+              {activeFilterCount > 0 && (
+                <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-md">
+                  {filteredStudents.length}
+                </span>
+              )}
+            </button>
             {!readOnly && (
               <Button variant="secondary" size="sm" icon={Upload} onClick={() => { setImportRows([]); setImportErrors([]); setImportProgress(null); setImportResults([]); setImportModalOpen(true); }}>
                 Import CSV
