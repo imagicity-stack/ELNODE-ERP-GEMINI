@@ -57,7 +57,7 @@ export async function buildAIContext(periodLabel = 'This Month') {
     getDocs(query(collection(db, 'attendance'), where('date', '==', today))),
     getDocs(query(collection(db, 'attendance'), where('date', '>=', todayMinus30))),
     getDocs(query(collection(db, 'teacherLeaves'), orderBy('createdAt', 'desc'), limit(100))),
-    getDocs(query(collection(db, 'leaves'), orderBy('createdAt', 'desc'), limit(100))),
+    getDocs(query(collection(db, 'studentLeaves'), orderBy('createdAt', 'desc'), limit(100))),
     getDocs(query(collection(db, 'exams'), orderBy('startDate', 'desc'), limit(20))),
     getDocs(query(collection(db, 'examResults'), limit(300))),
     getDocs(query(collection(db, 'grievances'), orderBy('createdAt', 'desc'), limit(100))),

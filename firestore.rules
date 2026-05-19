@@ -493,6 +493,18 @@ service cloud.firestore {
       allow write: if isSuperAdminByEmail();
     }
 
+    // Grievances — submitted by parents, managed by grievance officer / admin
+    match /grievances/{id} {
+      allow read: if isSignedIn() && (
+        isAdmin() || isGrievanceOfficer() || isPrincipal() ||
+        resource.data.get('parentId', '') == request.auth.uid
+      );
+      allow list: if isAdmin() || isGrievanceOfficer() || isPrincipal() || isParent();
+      allow create: if isSignedIn() && (isParent() || isAdmin() || isGrievanceOfficer());
+      allow update: if isSignedIn() && (isAdmin() || isGrievanceOfficer() || isPrincipal());
+      allow delete: if isAdmin();
+    }
+
     // Admission leads — admin portal only
     match /admission_leads/{id} {
       allow read: if isAnyAdmin();
