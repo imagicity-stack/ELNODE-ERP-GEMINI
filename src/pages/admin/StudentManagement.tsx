@@ -504,6 +504,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           transportDetails: row.transport || row.transportdetails || '',
           medicalNotes: row.medicalnotes || '',
           academicHistory: row.academichistory || '',
+          address: row.address || '',
           parentId: parentUid,
           // feeStatus intentionally omitted — set only when a fee request is created
           photoURL: '',
