@@ -314,13 +314,13 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const CSV_HEADERS = [
     'name', 'admissionNumber', 'class', 'section', 'gender',
     'fatherName', 'motherName', 'phone', 'email',
-    'house', 'transportDetails', 'medicalNotes', 'academicHistory', 'address',
+    'studentEmail', 'house', 'transport', 'medicalNotes', 'academicHistory', 'address',
   ];
 
   const handleDownloadTemplate = () => {
     const exampleRows = [
-      ['Ravi Kumar', '1001', '5', 'A', 'male', 'Suresh Kumar', 'Priya Kumar', '9876543210', 'parent@example.com', 'Red House', '', '', '', '123 Main Street'],
-      ['Anita Sharma', '1002', '3', 'B', 'female', 'Ramesh Sharma', 'Sunita Sharma', '9123456789', 'sharma@example.com', '', '', '', '', ''],
+      ['Ravi Kumar', '1001', '5', 'A', 'male', 'Suresh Kumar', 'Priya Kumar', '9876543210', 'parent@example.com', 'ravi@example.com', 'Red House', 'School', '', '', '123 Main Street'],
+      ['Anita Sharma', '1002', '3', 'B', 'female', 'Ramesh Sharma', 'Sunita Sharma', '9123456789', 'sharma@example.com', '', '', 'Private', '', '', ''],
     ];
     const lines = [CSV_HEADERS.join(','), ...exampleRows.map(r => r.map(v => `"${v}"`).join(','))];
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
@@ -450,7 +450,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           gender,
           houseId: houseObj?.id || '',
           email: (row.studentemail as string) || '',
-          transportDetails: row.transportdetails || '',
+          transportDetails: row.transport || row.transportdetails || '',
           medicalNotes: row.medicalnotes || '',
           academicHistory: row.academichistory || '',
           parentId: parentUid,
@@ -1216,7 +1216,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
               <p className="font-bold text-slate-700">CSV format rules:</p>
               <p>• First row must be the header row exactly as in the template</p>
               <p>• <span className="font-semibold">Required:</span> name, admissionNumber, class, section, gender, fatherName, motherName, phone, email</p>
-              <p>• <span className="font-semibold">Optional:</span> house, transportDetails, medicalNotes, academicHistory, address</p>
+              <p>• <span className="font-semibold">Optional:</span> studentEmail, house, transport (School/Private), medicalNotes, academicHistory, address</p>
               <p>• <span className="font-semibold">class</span> must match an existing class name (e.g. "5", "10A")</p>
               <p>• <span className="font-semibold">gender</span> must be male, female, or other</p>
               <p>• Download the template above for a ready-to-fill example</p>
