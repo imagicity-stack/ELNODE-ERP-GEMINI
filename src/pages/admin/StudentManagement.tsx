@@ -362,7 +362,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         if (!row.admissionnumber) errors.push(`Row ${rowNum}: admissionNumber is required`);
         if (!row.class) errors.push(`Row ${rowNum}: class is required`);
         if (!row.section) errors.push(`Row ${rowNum}: section is required`);
-        if (!row.gender || !['male', 'female', 'other'].includes(row.gender.toLowerCase())) errors.push(`Row ${rowNum}: gender must be male/female/other`);
+        if (row.gender && !['male', 'female', 'other'].includes(row.gender.toLowerCase())) errors.push(`Row ${rowNum}: gender must be male/female/other (or left blank)`);
         if (!row.fathername) errors.push(`Row ${rowNum}: fatherName is required`);
         if (!row.mothername) errors.push(`Row ${rowNum}: motherName is required`);
         if (!row.phone) errors.push(`Row ${rowNum}: phone is required`);
@@ -1010,9 +1010,9 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                     ))}
                   </Select>
                 </FormField>
-                <FormField label="Gender" required>
-                  <Select required value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}>
-                    <option value="">Select Gender</option>
+                <FormField label="Gender">
+                  <Select value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}>
+                    <option value="">Select Gender (optional)</option>
                     <option value="male">Male</option>
                     <option value="female">Female</option>
                     <option value="other">Other</option>
@@ -1215,10 +1215,10 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-500 space-y-1">
               <p className="font-bold text-slate-700">CSV format rules:</p>
               <p>• First row must be the header row exactly as in the template</p>
-              <p>• <span className="font-semibold">Required:</span> name, admissionNumber, class, section, gender, fatherName, motherName, phone, email</p>
-              <p>• <span className="font-semibold">Optional:</span> studentEmail, house, transport (School/Private), medicalNotes, academicHistory, address</p>
+              <p>• <span className="font-semibold">Required:</span> name, admissionNumber, class, section, fatherName, motherName, phone, email</p>
+              <p>• <span className="font-semibold">Optional:</span> gender, studentEmail, house, transport (School/Private), medicalNotes, academicHistory, address</p>
               <p>• <span className="font-semibold">class</span> must match an existing class name (e.g. "5", "10A")</p>
-              <p>• <span className="font-semibold">gender</span> must be male, female, or other</p>
+              <p>• <span className="font-semibold">gender</span> (if provided) must be male, female, or other</p>
               <p>• Download the template above for a ready-to-fill example</p>
             </div>
           )}
