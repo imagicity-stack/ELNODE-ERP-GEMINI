@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, query, where, doc, setDoc, deleteDoc, orderBy, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { createUserWithEmailAndPassword, getAuth, signOut, signInWithEmailAndPassword } from 'firebase/auth';
@@ -25,6 +25,15 @@ import {
   FileDown,
   SlidersHorizontal,
   X,
+  ChevronDown,
+  ChevronRight,
+  Mail,
+  MapPin,
+  Home as HomeIcon,
+  Bus,
+  Heart,
+  GraduationCap,
+  Hash,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -53,6 +62,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const [filterGender, setFilterGender] = useState('');
   const [filterTransport, setFilterTransport] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('students');
@@ -116,6 +126,11 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const getClassName = (id: string) => {
     const cls = classes.find(c => c.id === id);
     return cls ? `Class ${cls.name}` : id;
+  };
+
+  const getHouseName = (id?: string) => {
+    if (!id) return '';
+    return houses.find(h => h.id === id)?.name || '';
   };
 
   const generateSchoolNumber = () => {
@@ -1063,48 +1078,112 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         <Table>
           <Thead>
             <tr>
+              <Th className="w-8"></Th>
               <Th>Student</Th>
               <Th className="hidden sm:table-cell">Admission / School No.</Th>
               <Th className="hidden md:table-cell">Class & Section</Th>
+              <Th className="hidden md:table-cell">House</Th>
               <Th className="hidden lg:table-cell">Parent Details</Th>
               <Th className="text-right">Actions</Th>
             </tr>
           </Thead>
           <Tbody>
-            {filteredStudents.length > 0 ? filteredStudents.map((student) => (
-              <Tr key={student.id}>
-                <Td>
-                  <div className="flex items-center gap-3">
-                    <Avatar name={student.name} src={student.photoURL} size="sm" />
-                    <div>
-                      <span className="font-semibold text-slate-900 block">{student.name}</span>
-                      <span className="text-[10px] text-slate-400 sm:hidden">{student.admissionNumber}</span>
-                      <span className="text-[10px] text-slate-400 md:hidden block">{getClassName(student.classId)}</span>
-                    </div>
-                  </div>
-                </Td>
-                <Td className="hidden sm:table-cell"><span className="font-mono text-slate-600">{student.admissionNumber}</span></Td>
-                <Td className="hidden md:table-cell text-slate-600">{getClassName(student.classId)} {student.section && `- ${student.section}`}</Td>
-                <Td className="hidden lg:table-cell">
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-medium text-slate-900">{student.parentDetails?.fatherName || 'N/A'}</p>
-                    <p className="text-xs text-slate-400 flex items-center gap-1">
-                      <Phone className="w-3 h-3" />{student.parentDetails?.phone || 'N/A'}
-                    </p>
-                  </div>
-                </Td>
-                <Td>
-                  {!readOnly && (
-                    <div className="flex items-center justify-end gap-1">
-                      <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(student)} title="Edit" />
-                      <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => { setDeletingStudent(student); setIsDeleteModalOpen(true); }} title="Delete" />
-                    </div>
+            {filteredStudents.length > 0 ? filteredStudents.map((student) => {
+              const isExpanded = expandedStudentId === student.id;
+              const houseName = getHouseName(student.houseId);
+              return (
+              <React.Fragment key={student.id}>
+                <Tr
+                  className={cn(
+                    'cursor-pointer transition-colors',
+                    isExpanded ? 'bg-indigo-50/40' : 'hover:bg-slate-50'
                   )}
-                </Td>
-              </Tr>
-            )) : (
+                  onClick={() => setExpandedStudentId(isExpanded ? null : student.id)}
+                >
+                  <Td>
+                    {isExpanded
+                      ? <ChevronDown className="w-4 h-4 text-indigo-600" />
+                      : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                  </Td>
+                  <Td>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={student.name} src={student.photoURL} size="sm" />
+                      <div>
+                        <span className="font-semibold text-slate-900 block">{student.name}</span>
+                        <span className="text-[10px] text-slate-400 sm:hidden">{student.admissionNumber}</span>
+                        <span className="text-[10px] text-slate-400 md:hidden block">{getClassName(student.classId)}</span>
+                      </div>
+                    </div>
+                  </Td>
+                  <Td className="hidden sm:table-cell"><span className="font-mono text-slate-600">{student.admissionNumber}</span></Td>
+                  <Td className="hidden md:table-cell text-slate-600">{getClassName(student.classId)} {student.section && `- ${student.section}`}</Td>
+                  <Td className="hidden md:table-cell">
+                    {houseName ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 text-xs font-semibold rounded-md border border-amber-100">
+                        <HomeIcon className="w-3 h-3" />{houseName}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </Td>
+                  <Td className="hidden lg:table-cell">
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium text-slate-900">{student.parentDetails?.fatherName || 'N/A'}</p>
+                      <p className="text-xs text-slate-400 flex items-center gap-1">
+                        <Phone className="w-3 h-3" />{student.parentDetails?.phone || 'N/A'}
+                      </p>
+                    </div>
+                  </Td>
+                  <Td onClick={(e: any) => e.stopPropagation()}>
+                    {!readOnly && (
+                      <div className="flex items-center justify-end gap-1">
+                        <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(student)} title="Edit" />
+                        <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => { setDeletingStudent(student); setIsDeleteModalOpen(true); }} title="Delete" />
+                      </div>
+                    )}
+                  </Td>
+                </Tr>
+                {isExpanded && (
+                  <tr className="bg-slate-50/60">
+                    <td colSpan={7} className="px-6 py-5">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                        {/* Student Identity */}
+                        <div className="space-y-3">
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Student</p>
+                          <DetailRow icon={Hash} label="Admission No." value={student.admissionNumber} />
+                          <DetailRow icon={Hash} label="School No." value={student.schoolNumber} />
+                          <DetailRow icon={GraduationCap} label="Class & Section" value={`${getClassName(student.classId)}${student.section ? ` - ${student.section}` : ''}`} />
+                          <DetailRow icon={HomeIcon} label="House" value={houseName || 'Not Assigned'} />
+                          <DetailRow icon={Users} label="Gender" value={student.gender ? student.gender.charAt(0).toUpperCase() + student.gender.slice(1) : 'Not specified'} />
+                          <DetailRow icon={Mail} label="Student Email" value={(student as any).email || '—'} />
+                        </div>
+
+                        {/* Parents */}
+                        <div className="space-y-3">
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Parents & Contact</p>
+                          <DetailRow icon={UserPlus} label="Father" value={student.parentDetails?.fatherName || '—'} />
+                          <DetailRow icon={UserPlus} label="Mother" value={student.parentDetails?.motherName || '—'} />
+                          <DetailRow icon={Phone} label="Phone" value={student.parentDetails?.phone || '—'} />
+                          <DetailRow icon={Mail} label="Parent Email" value={student.parentDetails?.email || '—'} />
+                        </div>
+
+                        {/* Additional */}
+                        <div className="space-y-3">
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Additional</p>
+                          <DetailRow icon={Bus} label="Transport" value={student.transportDetails || '—'} />
+                          <DetailRow icon={Heart} label="Medical Notes" value={student.medicalNotes || '—'} />
+                          <DetailRow icon={FileText} label="Academic History" value={student.academicHistory || '—'} multiline />
+                          <DetailRow icon={MapPin} label="Address" value={(student as any).address || '—'} multiline />
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+              );
+            }) : (
               <Tr>
-                <td colSpan={5}>
+                <td colSpan={7}>
                   <EmptyState icon={Users} title="No students found" description="Try adjusting your search or filter" />
                 </td>
               </Tr>
@@ -1429,5 +1508,21 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         )}
       </Modal>
     </>
+  );
+}
+
+function DetailRow({ icon: Icon, label, value, multiline = false }: { icon: any; label: string; value: string; multiline?: boolean }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0 mt-0.5">
+        <Icon className="w-3.5 h-3.5 text-slate-500" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+        <p className={`text-sm font-semibold text-slate-800 ${multiline ? 'whitespace-pre-wrap break-words' : 'truncate'}`}>
+          {value}
+        </p>
+      </div>
+    </div>
   );
 }
