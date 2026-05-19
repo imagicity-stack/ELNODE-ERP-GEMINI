@@ -23,6 +23,8 @@ import {
   CheckCircle2,
   XCircle,
   FileDown,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -45,7 +47,12 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const [deletingStudent, setDeletingStudent] = useState<Student | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterClass, setFilterClass] = useState('All Classes');
+  const [filterClass, setFilterClass] = useState('');
+  const [filterSection, setFilterSection] = useState('');
+  const [filterHouse, setFilterHouse] = useState('');
+  const [filterGender, setFilterGender] = useState('');
+  const [filterTransport, setFilterTransport] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('students');
@@ -723,12 +730,35 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     }
   };
 
+  const activeFilterCount = [filterClass, filterSection, filterHouse, filterGender, filterTransport].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setFilterClass('');
+    setFilterSection('');
+    setFilterHouse('');
+    setFilterGender('');
+    setFilterTransport('');
+  };
+
+  // Sections available for the selected class (or all unique sections)
+  const availableSections = filterClass
+    ? (classes.find(c => c.id === filterClass)?.sections.map(s => s.name || 'A') ?? [])
+    : Array.from(new Set(students.map(s => s.section).filter(Boolean)));
+
   const filteredStudents = students.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         s.admissionNumber.includes(searchTerm) ||
-                         s.schoolNumber.includes(searchTerm);
-    const matchesClass = filterClass === 'All Classes' || s.classId === filterClass;
-    return matchesSearch && matchesClass;
+    const q = searchTerm.toLowerCase();
+    const matchesSearch = !q ||
+      s.name.toLowerCase().includes(q) ||
+      s.admissionNumber.includes(searchTerm) ||
+      s.schoolNumber.includes(searchTerm) ||
+      (s.parentDetails?.fatherName || '').toLowerCase().includes(q) ||
+      (s.parentDetails?.motherName || '').toLowerCase().includes(q);
+    const matchesClass    = !filterClass    || s.classId === filterClass;
+    const matchesSection  = !filterSection  || s.section === filterSection;
+    const matchesHouse    = !filterHouse    || s.houseId === filterHouse;
+    const matchesGender   = !filterGender   || (s.gender || '').toLowerCase() === filterGender;
+    const matchesTransport= !filterTransport|| (s.transportDetails || '') === filterTransport;
+    return matchesSearch && matchesClass && matchesSection && matchesHouse && matchesGender && matchesTransport;
   });
 
   const openAddModal = () => {
@@ -794,10 +824,10 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
         <div className="px-4 pt-3 overflow-x-auto flex gap-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <button
-            onClick={() => setFilterClass('All Classes')}
+            onClick={clearFilters}
             className={cn(
               "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
-              filterClass === 'All Classes' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
+              !filterClass && !filterHouse && !filterGender && !filterTransport ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
             )}
           >
             All
@@ -805,13 +835,37 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           {classes.map(cls => (
             <button
               key={cls.id}
-              onClick={() => setFilterClass(cls.id)}
+              onClick={() => setFilterClass(filterClass === cls.id ? '' : cls.id)}
               className={cn(
                 "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
                 filterClass === cls.id ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
               )}
             >
               Class {cls.name}
+            </button>
+          ))}
+          {houses.map(h => (
+            <button
+              key={h.id}
+              onClick={() => setFilterHouse(filterHouse === h.id ? '' : h.id)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
+                filterHouse === h.id ? 'bg-amber-500 text-white' : 'bg-white text-slate-600 border border-slate-200'
+              )}
+            >
+              {h.name}
+            </button>
+          ))}
+          {(['male', 'female'] as const).map(g => (
+            <button
+              key={g}
+              onClick={() => setFilterGender(filterGender === g ? '' : g)}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform capitalize",
+                filterGender === g ? 'bg-violet-500 text-white' : 'bg-white text-slate-600 border border-slate-200'
+              )}
+            >
+              {g}
             </button>
           ))}
         </div>
@@ -877,21 +931,130 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
       {/* Filters */}
       <Card padding="sm">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search by name or admission number..."
-            className="flex-1"
-          />
-          <select
-            value={filterClass}
-            onChange={(e) => setFilterClass(e.target.value)}
-            className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-          >
-            <option value="All Classes">All Classes</option>
-            {classes.map(cls => <option key={cls.id} value={cls.id}>Class {cls.name}</option>)}
-          </select>
+        <div className="flex flex-col gap-3">
+          {/* Search + filter toggle row */}
+          <div className="flex gap-3">
+            <SearchInput
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search name, admission no., parent…"
+              className="flex-1"
+            />
+            <button
+              onClick={() => setShowFilters(v => !v)}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all',
+                showFilters || activeFilterCount > 0
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200'
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+              )}
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="w-5 h-5 rounded-full bg-white text-indigo-700 text-[10px] font-black flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Expanded filter panel */}
+          {showFilters && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1 border-t border-slate-100">
+              <select
+                value={filterClass}
+                onChange={e => { setFilterClass(e.target.value); setFilterSection(''); }}
+                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+              >
+                <option value="">All Classes</option>
+                {classes.map(cls => <option key={cls.id} value={cls.id}>Class {cls.name}</option>)}
+              </select>
+
+              <select
+                value={filterSection}
+                onChange={e => setFilterSection(e.target.value)}
+                disabled={availableSections.length === 0}
+                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 disabled:opacity-40"
+              >
+                <option value="">All Sections</option>
+                {availableSections.map(sec => <option key={sec} value={sec}>Section {sec}</option>)}
+              </select>
+
+              <select
+                value={filterHouse}
+                onChange={e => setFilterHouse(e.target.value)}
+                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+              >
+                <option value="">All Houses</option>
+                {houses.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+
+              <select
+                value={filterGender}
+                onChange={e => setFilterGender(e.target.value)}
+                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+              >
+                <option value="">All Genders</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+
+              <select
+                value={filterTransport}
+                onChange={e => setFilterTransport(e.target.value)}
+                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+              >
+                <option value="">All Transport</option>
+                <option value="School">School</option>
+                <option value="Private">Private</option>
+              </select>
+            </div>
+          )}
+
+          {/* Active filter chips */}
+          {activeFilterCount > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {filterClass && (
+                <span className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full border border-indigo-100">
+                  Class {classes.find(c => c.id === filterClass)?.name}
+                  <button onClick={() => { setFilterClass(''); setFilterSection(''); }}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {filterSection && (
+                <span className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full border border-indigo-100">
+                  Section {filterSection}
+                  <button onClick={() => setFilterSection('')}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {filterHouse && (
+                <span className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-semibold rounded-full border border-amber-100">
+                  {houses.find(h => h.id === filterHouse)?.name}
+                  <button onClick={() => setFilterHouse('')}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {filterGender && (
+                <span className="flex items-center gap-1 px-2.5 py-1 bg-violet-50 text-violet-700 text-xs font-semibold rounded-full border border-violet-100 capitalize">
+                  {filterGender}
+                  <button onClick={() => setFilterGender('')}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {filterTransport && (
+                <span className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full border border-emerald-100">
+                  Transport: {filterTransport}
+                  <button onClick={() => setFilterTransport('')}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              <button
+                onClick={clearFilters}
+                className="px-2.5 py-1 text-xs font-semibold text-slate-500 hover:text-rose-600 transition-colors"
+              >
+                Clear all
+              </button>
+              <span className="ml-auto text-xs text-slate-400 font-medium">{filteredStudents.length} result{filteredStudents.length !== 1 ? 's' : ''}</span>
+            </div>
+          )}
         </div>
       </Card>
 
