@@ -70,6 +70,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     motherName: '',
     phone: '',
     email: '',
+    studentEmail: '',
     transportDetails: '',
     medicalNotes: '',
     academicHistory: '',
@@ -128,6 +129,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         gender: formData.gender,
         houseId: formData.houseId,
         photoURL: formData.photoURL,
+        email: formData.studentEmail,
         transportDetails: formData.transportDetails,
         medicalNotes: formData.medicalNotes,
         academicHistory: formData.academicHistory,
@@ -447,6 +449,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           section: row.section,
           gender,
           houseId: houseObj?.id || '',
+          email: (row.studentemail as string) || '',
           transportDetails: row.transportdetails || '',
           medicalNotes: row.medicalnotes || '',
           academicHistory: row.academichistory || '',
@@ -528,6 +531,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       motherName: student.parentDetails?.motherName || '',
       phone: student.parentDetails?.phone || '',
       email: student.parentDetails?.email || '',
+      studentEmail: (student as any).email || '',
       transportDetails: student.transportDetails || '',
       medicalNotes: student.medicalNotes || '',
       academicHistory: student.academicHistory || '',
@@ -730,7 +734,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const openAddModal = () => {
     setIsEditMode(false);
     setEditingStudent(null);
-    setFormData({ name: '', schoolNumber: '', admissionNumber: '', classId: '', section: '', gender: '', fatherName: '', motherName: '', phone: '', email: '', transportDetails: '', medicalNotes: '', academicHistory: '', houseId: '', address: '', photoURL: '' });
+    setFormData({ name: '', schoolNumber: '', admissionNumber: '', classId: '', section: '', gender: '', fatherName: '', motherName: '', phone: '', email: '', studentEmail: '', transportDetails: '', medicalNotes: '', academicHistory: '', houseId: '', address: '', photoURL: '' });
     setIsModalOpen(true);
   };
 
@@ -1020,6 +1024,9 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                     {houses.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
                   </Select>
                 </FormField>
+                <FormField label="Student Email" className="col-span-2">
+                  <Input type="email" value={formData.studentEmail} onChange={e => setFormData({...formData, studentEmail: e.target.value})} placeholder="Optional" />
+                </FormField>
               </div>
             </div>
 
@@ -1052,8 +1059,12 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                 <FileText className="w-3.5 h-3.5" /> Additional Details
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <FormField label="Transport Details">
-                  <Textarea rows={2} value={formData.transportDetails} onChange={e => setFormData({...formData, transportDetails: e.target.value})} />
+                <FormField label="Transport">
+                  <Select value={formData.transportDetails} onChange={e => setFormData({...formData, transportDetails: e.target.value})}>
+                    <option value="">Select transport</option>
+                    <option value="School">School</option>
+                    <option value="Private">Private</option>
+                  </Select>
                 </FormField>
                 <FormField label="Medical Notes">
                   <Textarea rows={2} value={formData.medicalNotes} onChange={e => setFormData({...formData, medicalNotes: e.target.value})} />
