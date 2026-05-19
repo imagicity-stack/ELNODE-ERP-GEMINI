@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Settings2, GraduationCap, Building2, Phone, Globe, Mail, Database, AlertTriangle, RotateCw, Receipt } from 'lucide-react';
+import { Save, Settings2, GraduationCap, Building2, Phone, Globe, Mail, Database, AlertTriangle, RotateCw, Receipt, Calendar } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { getSchoolSettings, saveSchoolSettings, SchoolSettings } from '../../services/settingsService';
 import { useToast } from '../../components/Toast';
@@ -54,6 +54,10 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
   const handleSave = async () => {
     if (!YEAR_REGEX.test(settings.academicYear)) {
       showToast('Academic year must be in format YYYY-YY (e.g. 2026-27)', 'error');
+      return;
+    }
+    if (settings.defaultFeeDueDay != null && (settings.defaultFeeDueDay < 1 || settings.defaultFeeDueDay > 28)) {
+      showToast('Default fee due day must be between 1 and 28', 'error');
       return;
     }
     setSaving(true);
@@ -157,6 +161,25 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
               <p className="text-[10px] text-slate-400 mt-1">First receipt number. Only applies before any receipt is generated.</p>
             </div>
           </div>
+
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+              <Calendar className="w-4 h-4 text-indigo-600" />
+              <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Fee Settings</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-600 mb-1.5">Default Fee Due Day</p>
+              <input
+                type="number"
+                min={1}
+                max={28}
+                value={settings.defaultFeeDueDay ?? 10}
+                onChange={(e) => setSettings(prev => ({ ...prev, defaultFeeDueDay: Number(e.target.value) }))}
+                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono outline-none"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Day of the <b>following month</b> that new fee requests default to (1-28). Accountant can still override per-request.</p>
+            </div>
+          </div>
         </div>
 
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 safe-area-bottom">
@@ -248,6 +271,27 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
               />
             </FormField>
           </div>
+        </Card>
+
+        <Card className="p-6 space-y-6">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <Calendar className="w-4 h-4 text-indigo-600" />
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Fee Settings</h3>
+          </div>
+
+          <FormField
+            label="Default Fee Due Day"
+            hint="Day of the following month that new fee requests default to. Range 1-28. The accountant can still override the due date per request."
+          >
+            <Input
+              type="number"
+              min={1}
+              max={28}
+              value={settings.defaultFeeDueDay ?? 10}
+              onChange={(e) => setSettings(prev => ({ ...prev, defaultFeeDueDay: Number(e.target.value) }))}
+              className="font-mono max-w-xs"
+            />
+          </FormField>
         </Card>
 
         <div className="flex justify-end">

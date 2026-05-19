@@ -106,6 +106,21 @@ const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
 
 ---
 
+## Session 1.6 — 2026-05-19 (continuation)
+
+### Configurable default fee request due day
+
+Added a new **Default Fee Due Day** field in School Settings (super admin → School Settings). The accountant's "Generate Fee Request" modal now defaults to that day of the **following** month instead of the hardcoded 10th. The accountant can still override the date per request.
+
+**Files changed:**
+- `src/services/settingsService.ts` — added `defaultFeeDueDay?: number` to `SchoolSettings`; added `computeDefaultFeeDueDate(dueDay, base)` helper that returns YYYY-MM-DD for `(base month + 1, dueDay)`. Falls back to 10 on invalid/missing input.
+- `src/pages/admin/SchoolSettings.tsx` — new "Fee Settings" card in both mobile and desktop layouts; number input with min=1, max=28; save validates the range.
+- `src/pages/accounts/FeeCollection.tsx` — loads `defaultFeeDueDay` from settings on mount; replaces both hardcoded `new Date(year, month+1, 10)` calls with `computeDefaultFeeDueDate(defaultFeeDueDay)`.
+
+Range is locked to 1-28 to avoid month-end edge cases (Feb).
+
+---
+
 ## Session 1.5 — 2026-05-19 (continuation)
 
 ### Advanced student filters + custom CSV export
