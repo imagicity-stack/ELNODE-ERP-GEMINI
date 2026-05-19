@@ -104,6 +104,57 @@ const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
 - [ ] **CRITICAL: Deploy Firestore rules** — `firebase deploy --only firestore:rules`
   The `grievances` rule was added to `firestore.rules` but production still has the old rules until deployed.
 
+---
+
+## Session 1.5 — 2026-05-19 (continuation)
+
+### Advanced student filters + custom CSV export
+
+Upgraded the student list filter system from single-select to fully multi-select with presence (tri-state) filters and a column-picker export modal. All in `src/pages/admin/StudentManagement.tsx`.
+
+**State changes:**
+- All filter values changed from `string` → `string[]` for true multi-select:
+  - `filterClass`, `filterSection`, `filterHouse`, `filterGender`, `filterTransport`
+- Added tri-state presence filters (`'any' | 'yes' | 'no'`):
+  - `filterPhoto`, `filterAddress`, `filterMedical`, `filterAcademic`, `filterStudentEmail`, `filterParentEmail`
+- Added export modal state: `exportModalOpen`, `exportScope` (filtered/all), `exportCols` (per-column boolean)
+
+**New helper components** (defined at bottom of `StudentManagement.tsx`):
+- `MultiSelectDropdown` — popover-style dropdown with checkbox rows, select-all/clear shortcuts, click-outside-to-close, color-coded selection ring
+- `TriStateFilter` — 3-button toggle (any / yes / no) with icon and label, for presence filters
+- `FilterChip` — color-coded chip with remove button, replaces all the per-filter chip rendering
+
+**New filter logic:**
+- `toggleArrayValue(arr, value)` helper for clean multi-select toggling
+- `matchTri(state, hasValue)` helper for presence matching
+- `availableSections` now unions sections from all selected classes
+- Section selection auto-prunes invalid sections when classes change
+- Search now also matches phone, parent email, student email, address (in addition to name/admission/parent names)
+
+**Export modal:**
+- Lets user pick scope: filtered students or all students
+- Lets user pick which of 16 columns to include (Name, Admission No., School No., Class, Section, Gender, House, Father, Mother, Phone, Parent Email, Student Email, Transport, Address, Medical, Academic History)
+- Select all / Clear shortcuts
+- Headers in CSV use friendly labels (not internal keys)
+- Filename suffix `_filtered` or `_all` based on scope
+
+**Key code patterns introduced:**
+
+```tsx
+// Multi-select toggle helper
+const toggleArrayValue = (arr: string[], value: string): string[] =>
+  arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value];
+
+// Tri-state matcher
+const matchTri = (state: TriState, hasValue: boolean) =>
+  state === 'any' || (state === 'yes' && hasValue) || (state === 'no' && !hasValue);
+```
+
+**Commits pushed:**
+- `5f9f3c1` or next available — `feat: advanced multi-select student filters + custom column CSV export`
+
+---
+
 ### Commits pushed this session (most recent first)
 
 ```

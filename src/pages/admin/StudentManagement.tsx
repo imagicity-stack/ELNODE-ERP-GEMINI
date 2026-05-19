@@ -34,6 +34,9 @@ import {
   Heart,
   GraduationCap,
   Hash,
+  Check,
+  ImageIcon,
+  Filter as FilterIcon,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -56,13 +59,50 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const [deletingStudent, setDeletingStudent] = useState<Student | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterClass, setFilterClass] = useState('');
-  const [filterSection, setFilterSection] = useState('');
-  const [filterHouse, setFilterHouse] = useState('');
-  const [filterGender, setFilterGender] = useState('');
-  const [filterTransport, setFilterTransport] = useState('');
+  // ─── Advanced filters (multi-select arrays + presence tri-state) ────────────
+  type TriState = 'any' | 'yes' | 'no';
+  const [filterClass, setFilterClass] = useState<string[]>([]);
+  const [filterSection, setFilterSection] = useState<string[]>([]);
+  const [filterHouse, setFilterHouse] = useState<string[]>([]);
+  const [filterGender, setFilterGender] = useState<string[]>([]);
+  const [filterTransport, setFilterTransport] = useState<string[]>([]);
+  const [filterPhoto, setFilterPhoto] = useState<TriState>('any');
+  const [filterMedical, setFilterMedical] = useState<TriState>('any');
+  const [filterAcademic, setFilterAcademic] = useState<TriState>('any');
+  const [filterAddress, setFilterAddress] = useState<TriState>('any');
+  const [filterStudentEmail, setFilterStudentEmail] = useState<TriState>('any');
+  const [filterParentEmail, setFilterParentEmail] = useState<TriState>('any');
   const [showFilters, setShowFilters] = useState(false);
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
+
+  // ─── Export modal state ─────────────────────────────────────────────────────
+  const ALL_EXPORT_COLUMNS = [
+    { key: 'name', label: 'Name' },
+    { key: 'admissionNumber', label: 'Admission Number' },
+    { key: 'schoolNumber', label: 'School Number' },
+    { key: 'class', label: 'Class' },
+    { key: 'section', label: 'Section' },
+    { key: 'gender', label: 'Gender' },
+    { key: 'house', label: 'House' },
+    { key: 'fatherName', label: 'Father Name' },
+    { key: 'motherName', label: 'Mother Name' },
+    { key: 'phone', label: 'Parent Phone' },
+    { key: 'parentEmail', label: 'Parent Email' },
+    { key: 'studentEmail', label: 'Student Email' },
+    { key: 'transport', label: 'Transport' },
+    { key: 'address', label: 'Address' },
+    { key: 'medicalNotes', label: 'Medical Notes' },
+    { key: 'academicHistory', label: 'Academic History' },
+  ] as const;
+  type ExportColKey = typeof ALL_EXPORT_COLUMNS[number]['key'];
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportScope, setExportScope] = useState<'filtered' | 'all'>('filtered');
+  const [exportCols, setExportCols] = useState<Record<ExportColKey, boolean>>(
+    Object.fromEntries(ALL_EXPORT_COLUMNS.map(c => [c.key, true])) as Record<ExportColKey, boolean>
+  );
+
+  const toggleArrayValue = (arr: string[], value: string): string[] =>
+    arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value];
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('students');
@@ -339,33 +379,51 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     'studentEmail', 'house', 'transport', 'medicalNotes', 'academicHistory', 'address',
   ];
 
+  const getColumnValue = (s: Student, col: ExportColKey): string => {
+    switch (col) {
+      case 'name':            return s.name || '';
+      case 'admissionNumber': return s.admissionNumber || '';
+      case 'schoolNumber':    return s.schoolNumber || '';
+      case 'class':           return classes.find(c => c.id === s.classId)?.name || '';
+      case 'section':         return s.section || '';
+      case 'gender':          return s.gender || '';
+      case 'house':           return houses.find(h => h.id === s.houseId)?.name || '';
+      case 'fatherName':      return s.parentDetails?.fatherName || '';
+      case 'motherName':      return s.parentDetails?.motherName || '';
+      case 'phone':           return s.parentDetails?.phone || '';
+      case 'parentEmail':     return s.parentDetails?.email || '';
+      case 'studentEmail':    return (s as any).email || '';
+      case 'transport':       return s.transportDetails || '';
+      case 'address':         return (s as any).address || '';
+      case 'medicalNotes':    return s.medicalNotes || '';
+      case 'academicHistory': return s.academicHistory || '';
+      default:                return '';
+    }
+  };
+
   const handleExportCSV = () => {
-    const rows = filteredStudents.map(s => [
-      s.name,
-      s.admissionNumber,
-      classes.find(c => c.id === s.classId)?.name || '',
-      s.section || '',
-      s.gender || '',
-      s.parentDetails?.fatherName || '',
-      s.parentDetails?.motherName || '',
-      s.parentDetails?.phone || '',
-      s.parentDetails?.email || '',
-      (s as any).email || '',
-      houses.find(h => h.id === s.houseId)?.name || '',
-      s.transportDetails || '',
-      s.medicalNotes || '',
-      s.academicHistory || '',
-      (s as any).address || '',
-    ]);
-    const lines = [CSV_HEADERS.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))];
+    const selectedCols = ALL_EXPORT_COLUMNS.filter(c => exportCols[c.key]);
+    if (selectedCols.length === 0) {
+      showToast('Select at least one column to export', 'error');
+      return;
+    }
+    const sourceRows = exportScope === 'filtered' ? filteredStudents : students;
+    const headers = selectedCols.map(c => c.label);
+    const rows = sourceRows.map(s => selectedCols.map(c => getColumnValue(s, c.key)));
+    const lines = [
+      headers.join(','),
+      ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    ];
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const suffix = activeFilterCount > 0 ? '_filtered' : '_all';
+    const suffix = exportScope === 'filtered' && activeFilterCount > 0 ? '_filtered' : '_all';
     a.download = `students${suffix}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    setExportModalOpen(false);
+    showToast(`Exported ${sourceRows.length} student${sourceRows.length !== 1 ? 's' : ''}`, 'success');
   };
 
   const handleDownloadTemplate = () => {
@@ -775,20 +833,40 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     }
   };
 
-  const activeFilterCount = [filterClass, filterSection, filterHouse, filterGender, filterTransport].filter(Boolean).length;
+  const presenceFilters: TriState[] = [filterPhoto, filterMedical, filterAcademic, filterAddress, filterStudentEmail, filterParentEmail];
+  const activeFilterCount =
+    (filterClass.length ? 1 : 0) +
+    (filterSection.length ? 1 : 0) +
+    (filterHouse.length ? 1 : 0) +
+    (filterGender.length ? 1 : 0) +
+    (filterTransport.length ? 1 : 0) +
+    presenceFilters.filter(p => p !== 'any').length;
 
   const clearFilters = () => {
-    setFilterClass('');
-    setFilterSection('');
-    setFilterHouse('');
-    setFilterGender('');
-    setFilterTransport('');
+    setFilterClass([]);
+    setFilterSection([]);
+    setFilterHouse([]);
+    setFilterGender([]);
+    setFilterTransport([]);
+    setFilterPhoto('any');
+    setFilterMedical('any');
+    setFilterAcademic('any');
+    setFilterAddress('any');
+    setFilterStudentEmail('any');
+    setFilterParentEmail('any');
   };
 
-  // Sections available for the selected class (or all unique sections)
-  const availableSections = filterClass
-    ? (classes.find(c => c.id === filterClass)?.sections.map(s => s.name || 'A') ?? [])
+  // Sections available across the selected classes (or all unique sections if none selected)
+  const availableSections = filterClass.length > 0
+    ? Array.from(new Set(
+        filterClass.flatMap(cid =>
+          (classes.find(c => c.id === cid)?.sections.map(s => s.name || 'A')) ?? []
+        )
+      ))
     : Array.from(new Set(students.map(s => s.section).filter(Boolean)));
+
+  const matchTri = (state: TriState, hasValue: boolean) =>
+    state === 'any' || (state === 'yes' && hasValue) || (state === 'no' && !hasValue);
 
   const filteredStudents = students.filter(s => {
     const q = searchTerm.toLowerCase();
@@ -797,13 +875,27 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       s.admissionNumber.includes(searchTerm) ||
       s.schoolNumber.includes(searchTerm) ||
       (s.parentDetails?.fatherName || '').toLowerCase().includes(q) ||
-      (s.parentDetails?.motherName || '').toLowerCase().includes(q);
-    const matchesClass    = !filterClass    || s.classId === filterClass;
-    const matchesSection  = !filterSection  || s.section === filterSection;
-    const matchesHouse    = !filterHouse    || s.houseId === filterHouse;
-    const matchesGender   = !filterGender   || (s.gender || '').toLowerCase() === filterGender;
-    const matchesTransport= !filterTransport|| (s.transportDetails || '') === filterTransport;
-    return matchesSearch && matchesClass && matchesSection && matchesHouse && matchesGender && matchesTransport;
+      (s.parentDetails?.motherName || '').toLowerCase().includes(q) ||
+      (s.parentDetails?.phone || '').includes(searchTerm) ||
+      (s.parentDetails?.email || '').toLowerCase().includes(q) ||
+      ((s as any).email || '').toLowerCase().includes(q) ||
+      ((s as any).address || '').toLowerCase().includes(q);
+
+    const matchesClass     = filterClass.length === 0     || filterClass.includes(s.classId);
+    const matchesSection   = filterSection.length === 0   || filterSection.includes(s.section || '');
+    const matchesHouse     = filterHouse.length === 0     || filterHouse.includes(s.houseId || '');
+    const matchesGender    = filterGender.length === 0    || filterGender.includes((s.gender || '').toLowerCase());
+    const matchesTransport = filterTransport.length === 0 || filterTransport.includes(s.transportDetails || '');
+
+    const matchesPhoto         = matchTri(filterPhoto,         Boolean(s.photoURL));
+    const matchesMedical       = matchTri(filterMedical,       Boolean(s.medicalNotes && s.medicalNotes.trim()));
+    const matchesAcademic      = matchTri(filterAcademic,      Boolean(s.academicHistory && s.academicHistory.trim()));
+    const matchesAddress       = matchTri(filterAddress,       Boolean(((s as any).address || '').toString().trim()));
+    const matchesStudentEmail  = matchTri(filterStudentEmail,  Boolean(((s as any).email || '').toString().trim()));
+    const matchesParentEmail   = matchTri(filterParentEmail,   Boolean((s.parentDetails?.email || '').trim()));
+
+    return matchesSearch && matchesClass && matchesSection && matchesHouse && matchesGender && matchesTransport
+      && matchesPhoto && matchesMedical && matchesAcademic && matchesAddress && matchesStudentEmail && matchesParentEmail;
   });
 
   const openAddModal = () => {
@@ -872,7 +964,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             onClick={clearFilters}
             className={cn(
               "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
-              !filterClass && !filterHouse && !filterGender && !filterTransport ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
+              activeFilterCount === 0 ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
             )}
           >
             All
@@ -880,10 +972,10 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           {classes.map(cls => (
             <button
               key={cls.id}
-              onClick={() => setFilterClass(filterClass === cls.id ? '' : cls.id)}
+              onClick={() => setFilterClass(toggleArrayValue(filterClass, cls.id))}
               className={cn(
                 "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
-                filterClass === cls.id ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
+                filterClass.includes(cls.id) ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
               )}
             >
               Class {cls.name}
@@ -892,10 +984,10 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           {houses.map(h => (
             <button
               key={h.id}
-              onClick={() => setFilterHouse(filterHouse === h.id ? '' : h.id)}
+              onClick={() => setFilterHouse(toggleArrayValue(filterHouse, h.id))}
               className={cn(
                 "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
-                filterHouse === h.id ? 'bg-amber-500 text-white' : 'bg-white text-slate-600 border border-slate-200'
+                filterHouse.includes(h.id) ? 'bg-amber-500 text-white' : 'bg-white text-slate-600 border border-slate-200'
               )}
             >
               {h.name}
@@ -904,10 +996,10 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           {(['male', 'female'] as const).map(g => (
             <button
               key={g}
-              onClick={() => setFilterGender(filterGender === g ? '' : g)}
+              onClick={() => setFilterGender(toggleArrayValue(filterGender, g))}
               className={cn(
                 "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform capitalize",
-                filterGender === g ? 'bg-violet-500 text-white' : 'bg-white text-slate-600 border border-slate-200'
+                filterGender.includes(g) ? 'bg-violet-500 text-white' : 'bg-white text-slate-600 border border-slate-200'
               )}
             >
               {g}
@@ -964,7 +1056,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         actions={
           <>
             <button
-              onClick={handleExportCSV}
+              onClick={() => setExportModalOpen(true)}
               className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:border-indigo-300 hover:text-indigo-700 transition-all"
             >
               <Download className="w-4 h-4" />
@@ -1015,92 +1107,136 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             </button>
           </div>
 
-          {/* Expanded filter panel */}
+          {/* Expanded filter panel — multi-select dropdowns + presence toggles */}
           {showFilters && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1 border-t border-slate-100">
-              <select
-                value={filterClass}
-                onChange={e => { setFilterClass(e.target.value); setFilterSection(''); }}
-                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-              >
-                <option value="">All Classes</option>
-                {classes.map(cls => <option key={cls.id} value={cls.id}>Class {cls.name}</option>)}
-              </select>
+            <div className="pt-3 border-t border-slate-100 space-y-4">
+              {/* Multi-select dropdowns */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <MultiSelectDropdown
+                  label="Classes"
+                  options={classes.map(c => ({ value: c.id, label: `Class ${c.name}` }))}
+                  selected={filterClass}
+                  onChange={(next) => {
+                    setFilterClass(next);
+                    // prune sections that no longer exist for selected classes
+                    if (next.length > 0) {
+                      const valid = new Set(next.flatMap(cid => (classes.find(c => c.id === cid)?.sections.map(s => s.name || 'A')) ?? []));
+                      setFilterSection(prev => prev.filter(s => valid.has(s)));
+                    }
+                  }}
+                  color="indigo"
+                />
+                <MultiSelectDropdown
+                  label="Sections"
+                  options={availableSections.map(s => ({ value: s, label: `Section ${s}` }))}
+                  selected={filterSection}
+                  onChange={setFilterSection}
+                  disabled={availableSections.length === 0}
+                  color="indigo"
+                />
+                <MultiSelectDropdown
+                  label="Houses"
+                  options={houses.map(h => ({ value: h.id, label: h.name }))}
+                  selected={filterHouse}
+                  onChange={setFilterHouse}
+                  color="amber"
+                />
+                <MultiSelectDropdown
+                  label="Gender"
+                  options={[
+                    { value: 'male', label: 'Male' },
+                    { value: 'female', label: 'Female' },
+                    { value: 'other', label: 'Other' },
+                  ]}
+                  selected={filterGender}
+                  onChange={setFilterGender}
+                  color="violet"
+                />
+                <MultiSelectDropdown
+                  label="Transport"
+                  options={[
+                    { value: 'School', label: 'School' },
+                    { value: 'Private', label: 'Private' },
+                    { value: '', label: 'None' },
+                  ]}
+                  selected={filterTransport}
+                  onChange={setFilterTransport}
+                  color="emerald"
+                />
+              </div>
 
-              <select
-                value={filterSection}
-                onChange={e => setFilterSection(e.target.value)}
-                disabled={availableSections.length === 0}
-                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 disabled:opacity-40"
-              >
-                <option value="">All Sections</option>
-                {availableSections.map(sec => <option key={sec} value={sec}>Section {sec}</option>)}
-              </select>
-
-              <select
-                value={filterHouse}
-                onChange={e => setFilterHouse(e.target.value)}
-                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-              >
-                <option value="">All Houses</option>
-                {houses.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-              </select>
-
-              <select
-                value={filterGender}
-                onChange={e => setFilterGender(e.target.value)}
-                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-              >
-                <option value="">All Genders</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-
-              <select
-                value={filterTransport}
-                onChange={e => setFilterTransport(e.target.value)}
-                className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-              >
-                <option value="">All Transport</option>
-                <option value="School">School</option>
-                <option value="Private">Private</option>
-              </select>
+              {/* Presence filters */}
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Has Information</div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <TriStateFilter label="Photo" icon={ImageIcon} value={filterPhoto} onChange={setFilterPhoto} />
+                  <TriStateFilter label="Address" icon={MapPin} value={filterAddress} onChange={setFilterAddress} />
+                  <TriStateFilter label="Medical Notes" icon={Heart} value={filterMedical} onChange={setFilterMedical} />
+                  <TriStateFilter label="Academic History" icon={FileText} value={filterAcademic} onChange={setFilterAcademic} />
+                  <TriStateFilter label="Student Email" icon={Mail} value={filterStudentEmail} onChange={setFilterStudentEmail} />
+                  <TriStateFilter label="Parent Email" icon={Mail} value={filterParentEmail} onChange={setFilterParentEmail} />
+                </div>
+              </div>
             </div>
           )}
 
           {/* Active filter chips */}
           {activeFilterCount > 0 && (
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              {filterClass && (
-                <span className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full border border-indigo-100">
-                  Class {classes.find(c => c.id === filterClass)?.name}
-                  <button onClick={() => { setFilterClass(''); setFilterSection(''); }}><X className="w-3 h-3" /></button>
-                </span>
+              {filterClass.map(cid => (
+                <FilterChip key={cid} color="indigo" onRemove={() => setFilterClass(filterClass.filter(v => v !== cid))}>
+                  Class {classes.find(c => c.id === cid)?.name}
+                </FilterChip>
+              ))}
+              {filterSection.map(sec => (
+                <FilterChip key={sec} color="indigo" onRemove={() => setFilterSection(filterSection.filter(v => v !== sec))}>
+                  Section {sec}
+                </FilterChip>
+              ))}
+              {filterHouse.map(hid => (
+                <FilterChip key={hid} color="amber" onRemove={() => setFilterHouse(filterHouse.filter(v => v !== hid))}>
+                  {houses.find(h => h.id === hid)?.name}
+                </FilterChip>
+              ))}
+              {filterGender.map(g => (
+                <FilterChip key={g} color="violet" onRemove={() => setFilterGender(filterGender.filter(v => v !== g))}>
+                  <span className="capitalize">{g}</span>
+                </FilterChip>
+              ))}
+              {filterTransport.map(t => (
+                <FilterChip key={t} color="emerald" onRemove={() => setFilterTransport(filterTransport.filter(v => v !== t))}>
+                  Transport: {t || 'None'}
+                </FilterChip>
+              ))}
+              {filterPhoto !== 'any' && (
+                <FilterChip color="slate" onRemove={() => setFilterPhoto('any')}>
+                  {filterPhoto === 'yes' ? 'Has photo' : 'No photo'}
+                </FilterChip>
               )}
-              {filterSection && (
-                <span className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full border border-indigo-100">
-                  Section {filterSection}
-                  <button onClick={() => setFilterSection('')}><X className="w-3 h-3" /></button>
-                </span>
+              {filterAddress !== 'any' && (
+                <FilterChip color="slate" onRemove={() => setFilterAddress('any')}>
+                  {filterAddress === 'yes' ? 'Has address' : 'No address'}
+                </FilterChip>
               )}
-              {filterHouse && (
-                <span className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-semibold rounded-full border border-amber-100">
-                  {houses.find(h => h.id === filterHouse)?.name}
-                  <button onClick={() => setFilterHouse('')}><X className="w-3 h-3" /></button>
-                </span>
+              {filterMedical !== 'any' && (
+                <FilterChip color="slate" onRemove={() => setFilterMedical('any')}>
+                  {filterMedical === 'yes' ? 'Has medical notes' : 'No medical notes'}
+                </FilterChip>
               )}
-              {filterGender && (
-                <span className="flex items-center gap-1 px-2.5 py-1 bg-violet-50 text-violet-700 text-xs font-semibold rounded-full border border-violet-100 capitalize">
-                  {filterGender}
-                  <button onClick={() => setFilterGender('')}><X className="w-3 h-3" /></button>
-                </span>
+              {filterAcademic !== 'any' && (
+                <FilterChip color="slate" onRemove={() => setFilterAcademic('any')}>
+                  {filterAcademic === 'yes' ? 'Has academic history' : 'No academic history'}
+                </FilterChip>
               )}
-              {filterTransport && (
-                <span className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full border border-emerald-100">
-                  Transport: {filterTransport}
-                  <button onClick={() => setFilterTransport('')}><X className="w-3 h-3" /></button>
-                </span>
+              {filterStudentEmail !== 'any' && (
+                <FilterChip color="slate" onRemove={() => setFilterStudentEmail('any')}>
+                  {filterStudentEmail === 'yes' ? 'Has student email' : 'No student email'}
+                </FilterChip>
+              )}
+              {filterParentEmail !== 'any' && (
+                <FilterChip color="slate" onRemove={() => setFilterParentEmail('any')}>
+                  {filterParentEmail === 'yes' ? 'Has parent email' : 'No parent email'}
+                </FilterChip>
               )}
               <button
                 onClick={clearFilters}
@@ -1548,6 +1684,96 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           </div>
         )}
       </Modal>
+
+      {/* ─── Export CSV Modal ──────────────────────────────────────────────── */}
+      <Modal
+        isOpen={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        title="Export Students to CSV"
+        size="md"
+      >
+        <div className="space-y-5">
+          {/* Scope selection */}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Scope</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setExportScope('filtered')}
+                className={cn(
+                  'p-3 rounded-xl border text-left transition-all',
+                  exportScope === 'filtered'
+                    ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-200'
+                    : 'bg-white border-slate-200 hover:border-slate-300'
+                )}
+              >
+                <p className="text-sm font-bold text-slate-900">Current filter</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">{filteredStudents.length} student{filteredStudents.length !== 1 ? 's' : ''}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportScope('all')}
+                className={cn(
+                  'p-3 rounded-xl border text-left transition-all',
+                  exportScope === 'all'
+                    ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-200'
+                    : 'bg-white border-slate-200 hover:border-slate-300'
+                )}
+              >
+                <p className="text-sm font-bold text-slate-900">All students</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">{students.length} student{students.length !== 1 ? 's' : ''}</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Column selection */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Columns ({Object.values(exportCols).filter(Boolean).length}/{ALL_EXPORT_COLUMNS.length})</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setExportCols(Object.fromEntries(ALL_EXPORT_COLUMNS.map(c => [c.key, true])) as Record<ExportColKey, boolean>)}
+                  className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExportCols(Object.fromEntries(ALL_EXPORT_COLUMNS.map(c => [c.key, false])) as Record<ExportColKey, boolean>)}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-rose-600"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 max-h-72 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+              {ALL_EXPORT_COLUMNS.map(col => (
+                <label
+                  key={col.key}
+                  className="flex items-center gap-2 px-2.5 py-1.5 bg-white rounded-lg border border-slate-100 hover:border-indigo-200 cursor-pointer text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={exportCols[col.key]}
+                    onChange={() => setExportCols(prev => ({ ...prev, [col.key]: !prev[col.key] }))}
+                    className="w-4 h-4 rounded text-indigo-600"
+                  />
+                  <span className="font-medium text-slate-700">{col.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" size="sm" onClick={() => setExportModalOpen(false)}>Cancel</Button>
+            <Button size="sm" icon={FileDown} onClick={handleExportCSV}>
+              Download CSV
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }
@@ -1565,5 +1791,177 @@ function DetailRow({ icon: Icon, label, value, multiline = false }: { icon: any;
         </p>
       </div>
     </div>
+  );
+}
+
+// ─── Multi-select dropdown ────────────────────────────────────────────────────
+type ChipColor = 'indigo' | 'amber' | 'violet' | 'emerald' | 'slate';
+
+const colorRing: Record<ChipColor, string> = {
+  indigo: 'ring-indigo-500/20 border-indigo-400',
+  amber: 'ring-amber-500/20 border-amber-400',
+  violet: 'ring-violet-500/20 border-violet-400',
+  emerald: 'ring-emerald-500/20 border-emerald-400',
+  slate: 'ring-slate-500/20 border-slate-400',
+};
+
+function MultiSelectDropdown({
+  label, options, selected, onChange, disabled = false, color = 'indigo',
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  disabled?: boolean;
+  color?: ChipColor;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  const toggle = (v: string) =>
+    onChange(selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v]);
+
+  const summary = selected.length === 0
+    ? `All ${label}`
+    : selected.length === 1
+      ? (options.find(o => o.value === selected[0])?.label || selected[0])
+      : `${selected.length} ${label} selected`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(v => !v)}
+        className={cn(
+          'w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-slate-50 border rounded-xl text-sm text-left transition-all',
+          'focus:outline-none focus:ring-2',
+          selected.length > 0 ? cn('bg-white', colorRing[color]) : 'border-slate-200',
+          disabled && 'opacity-40 cursor-not-allowed'
+        )}
+      >
+        <span className={cn('truncate', selected.length === 0 ? 'text-slate-500' : 'text-slate-900 font-semibold')}>
+          {summary}
+        </span>
+        <ChevronDown className={cn('w-4 h-4 text-slate-400 shrink-0 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && !disabled && (
+        <div className="absolute z-30 mt-1.5 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-64 overflow-y-auto py-1.5">
+          {options.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-slate-400">No options available</div>
+          ) : (
+            <>
+              <div className="px-3 py-1 flex items-center justify-between border-b border-slate-100 mb-1">
+                <button
+                  type="button"
+                  onClick={() => onChange(options.map(o => o.value))}
+                  className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChange([])}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-rose-600"
+                >
+                  Clear
+                </button>
+              </div>
+              {options.map(opt => {
+                const isSelected = selected.includes(opt.value);
+                return (
+                  <button
+                    type="button"
+                    key={opt.value}
+                    onClick={() => toggle(opt.value)}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors',
+                      isSelected ? 'bg-indigo-50 text-indigo-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'
+                    )}
+                  >
+                    <div className={cn(
+                      'w-4 h-4 rounded border flex items-center justify-center shrink-0',
+                      isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'
+                    )}>
+                      {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                    </div>
+                    <span className="truncate">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tri-state presence filter ────────────────────────────────────────────────
+function TriStateFilter({
+  label, icon: Icon, value, onChange,
+}: {
+  label: string;
+  icon: any;
+  value: 'any' | 'yes' | 'no';
+  onChange: (v: 'any' | 'yes' | 'no') => void;
+}) {
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Icon className="w-3.5 h-3.5 text-slate-500" />
+        <p className="text-[11px] font-semibold text-slate-600 truncate">{label}</p>
+      </div>
+      <div className="grid grid-cols-3 gap-1">
+        {(['any', 'yes', 'no'] as const).map(v => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => onChange(v)}
+            className={cn(
+              'px-1 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all',
+              value === v
+                ? v === 'yes' ? 'bg-emerald-600 text-white' : v === 'no' ? 'bg-rose-600 text-white' : 'bg-slate-700 text-white'
+                : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'
+            )}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Filter chip ──────────────────────────────────────────────────────────────
+function FilterChip({
+  children, color, onRemove,
+}: {
+  children: React.ReactNode;
+  color: ChipColor;
+  onRemove: () => void;
+}) {
+  const colorClasses: Record<ChipColor, string> = {
+    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    violet: 'bg-violet-50 text-violet-700 border-violet-100',
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    slate: 'bg-slate-100 text-slate-700 border-slate-200',
+  };
+  return (
+    <span className={cn('flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full border', colorClasses[color])}>
+      {children}
+      <button onClick={onRemove} className="hover:opacity-70"><X className="w-3 h-3" /></button>
+    </span>
   );
 }
