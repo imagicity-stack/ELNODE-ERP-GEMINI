@@ -8,6 +8,18 @@ function pct(num: number, den: number) { return den > 0 ? Math.round((num / den)
 function avg(arr: number[]) { return arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0; }
 function inr(n: number) { return Math.round(n); }
 
+// Wraps a getDocs call so a single collection failure (permission denied,
+// missing index, etc.) returns an empty snapshot instead of crashing the
+// entire Promise.all and leaving the user with no AI context at all.
+async function safeGet(q: any): Promise<{ docs: any[] }> {
+  try {
+    return await getDocs(q);
+  } catch (e: any) {
+    console.warn('[aiContext] collection fetch failed:', e?.code || e?.message);
+    return { docs: [] };
+  }
+}
+
 // ─── Super Admin / Full-School Context ───────────────────────────────────────
 
 export async function buildAIContext(periodLabel = 'This Month') {
@@ -35,7 +47,7 @@ export async function buildAIContext(periodLabel = 'This Month') {
   const monthPrefix = range.from.slice(0, 7);
   const inRange = (date: string) => date >= range.from && date <= range.to;
 
-  // ── Parallel Firestore fetches ────────────────────────────────────────────
+  // ── Parallel Firestore fetches (fault-tolerant — one failure won't crash all) ──
   const [
     studSnap, classSnap, houseSnap, teacherSnap, staffSnap,
     expSnap, paySnap, salSnap, reqSnap, advSnap,
@@ -44,25 +56,25 @@ export async function buildAIContext(periodLabel = 'This Month') {
     examSnap, examResultSnap,
     grievanceSnap, noticeSnap, homeworkSnap,
   ] = await Promise.all([
-    getDocs(collection(db, 'students')),
-    getDocs(collection(db, 'classes')),
-    getDocs(collection(db, 'houses')),
-    getDocs(collection(db, 'teachers')),
-    getDocs(collection(db, 'staff')),
-    getDocs(query(collection(db, 'expenses'), orderBy('date', 'desc'))),
-    getDocs(query(collection(db, 'feePayments'), orderBy('date', 'desc'))),
-    getDocs(collection(db, 'salaries')),
-    getDocs(collection(db, 'feeRequests')),
-    getDocs(query(collection(db, 'advancePayments'), orderBy('createdAt', 'desc'), limit(100))),
-    getDocs(query(collection(db, 'attendance'), where('date', '==', today))),
-    getDocs(query(collection(db, 'attendance'), where('date', '>=', todayMinus30))),
-    getDocs(query(collection(db, 'teacherLeaves'), orderBy('createdAt', 'desc'), limit(100))),
-    getDocs(query(collection(db, 'studentLeaves'), orderBy('createdAt', 'desc'), limit(100))),
-    getDocs(query(collection(db, 'exams'), orderBy('startDate', 'desc'), limit(20))),
-    getDocs(query(collection(db, 'examResults'), limit(300))),
-    getDocs(query(collection(db, 'grievances'), orderBy('createdAt', 'desc'), limit(100))),
-    getDocs(query(collection(db, 'notices'), orderBy('createdAt', 'desc'), limit(15))),
-    getDocs(query(collection(db, 'homework'), orderBy('dueDate', 'desc'), limit(100))),
+    safeGet(collection(db, 'students')),
+    safeGet(collection(db, 'classes')),
+    safeGet(collection(db, 'houses')),
+    safeGet(collection(db, 'teachers')),
+    safeGet(collection(db, 'staff')),
+    safeGet(query(collection(db, 'expenses'), orderBy('date', 'desc'))),
+    safeGet(query(collection(db, 'feePayments'), orderBy('date', 'desc'))),
+    safeGet(collection(db, 'salaries')),
+    safeGet(collection(db, 'feeRequests')),
+    safeGet(query(collection(db, 'advancePayments'), orderBy('createdAt', 'desc'), limit(100))),
+    safeGet(query(collection(db, 'attendance'), where('date', '==', today))),
+    safeGet(query(collection(db, 'attendance'), where('date', '>=', todayMinus30))),
+    safeGet(query(collection(db, 'teacherLeaves'), orderBy('createdAt', 'desc'), limit(100))),
+    safeGet(query(collection(db, 'studentLeaves'), orderBy('createdAt', 'desc'), limit(100))),
+    safeGet(query(collection(db, 'exams'), orderBy('startDate', 'desc'), limit(20))),
+    safeGet(query(collection(db, 'examResults'), limit(300))),
+    safeGet(query(collection(db, 'grievances'), orderBy('createdAt', 'desc'), limit(100))),
+    safeGet(query(collection(db, 'notices'), orderBy('createdAt', 'desc'), limit(15))),
+    safeGet(query(collection(db, 'homework'), orderBy('dueDate', 'desc'), limit(100))),
   ]);
 
   // ── Raw arrays ────────────────────────────────────────────────────────────
@@ -85,6 +97,15 @@ export async function buildAIContext(periodLabel = 'This Month') {
   const grievances  = grievanceSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
   const notices     = noticeSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
   const homework    = homeworkSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+
+  // Track which collections returned no data (likely permission issues)
+  const emptyCollections: string[] = [];
+  const check = (name: string, snap: { docs: any[] }) => { if (snap.docs.length === 0) emptyCollections.push(name); };
+  check('attendance-today', attTodaySnap);
+  check('grievances', grievanceSnap);
+  check('teacherLeaves', teachLeaveSnap);
+  check('studentLeaves', studLeaveSnap);
+  check('examResults', examResultSnap);
 
   // ── Period filters ────────────────────────────────────────────────────────
   const periodExpenses = expenses.filter(e => e.date && inRange(e.date));
@@ -248,6 +269,9 @@ export async function buildAIContext(periodLabel = 'This Month') {
   return {
     generatedAt: now.toISOString(),
     period: range,
+    _dataWarnings: emptyCollections.length > 0
+      ? `Some collections returned no data (possible permission issue or empty): ${emptyCollections.join(', ')}. Deploy firestore.rules if recently changed.`
+      : null,
 
     school: {
       totalStudents:   students.length,

@@ -256,8 +256,18 @@ export default function AIInsightsPanel({
             <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-xl p-3 mb-3 text-xs flex items-start gap-2">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <div>
-                <p className="font-bold">Couldn't load context</p>
+                <p className="font-bold">Couldn't load school data</p>
                 <p>{contextError}</p>
+                <p className="mt-1 text-rose-500">Run <code className="bg-rose-100 px-1 rounded">firebase deploy --only firestore:rules</code> if rules were recently changed.</p>
+              </div>
+            </div>
+          )}
+          {!contextError && context?._dataWarnings && (
+            <div className="bg-amber-50 border border-amber-100 text-amber-700 rounded-xl p-3 mb-3 text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-bold">Partial data loaded</p>
+                <p>{context._dataWarnings}</p>
               </div>
             </div>
           )}
