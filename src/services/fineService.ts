@@ -3,13 +3,18 @@ import { FineConfig, FeeRequest } from '../types';
 
 /**
  * Calculates the fine for a given invoice based on the current configuration.
- * 
+ *
  * Formula:
- * 1. Find days overdue = today - dueDate
- * 2. If days overdue <= gracePeriod, fine = 0
- * 3. Find applicable slab where startDay <= days overdue <= endDay
- * 4. penalty = max(fixedPenalty, (totalAmount * percentagePenalty / 100)) if isHigherOf is true
- * 5. Add escalation if applicable
+ * 1. daysOverdue = today − dueDate (so the due date itself = day 0,
+ *    the day after the due date = day 1)
+ * 2. If daysOverdue < 1, fine = 0 (not yet past due date)
+ * 3. Find the slab where startDay ≤ daysOverdue ≤ endDay
+ * 4. penalty = max(fixedPenalty, totalAmount × percentagePenalty / 100)
+ *    if isHigherOf is true, else fixed + percent
+ * 5. Add escalation if applicable (open-ended slab only)
+ *
+ * Note: the legacy gracePeriodDays field is ignored — fines now start
+ * on day 1 (the day immediately after the due date).
  */
 export const calculateFine = (invoice: FeeRequest, config: FineConfig, today: Date = new Date()): number => {
   if (!config.isEnabled) return 0;
@@ -23,8 +28,9 @@ export const calculateFine = (invoice: FeeRequest, config: FineConfig, today: Da
   const dueDate = parseISO(invoice.dueDate);
   const daysOverdue = differenceInDays(today, dueDate);
 
-  if (daysOverdue <= config.gracePeriodDays) return 0;
-  
+  // Fines start on day 1 (the day after the due date)
+  if (daysOverdue < 1) return 0;
+
   // Find applicable slab
   const slab = config.slabs.find(s => {
     const isAfterStart = daysOverdue >= s.startDay;
