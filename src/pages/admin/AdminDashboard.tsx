@@ -38,6 +38,7 @@ import { StatCard, Card, Badge, Button, Avatar } from '../../components/ui';
 import UpdatesSection from '../../components/UpdatesSection';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
+import { MobilePageEnter } from '../../components/animations';
 
 const GENDER_COLORS = ['#6366f1', '#ec4899'];
 
@@ -195,7 +196,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   return (
     <>
       {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
+      <MobilePageEnter className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
         <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-6 text-white">
           <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
           <h1 className="text-xl font-bold mt-0.5">{greeting}, {(user.name || user.email || 'Admin').split(' ')[0]}</h1>
@@ -309,7 +310,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           </div>
         </div>
 
-      </div>
+      </MobilePageEnter>
 
       {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
       <div className="hidden md:block space-y-8">

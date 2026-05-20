@@ -47,6 +47,7 @@ import {
   EmptyState, Avatar,
 } from '../../components/ui';
 import { useToast } from '../../components/Toast';
+import { StaggeredList } from '../../components/animations';
 
 export default function StudentManagement({ user }: { user: UserProfile }) {
   const [students, setStudents] = useState<Student[]>([]);
@@ -1007,7 +1008,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           ))}
         </div>
 
-        <div className="px-4 pt-4 space-y-2.5">
+        <div className="px-4 pt-4">
           {filteredStudents.length === 0 ? (
             <div className="py-12 text-center">
               <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
@@ -1015,24 +1016,26 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
               <p className="text-xs text-slate-500 mt-1">Try adjusting filters or add a student</p>
             </div>
           ) : (
-            filteredStudents.map((student) => (
-              <button
-                key={student.id}
-                onClick={() => !readOnly && handleEdit(student)}
-                className="w-full bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex items-center gap-3 active:scale-[0.98] transition-transform text-left"
-              >
-                <Avatar name={student.name} src={student.photoURL} size="md" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-900 truncate">{student.name}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md">
-                      {getClassName(student.classId)}{student.section ? ` - ${student.section}` : ''}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-mono">{student.admissionNumber}</span>
+            <StaggeredList className="space-y-2.5">
+              {filteredStudents.map((student) => (
+                <button
+                  key={student.id}
+                  onClick={() => !readOnly && handleEdit(student)}
+                  className="w-full bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex items-center gap-3 active:scale-[0.98] transition-transform text-left"
+                >
+                  <Avatar name={student.name} src={student.photoURL} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">{student.name}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md">
+                        {getClassName(student.classId)}{student.section ? ` - ${student.section}` : ''}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">{student.admissionNumber}</span>
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))
+                </button>
+              ))}
+            </StaggeredList>
           )}
         </div>
 

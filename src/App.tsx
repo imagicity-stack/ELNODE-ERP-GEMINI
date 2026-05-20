@@ -30,6 +30,7 @@ const roleToSection = (role: string): ActivitySection => {
   }
 };
 import Login from './pages/Login';
+import { AppSplash } from './components/animations';
 import AdminPortal from './pages/admin/AdminPortal';
 import StudentPortal from './pages/student/StudentPortal';
 import ParentPortal from './pages/parent/ParentPortal';
@@ -57,6 +58,8 @@ const normalizeUserProfile = (profile: UserProfile): UserProfile => ({
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  // Splash plays once per browser session, before the auth screen appears.
+  const [showSplash, setShowSplash] = useState(() => !sessionStorage.getItem('elnode_splashed'));
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -317,6 +320,17 @@ export default function App() {
       default: return '/login';
     }
   };
+
+  if (showSplash) {
+    return (
+      <AppSplash
+        onDone={() => {
+          sessionStorage.setItem('elnode_splashed', '1');
+          setShowSplash(false);
+        }}
+      />
+    );
+  }
 
   if (loading) {
     return (

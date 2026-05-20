@@ -29,6 +29,7 @@ import UpdatesSection from '../../components/UpdatesSection';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { buildParentContext } from '../../lib/aiContext';
 import { fmtDate } from '../../lib/utils';
+import { MobilePageEnter } from '../../components/animations';
 
 interface ParentDashboardProps {
   user: UserProfile;
@@ -180,7 +181,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
   return (
     <>
       {/* ─── Mobile Simplified UI ───────────────────────────────────────────── */}
-      <div className="md:hidden space-y-5 -mx-4 -mt-4">
+      <MobilePageEnter className="md:hidden space-y-5 -mx-4 -mt-4">
         {/* Greeting card */}
         <div className="bg-gradient-to-br from-violet-600 to-indigo-700 px-5 pt-6 pb-8 text-white rounded-b-3xl shadow-lg">
           <p className="text-xs font-medium text-violet-100 uppercase tracking-widest">Welcome</p>
@@ -243,7 +244,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
             </div>
           </div>
         )}
-      </div>
+      </MobilePageEnter>
 
       {/* ─── Desktop UI (unchanged) ─────────────────────────────────────────── */}
       <div className="hidden md:block space-y-8">
