@@ -95,6 +95,12 @@ service firebase.storage {
                       (isAnyAdmin() || hasRole(['accounts']));
     }
 
+    // Notice attachments — admins/principal upload; all authenticated can read
+    match /notices/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidFileSize() && isAllowedContentType() && isAnyAdmin();
+    }
+
     // Deny everything else
     match /{allPaths=**} {
       allow read, write: if false;
