@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   MessageSquare, Send, Users, AlertCircle, CheckCircle2,
-  Clock, Filter, RefreshCw, Phone,
+  Clock, Filter, RefreshCw, Phone, Search, X, CheckSquare, Square,
 } from 'lucide-react';
 import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { UserProfile, Student, FeeRequest, Class } from '../../types';
 import { useToast } from '../../components/Toast';
-import { PageHeader, Card, Button, FormField, Select, StatCard } from '../../components/ui';
+import { PageHeader, Card, Button, StatCard } from '../../components/ui';
 import { logActivity } from '../../services/activityService';
 import { fmtDate } from '../../lib/utils';
 
@@ -48,6 +48,39 @@ function buildParams(template: typeof TEMPLATES[number]['id'], r: RecipientRow):
   return [r.parentName, r.amount, r.studentName, r.classSection, r.month, r.dueDate, PAYMENT_LINK];
 }
 
+function ChipGroup({
+  label, options, selected, onToggle,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onToggle: (value: string) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <div>
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map(o => {
+          const active = selected.includes(o.value);
+          return (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => onToggle(o.value)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
+                active ? 'bg-green-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:border-green-300'
+              }`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
   const [students, setStudents] = useState<Student[]>([]);
   const [requests, setRequests] = useState<FeeRequest[]>([]);
@@ -55,7 +88,16 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
   const [loading, setLoading] = useState(true);
 
   const [template, setTemplate] = useState<typeof TEMPLATES[number]['id']>('fees_due_reminder');
-  const [classFilter, setClassFilter] = useState('all');
+
+  // Advanced filters (empty array = no constraint)
+  const [classFilter, setClassFilter] = useState<string[]>([]);
+  const [sectionFilter, setSectionFilter] = useState<string[]>([]);
+  const [genderFilter, setGenderFilter] = useState<string[]>([]);
+  const [search, setSearch] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+
+  // Explicit per-parent selection, keyed by fee requestId
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
@@ -84,57 +126,119 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
   const today = new Date().toISOString().split('T')[0];
   const selectedTemplate = TEMPLATES.find(t => t.id === template)!;
 
-  const recipients: RecipientRow[] = requests
-    .filter(r => {
-      if (!selectedTemplate.statuses.includes(r.status as any)) return false;
-      if (selectedTemplate.includeOverdue) {
-        if (r.status === 'paid') return false;
-      } else {
-        if (r.dueDate && r.dueDate < today) return false;
-      }
-      return true;
-    })
-    .flatMap(r => {
-      const student = students.find(s => s.id === r.studentId);
-      if (!student?.parentDetails?.phone) return [];
-      if (classFilter !== 'all' && student.classId !== classFilter) return [];
+  // Sections available for the currently chosen classes (union). When no class
+  // is chosen, offer sections across all classes.
+  const availableSections = useMemo(() => {
+    const pool = classFilter.length > 0 ? classes.filter(c => classFilter.includes(c.id)) : classes;
+    const set = new Set<string>();
+    pool.forEach(c => (c.sections || []).forEach(s => s.name && set.add(s.name)));
+    return Array.from(set).sort();
+  }, [classes, classFilter]);
 
-      const cls = classes.find(c => c.id === student.classId);
-      const classSection = `${cls?.name || student.classId} - ${student.section}`;
-      const outstanding = r.totalAmount - (r.paidAmount || 0) - (r.waivedAmount || 0) + (r.fineAmount || 0);
-      if (outstanding <= 0) return [];
+  const toggleArr = (setter: React.Dispatch<React.SetStateAction<string[]>>, value: string) =>
+    setter(prev => (prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]));
 
-      return [{
-        phone: student.parentDetails.phone,
-        parentName: student.parentDetails.fatherName || 'Parent',
-        studentName: student.name,
-        classSection,
-        amount: `₹${outstanding.toLocaleString('en-IN')}`,
-        month: r.month || 'Annual',
-        dueDate: r.dueDate
-          ? new Date(r.dueDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
-          : '-',
-        requestId: r.id,
-      }];
+  const recipients: RecipientRow[] = useMemo(() => {
+    const min = parseFloat(minAmount) || 0;
+    const term = search.trim().toLowerCase();
+    return requests
+      .filter(r => {
+        if (!selectedTemplate.statuses.includes(r.status as any)) return false;
+        if (selectedTemplate.includeOverdue) {
+          if (r.status === 'paid') return false;
+        } else {
+          if (r.dueDate && r.dueDate < today) return false;
+        }
+        return true;
+      })
+      .flatMap(r => {
+        const student = students.find(s => s.id === r.studentId);
+        if (!student?.parentDetails?.phone) return [];
+        if (classFilter.length > 0 && !classFilter.includes(student.classId)) return [];
+        if (sectionFilter.length > 0 && !sectionFilter.includes(student.section)) return [];
+        if (genderFilter.length > 0 && !genderFilter.includes(student.gender || '')) return [];
+
+        const cls = classes.find(c => c.id === student.classId);
+        const classSection = `${cls?.name || student.classId} - ${student.section}`;
+        const outstanding = r.totalAmount - (r.paidAmount || 0) - (r.waivedAmount || 0) + (r.fineAmount || 0);
+        if (outstanding <= 0) return [];
+        if (outstanding < min) return [];
+
+        const parentName = student.parentDetails.fatherName || 'Parent';
+        if (term && !`${parentName} ${student.name} ${student.parentDetails.phone}`.toLowerCase().includes(term)) return [];
+
+        return [{
+          phone: student.parentDetails.phone,
+          parentName,
+          studentName: student.name,
+          classSection,
+          amount: `₹${outstanding.toLocaleString('en-IN')}`,
+          month: r.month || 'Annual',
+          dueDate: r.dueDate
+            ? new Date(r.dueDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+            : '-',
+          requestId: r.id,
+        }];
+      });
+  }, [requests, students, classes, template, classFilter, sectionFilter, genderFilter, minAmount, search, today]);
+
+  // When the filtered set changes, default to "all selected" so the prior
+  // send-to-everyone behaviour is preserved; manual checkbox edits persist
+  // as long as the filtered set is unchanged.
+  const recipientKey = recipients.map(r => r.requestId).join('|');
+  useEffect(() => {
+    setSelectedIds(new Set(recipients.map(r => r.requestId)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipientKey]);
+
+  const sendList = useMemo(
+    () => recipients.filter(r => selectedIds.has(r.requestId)),
+    [recipients, selectedIds],
+  );
+
+  const toggleSelect = (id: string) =>
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
     });
+  const selectAll = () => setSelectedIds(new Set(recipients.map(r => r.requestId)));
+  const clearAll = () => setSelectedIds(new Set());
+  const allSelected = recipients.length > 0 && sendList.length === recipients.length;
+
+  const clearFilters = () => {
+    setClassFilter([]);
+    setSectionFilter([]);
+    setGenderFilter([]);
+    setSearch('');
+    setMinAmount('');
+  };
+  const activeFilterCount =
+    classFilter.length + sectionFilter.length + genderFilter.length + (search.trim() ? 1 : 0) + (minAmount.trim() ? 1 : 0);
+
+  const GENDERS = [
+    { value: 'male', label: 'Male' },
+    { value: 'female', label: 'Female' },
+    { value: 'other', label: 'Other' },
+  ];
 
   const pendingCount = requests.filter(r => r.status === 'pending' || r.status === 'partially_paid').length;
   const overdueCount = requests.filter(r => r.dueDate && r.dueDate < today && r.status !== 'paid').length;
   const noPhoneCount = students.filter(s => !s.parentDetails?.phone).length;
 
   const handleSend = async () => {
-    if (recipients.length === 0) {
-      showToast('No recipients match the current filter', 'error');
+    if (sendList.length === 0) {
+      showToast('Select at least one parent to send to', 'error');
       return;
     }
-    if (!confirm(`Send "${selectedTemplate.label}" to ${recipients.length} parent(s)?`)) return;
+    if (!confirm(`Send "${selectedTemplate.label}" to ${sendList.length} selected parent(s)?`)) return;
 
     setSending(true);
-    setProgress({ done: 0, total: recipients.length, failed: 0 });
+    setProgress({ done: 0, total: sendList.length, failed: 0 });
 
     let failed = 0;
-    for (let i = 0; i < recipients.length; i++) {
-      const r = recipients[i];
+    for (let i = 0; i < sendList.length; i++) {
+      const r = sendList[i];
       try {
         const res = await fetch('/api/whatsapp/send-template', {
           method: 'POST',
@@ -149,28 +253,36 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
       } catch {
         failed++;
       }
-      setProgress({ done: i + 1, total: recipients.length, failed });
-      if (i < recipients.length - 1) await new Promise(res => setTimeout(res, 500));
+      setProgress({ done: i + 1, total: sendList.length, failed });
+      if (i < sendList.length - 1) await new Promise(res => setTimeout(res, 500));
     }
+
+    const filterSummary = activeFilterCount === 0
+      ? 'All Classes'
+      : [
+          classFilter.length ? `${classFilter.length} class(es)` : '',
+          sectionFilter.length ? `${sectionFilter.length} section(s)` : '',
+          genderFilter.length ? genderFilter.join('/') : '',
+        ].filter(Boolean).join(', ') || 'Custom';
 
     try {
       await addDoc(collection(db, 'whatsappLogs'), {
         templateName: template,
-        filter: classFilter === 'all' ? 'All Classes' : classes.find(c => c.id === classFilter)?.name || classFilter,
-        total: recipients.length,
+        filter: filterSummary,
+        total: sendList.length,
         failed,
         sentBy: user.uid,
         sentByName: user.displayName || user.email || 'Admin',
         sentAt: serverTimestamp(),
       });
-      await logActivity(user, 'WhatsApp Blast Sent', 'Super Admin', `${template} sent to ${recipients.length - failed}/${recipients.length} parents`, { template, total: recipients.length, failed });
+      await logActivity(user, 'WhatsApp Blast Sent', 'Super Admin', `${template} sent to ${sendList.length - failed}/${sendList.length} parents`, { template, total: sendList.length, failed });
     } catch { /* non-fatal */ }
 
     setSending(false);
     showToast(
       failed === 0
-        ? `Successfully sent to ${recipients.length} parent(s)`
-        : `Sent ${recipients.length - failed}/${recipients.length} — ${failed} failed`,
+        ? `Successfully sent to ${sendList.length} parent(s)`
+        : `Sent ${sendList.length - failed}/${sendList.length} — ${failed} failed`,
       failed === 0 ? 'success' : 'error',
     );
   };
@@ -205,8 +317,8 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
               <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Overdue</p>
             </div>
             <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{recipients.length}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Recipients</p>
+              <p className="text-xl font-black">{sendList.length}</p>
+              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Selected</p>
             </div>
           </div>
         </div>
@@ -227,25 +339,68 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
             ))}
           </div>
 
-          {/* Class filter */}
-          <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Filter by Class</p>
-            <select
-              value={classFilter}
-              onChange={e => setClassFilter(e.target.value)}
-              className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
-            >
-              <option value="all">All Classes</option>
-              {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+          {/* Advanced filters */}
+          <div className="space-y-3 bg-white rounded-2xl border border-slate-100 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1">
+                <Filter className="w-3 h-3" /> Filter Recipients
+              </p>
+              {activeFilterCount > 0 && (
+                <button onClick={clearFilters} className="text-[11px] font-bold text-rose-600 flex items-center gap-0.5 active:scale-95">
+                  <X className="w-3 h-3" /> Clear ({activeFilterCount})
+                </button>
+              )}
+            </div>
+
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search parent, student or phone…"
+                className="w-full h-10 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-green-400"
+              />
+            </div>
+
+            <ChipGroup
+              label="Class"
+              options={classes.map(c => ({ value: c.id, label: c.name }))}
+              selected={classFilter}
+              onToggle={v => toggleArr(setClassFilter, v)}
+            />
+            <ChipGroup
+              label="Section"
+              options={availableSections.map(s => ({ value: s, label: s }))}
+              selected={sectionFilter}
+              onToggle={v => toggleArr(setSectionFilter, v)}
+            />
+            <ChipGroup
+              label="Gender"
+              options={GENDERS}
+              selected={genderFilter}
+              onToggle={v => toggleArr(setGenderFilter, v)}
+            />
+
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Min. Outstanding (₹)</p>
+              <input
+                type="number"
+                min={0}
+                value={minAmount}
+                onChange={e => setMinAmount(e.target.value)}
+                placeholder="e.g. 5000"
+                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-green-400"
+              />
+            </div>
           </div>
 
-          {/* Recipients preview */}
-          <div className={`flex items-center gap-3 p-4 rounded-2xl ${recipients.length > 0 ? 'bg-green-50 border border-green-100' : 'bg-slate-50 border border-slate-100'}`}>
-            <Users className={`w-5 h-5 ${recipients.length > 0 ? 'text-green-600' : 'text-slate-400'}`} />
+          {/* Recipients summary */}
+          <div className={`flex items-center gap-3 p-4 rounded-2xl ${sendList.length > 0 ? 'bg-green-50 border border-green-100' : 'bg-slate-50 border border-slate-100'}`}>
+            <Users className={`w-5 h-5 ${sendList.length > 0 ? 'text-green-600' : 'text-slate-400'}`} />
             <div>
               <p className="text-sm font-bold text-slate-800">
-                {recipients.length} parent{recipients.length !== 1 ? 's' : ''} will receive this message
+                {sendList.length} of {recipients.length} selected
               </p>
               {noPhoneCount > 0 && (
                 <p className="text-xs text-amber-600 mt-0.5">{noPhoneCount} student(s) skipped — no phone number</p>
@@ -269,25 +424,45 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
             </div>
           )}
 
-          {/* Recipients list on mobile */}
+          {/* Selectable recipients list on mobile */}
           {recipients.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Recipients Preview</p>
-              {recipients.slice(0, 5).map((r, i) => (
-                <div key={i} className="bg-white rounded-xl border border-slate-100 px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">{r.parentName}</p>
-                    <p className="text-xs text-slate-500">{r.studentName} · {r.classSection}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-slate-800">{r.amount}</p>
-                    <p className="text-[10px] text-slate-400">Due {fmtDate(r.dueDate)}</p>
-                  </div>
-                </div>
-              ))}
-              {recipients.length > 5 && (
-                <p className="text-xs text-center text-slate-400 font-medium">+{recipients.length - 5} more</p>
-              )}
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Select Parents</p>
+                <button
+                  onClick={allSelected ? clearAll : selectAll}
+                  className="text-[11px] font-bold text-green-700 flex items-center gap-1 active:scale-95"
+                >
+                  {allSelected ? <Square className="w-3.5 h-3.5" /> : <CheckSquare className="w-3.5 h-3.5" />}
+                  {allSelected ? 'Clear all' : 'Select all'}
+                </button>
+              </div>
+              {recipients.map((r) => {
+                const checked = selectedIds.has(r.requestId);
+                return (
+                  <button
+                    key={r.requestId}
+                    onClick={() => toggleSelect(r.requestId)}
+                    className={`w-full text-left rounded-xl border px-4 py-3 flex items-center gap-3 transition-all active:scale-98 ${
+                      checked ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100'
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                      checked ? 'bg-green-600 border-green-600' : 'border-slate-300 bg-white'
+                    }`}>
+                      {checked && <CheckCircle2 className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-800 truncate">{r.parentName}</p>
+                      <p className="text-xs text-slate-500 truncate">{r.studentName} · {r.classSection}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-black text-slate-800">{r.amount}</p>
+                      <p className="text-[10px] text-slate-400">Due {fmtDate(r.dueDate)}</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -295,12 +470,12 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 safe-area-bottom">
           <button
             onClick={handleSend}
-            disabled={sending || recipients.length === 0}
+            disabled={sending || sendList.length === 0}
             className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-2xl font-bold text-sm active:scale-95 transition-transform disabled:opacity-50"
           >
             {sending
               ? <><RefreshCw className="w-4 h-4 animate-spin" /> Sending…</>
-              : <><Send className="w-4 h-4" /> Send to {recipients.length} Parent{recipients.length !== 1 ? 's' : ''}</>}
+              : <><Send className="w-4 h-4" /> Send to {sendList.length} Parent{sendList.length !== 1 ? 's' : ''}</>}
           </button>
         </div>
       </div>
@@ -360,27 +535,68 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Filter by Class">
-              <Select
-                value={classFilter}
-                onChange={e => setClassFilter(e.target.value)}
-              >
-                <option value="all">All Classes</option>
-                {classes.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </Select>
-            </FormField>
+          <div className="space-y-4 rounded-xl border border-slate-100 p-4 bg-slate-50/50">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5" /> Filter Recipients
+              </p>
+              {activeFilterCount > 0 && (
+                <button onClick={clearFilters} className="text-xs font-bold text-rose-600 flex items-center gap-1 hover:text-rose-700">
+                  <X className="w-3.5 h-3.5" /> Clear filters ({activeFilterCount})
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search parent, student or phone…"
+                  className="w-full h-10 pl-9 pr-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-green-400"
+                />
+              </div>
+              <div>
+                <input
+                  type="number"
+                  min={0}
+                  value={minAmount}
+                  onChange={e => setMinAmount(e.target.value)}
+                  placeholder="Min. outstanding (₹)"
+                  className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-green-400"
+                />
+              </div>
+            </div>
+
+            <ChipGroup
+              label="Class"
+              options={classes.map(c => ({ value: c.id, label: c.name }))}
+              selected={classFilter}
+              onToggle={v => toggleArr(setClassFilter, v)}
+            />
+            <ChipGroup
+              label="Section"
+              options={availableSections.map(s => ({ value: s, label: s }))}
+              selected={sectionFilter}
+              onToggle={v => toggleArr(setSectionFilter, v)}
+            />
+            <ChipGroup
+              label="Gender"
+              options={GENDERS}
+              selected={genderFilter}
+              onToggle={v => toggleArr(setGenderFilter, v)}
+            />
           </div>
 
           <div className={`flex items-center gap-3 p-4 rounded-xl ${
-            recipients.length > 0 ? 'bg-green-50 border border-green-100' : 'bg-slate-50 border border-slate-100'
+            sendList.length > 0 ? 'bg-green-50 border border-green-100' : 'bg-slate-50 border border-slate-100'
           }`}>
-            <Users className={`w-5 h-5 ${recipients.length > 0 ? 'text-green-600' : 'text-slate-400'}`} />
+            <Users className={`w-5 h-5 ${sendList.length > 0 ? 'text-green-600' : 'text-slate-400'}`} />
             <div>
               <p className="text-sm font-bold text-slate-800">
-                {recipients.length} parent{recipients.length !== 1 ? 's' : ''} will receive this message
+                {sendList.length} of {recipients.length} parent{recipients.length !== 1 ? 's' : ''} selected to receive this message
               </p>
               {noPhoneCount > 0 && (
                 <p className="text-xs text-amber-600 mt-0.5">
@@ -407,24 +623,41 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
 
           <Button
             onClick={handleSend}
-            disabled={sending || recipients.length === 0}
+            disabled={sending || sendList.length === 0}
             className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
           >
             {sending
               ? <><RefreshCw className="w-4 h-4 animate-spin" /> Sending…</>
-              : <><Send className="w-4 h-4" /> Send to {recipients.length} Parent{recipients.length !== 1 ? 's' : ''}</>}
+              : <><Send className="w-4 h-4" /> Send to {sendList.length} Parent{sendList.length !== 1 ? 's' : ''}</>}
           </Button>
         </Card>
 
         {recipients.length > 0 && (
           <Card className="p-0 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-800">Recipients Preview</h3>
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-800">
+                Select Recipients <span className="text-slate-400 font-medium">({sendList.length} of {recipients.length})</span>
+              </h3>
+              <button
+                onClick={allSelected ? clearAll : selectAll}
+                className="text-xs font-bold text-green-700 flex items-center gap-1.5 hover:text-green-800"
+              >
+                {allSelected ? <Square className="w-4 h-4" /> : <CheckSquare className="w-4 h-4" />}
+                {allSelected ? 'Clear all' : 'Select all'}
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-100">
                   <tr>
+                    <th className="px-4 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={allSelected ? clearAll : selectAll}
+                        className="w-4 h-4 rounded text-green-600 focus:ring-green-500/30 cursor-pointer"
+                      />
+                    </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Parent</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Student</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Class</th>
@@ -433,15 +666,31 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {recipients.map((r, i) => (
-                    <tr key={i} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-3 font-medium text-slate-800">{r.parentName}</td>
-                      <td className="px-4 py-3 text-slate-600">{r.studentName}</td>
-                      <td className="px-4 py-3 text-slate-500 text-xs">{r.classSection}</td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-800">{r.amount}</td>
-                      <td className="px-4 py-3 text-slate-500 text-xs">{fmtDate(r.dueDate)}</td>
-                    </tr>
-                  ))}
+                  {recipients.map((r) => {
+                    const checked = selectedIds.has(r.requestId);
+                    return (
+                      <tr
+                        key={r.requestId}
+                        onClick={() => toggleSelect(r.requestId)}
+                        className={`cursor-pointer ${checked ? 'bg-green-50/50 hover:bg-green-50' : 'hover:bg-slate-50/50'}`}
+                      >
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleSelect(r.requestId)}
+                            onClick={e => e.stopPropagation()}
+                            className="w-4 h-4 rounded text-green-600 focus:ring-green-500/30 cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-800">{r.parentName}</td>
+                        <td className="px-4 py-3 text-slate-600">{r.studentName}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{r.classSection}</td>
+                        <td className="px-4 py-3 text-right font-bold text-slate-800">{r.amount}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{fmtDate(r.dueDate)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
