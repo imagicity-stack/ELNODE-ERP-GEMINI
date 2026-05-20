@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, where } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { Notice, UserRole, UserProfile } from '../../types';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
+import { Notice, NoticeAttachment, UserRole, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
+import { sanitizeFileName } from '../../services/lessonLogService';
 import {
   Plus,
   Bell,
@@ -10,6 +12,10 @@ import {
   Clock,
   User,
   Megaphone,
+  Paperclip,
+  FileText,
+  X,
+  Download,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import {
@@ -30,6 +36,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<UserRole | 'all'>('all');
+  const [files, setFiles] = useState<File[]>([]);
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('notices');
@@ -47,6 +54,43 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
   });
 
   const roles: UserRole[] = ['super_admin', 'teacher', 'student', 'parent', 'accounts', 'principal', 'grievance_officer'];
+
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB per file
+  const MAX_FILES = 5;
+  // Must mirror isAllowedContentType() in storage.rules
+  const ACCEPT_TYPES = 'image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt';
+  const isAllowedType = (type: string) =>
+    type.startsWith('image/') ||
+    type === 'application/pdf' ||
+    type === 'application/msword' ||
+    type.startsWith('application/vnd.openxmlformats-officedocument.') ||
+    type === 'text/plain';
+
+  const addFiles = (selected: FileList | null) => {
+    if (!selected) return;
+    const incoming = Array.from(selected);
+    const tooBig = incoming.find(f => f.size > MAX_FILE_SIZE);
+    if (tooBig) {
+      handleFirestoreError(new Error(`"${tooBig.name}" exceeds the 10 MB limit.`), OperationType.CREATE, 'notices');
+      return;
+    }
+    const badType = incoming.find(f => !isAllowedType(f.type));
+    if (badType) {
+      handleFirestoreError(new Error(`"${badType.name}" is not an allowed file type. Use images, PDF, Office docs, or text.`), OperationType.CREATE, 'notices');
+      return;
+    }
+    setFiles(prev => [...prev, ...incoming].slice(0, MAX_FILES));
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   useEffect(() => {
     fetchNotices();
@@ -79,6 +123,20 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
     if (!isAdmin) return;
     setLoading(true);
     try {
+      const attachments: NoticeAttachment[] = [];
+      for (const file of files) {
+        const storagePath = `notices/${user.uid}/${Date.now()}_${sanitizeFileName(file.name)}`;
+        const uploadResult = await uploadBytes(ref(storage, storagePath), file);
+        const url = await getDownloadURL(uploadResult.ref);
+        attachments.push({
+          name: file.name,
+          url,
+          storagePath,
+          type: file.type || 'application/octet-stream',
+          size: file.size,
+        });
+      }
+
       await addDoc(collection(db, 'notices'), {
         ...formData,
         title: sanitize(formData.title),
@@ -86,8 +144,9 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
         authorId: user.uid,
         authorName: user.name,
         createdAt: new Date().toISOString(),
+        ...(attachments.length > 0 ? { attachments } : {}),
       });
-      
+
       await logActivity(
         user,
         'POST_NOTICE',
@@ -98,6 +157,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
       setIsModalOpen(false);
       fetchNotices();
       setFormData({ title: '', content: '', priority: 'medium', targetRoles: [], expiresAt: '' });
+      setFiles([]);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'notices');
     } finally {
@@ -116,7 +176,14 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
     try {
       const notice = notices.find(n => n.id === deletingId);
       await deleteDoc(doc(db, 'notices', deletingId));
-      
+
+      // Best-effort cleanup of attached storage files
+      for (const att of notice?.attachments || []) {
+        if (att.storagePath) {
+          try { await deleteObject(ref(storage, att.storagePath)); } catch { /* ignore */ }
+        }
+      }
+
       await logActivity(
         user,
         'DELETE_NOTICE',
@@ -223,6 +290,23 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
                       ))}
                     </div>
                   )}
+                  {notice.attachments && notice.attachments.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {notice.attachments.map((att, i) => (
+                        <a
+                          key={i}
+                          href={att.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-lg active:scale-95 transition-transform"
+                        >
+                          <FileText className="w-3 h-3 shrink-0" />
+                          <span className="truncate flex-1">{att.name}</span>
+                          <Download className="w-3 h-3 shrink-0" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   {canWrite && (
                     <button
                       onClick={() => handleDeleteNotice(notice.id)}
@@ -320,6 +404,24 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
                     </Badge>
                   ))}
                 </div>
+
+                {notice.attachments && notice.attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {notice.attachments.map((att, i) => (
+                      <a
+                        key={i}
+                        href={att.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span className="truncate max-w-[200px]">{att.name}</span>
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col items-end gap-3 shrink-0">
@@ -364,12 +466,12 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { setIsModalOpen(false); setFiles([]); }}
         title="Post New Notice"
         size="lg"
         footer={
           <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => { setIsModalOpen(false); setFiles([]); }}>Cancel</Button>
             <Button form="notice-form" type="submit" loading={loading} icon={Megaphone}>
               Post Notice
             </Button>
@@ -451,6 +553,42 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
               onChange={(e) => setFormData({ ...formData, content: e.target.value })}
               placeholder="Write the details of the announcement here..."
             />
+          </FormField>
+
+          <FormField label="Attachments (Optional)">
+            <div className="space-y-2">
+              <label className="flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-slate-50 transition-all text-sm font-semibold text-slate-500">
+                <Paperclip className="w-4 h-4" />
+                {files.length >= MAX_FILES ? `Max ${MAX_FILES} files reached` : 'Click to attach files'}
+                <input
+                  type="file"
+                  multiple
+                  accept={ACCEPT_TYPES}
+                  className="hidden"
+                  disabled={files.length >= MAX_FILES}
+                  onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+                />
+              </label>
+              <p className="text-[11px] text-slate-400">Up to {MAX_FILES} files, 10 MB each.</p>
+              {files.length > 0 && (
+                <div className="space-y-1.5">
+                  {files.map((file, i) => (
+                    <div key={i} className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-100 rounded-lg">
+                      <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <span className="text-xs font-semibold text-slate-700 truncate flex-1">{file.name}</span>
+                      <span className="text-[10px] text-slate-400 shrink-0">{formatSize(file.size)}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(i)}
+                        className="text-slate-400 hover:text-red-600 transition-colors shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </FormField>
         </form>
       </Modal>

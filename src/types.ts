@@ -428,6 +428,14 @@ export interface GradingScale {
   }[];
 }
 
+export interface NoticeAttachment {
+  name: string;
+  url: string;
+  storagePath: string;
+  type: string;
+  size: number;
+}
+
 export interface Notice {
   id: string;
   title: string;
@@ -438,6 +446,7 @@ export interface Notice {
   authorName: string;
   createdAt: string;
   expiresAt?: string;
+  attachments?: NoticeAttachment[];
 }
 
 export interface SchoolEvent {
