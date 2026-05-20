@@ -26,13 +26,20 @@ import {
 import { logActivity } from '../../services/activityService';
 
 const defaultSlabs: FineSlab[] = [
-  { startDay: 6, endDay: 15, fixedPenalty: 250, percentagePenalty: 2, isHigherOf: true },
-  { startDay: 16, endDay: 30, fixedPenalty: 500, percentagePenalty: 4, isHigherOf: true },
-  { startDay: 31, endDay: 60, fixedPenalty: 1000, percentagePenalty: 6, isHigherOf: true },
-  { startDay: 61, fixedPenalty: 1500, percentagePenalty: 8, isHigherOf: true, escalationRate: 0 }
+  { startDay: 1, endDay: 10, fixedPenalty: 100, percentagePenalty: 1, isHigherOf: true },
+  { startDay: 11, endDay: 20, fixedPenalty: 250, percentagePenalty: 2, isHigherOf: true },
+  { startDay: 21, endDay: 30, fixedPenalty: 500, percentagePenalty: 4, isHigherOf: true },
+  { startDay: 31, fixedPenalty: 1000, percentagePenalty: 6, isHigherOf: true, escalationRate: 0 }
 ];
 
 // ─── Validation ───────────────────────────────────────────────────────────────
+// Rules:
+//   - First slab's Start Day must be exactly 1 (the day AFTER the due date)
+//   - Each slab's End Day must be > Start Day
+//   - Each subsequent slab must start exactly at previous.endDay + 1
+//     (no gaps, no overlaps, no slabs after an open-ended slab)
+//   - Penalty amounts must be >= 0
+// No grace-period concept — fines start day 1.
 
 interface SlabErrors {
   startDay?: string;
@@ -45,42 +52,33 @@ function validateConfig(config: FineConfig): { global: string[]; slabs: SlabErro
   const global: string[] = [];
   const slabErrors: SlabErrors[] = config.slabs.map(() => ({}));
 
-  if (config.gracePeriodDays < 0) {
-    global.push('Grace period cannot be negative.');
+  if (config.slabs.length === 0) {
+    global.push('Add at least one penalty slab.');
   }
 
   config.slabs.forEach((slab, i) => {
-    // startDay must be at least 1 (day after due date)
-    if (slab.startDay < 1) {
-      slabErrors[i].startDay = 'Start day must be ≥ 1 (days after due date).';
-    }
-
-    // First slab: startDay should be gracePeriodDays + 1 or more
-    // Otherwise the slab will never fire because the grace period covers it
-    if (i === 0 && slab.startDay <= config.gracePeriodDays) {
-      slabErrors[i].startDay = `Start day must be > grace period (${config.gracePeriodDays}). Currently the grace period would overlap or cancel this slab.`;
-    }
-
-    // endDay must be > startDay
-    if (slab.endDay !== undefined && slab.endDay <= slab.startDay) {
-      slabErrors[i].endDay = 'End day must be greater than start day.';
-    }
-
     // Penalties must be non-negative
     if (slab.fixedPenalty < 0 || slab.percentagePenalty < 0) {
       slabErrors[i].penalty = 'Penalty amounts cannot be negative.';
     }
 
-    // Check ordering against previous slab
-    if (i > 0) {
+    // End Day must be greater than Start Day
+    if (slab.endDay !== undefined && slab.endDay <= slab.startDay) {
+      slabErrors[i].endDay = 'End day must be greater than start day.';
+    }
+
+    if (i === 0) {
+      // First slab must start at exactly day 1 (the day after the due date)
+      if (slab.startDay !== 1) {
+        slabErrors[i].startDay = 'First slab must start on day 1 (the day after the due date).';
+      }
+    } else {
+      // Subsequent slabs: must be contiguous with the previous slab
       const prev = config.slabs[i - 1];
       if (prev.endDay === undefined) {
-        slabErrors[i].order = `Slab ${i} cannot exist after an open-ended slab (slab ${i} has no End Day). Remove it or add an End Day to slab ${i}.`;
-      } else if (slab.startDay <= prev.endDay) {
-        slabErrors[i].order = `Start day (${slab.startDay}) must be greater than previous slab's end day (${prev.endDay}). Slabs must not overlap.`;
-      } else if (slab.startDay > prev.endDay + 1) {
-        // Gap — not a blocking error, just a warning
-        slabErrors[i].order = `Gap: days ${prev.endDay + 1}–${slab.startDay - 1} have no slab (no fine in that range).`;
+        slabErrors[i].order = `Cannot add a slab after slab ${i} because slab ${i} has no End Day (it covers everything onwards). Either remove this slab or set an End Day on slab ${i}.`;
+      } else if (slab.startDay !== prev.endDay + 1) {
+        slabErrors[i].order = `Start day must be ${prev.endDay + 1} (one day after slab ${i}'s end day of ${prev.endDay}). No gaps or overlaps allowed.`;
       }
     }
   });
@@ -90,7 +88,7 @@ function validateConfig(config: FineConfig): { global: string[]; slabs: SlabErro
 
 function hasBlockingErrors(validation: ReturnType<typeof validateConfig>): boolean {
   if (validation.global.length > 0) return true;
-  return validation.slabs.some(e => e.startDay || e.endDay || e.penalty || (e.order && !e.order.startsWith('Gap:')));
+  return validation.slabs.some(e => e.startDay || e.endDay || e.penalty || e.order);
 }
 
 export default function FineSettings({ user }: { user: UserProfile }) {
@@ -111,7 +109,7 @@ export default function FineSettings({ user }: { user: UserProfile }) {
           const initialConfig: FineConfig = {
             id: 'global',
             isEnabled: true,
-            gracePeriodDays: 5,
+            gracePeriodDays: 0,
             slabs: defaultSlabs,
             updatedBy: user?.uid || '',
             updatedAt: new Date().toISOString()
@@ -142,6 +140,8 @@ export default function FineSettings({ user }: { user: UserProfile }) {
     try {
       const updatedConfig = {
         ...config,
+        // Grace period removed from the UI — always saved as 0 so fines start on day 1
+        gracePeriodDays: 0,
         updatedBy: user.uid,
         updatedAt: new Date().toISOString()
       };
@@ -160,7 +160,12 @@ export default function FineSettings({ user }: { user: UserProfile }) {
   const addSlab = () => {
     if (!config) return;
     const lastSlab = config.slabs[config.slabs.length - 1];
-    const newStart = lastSlab ? (lastSlab.endDay || lastSlab.startDay) + 1 : (config.gracePeriodDays + 1);
+    // First slab → day 1. Otherwise → previous slab's endDay + 1
+    // (if previous is open-ended, we still suggest startDay + 1 so the user
+    // sees something sensible; validation will flag the open-ended-then-new issue)
+    const newStart = !lastSlab
+      ? 1
+      : (lastSlab.endDay !== undefined ? lastSlab.endDay + 1 : lastSlab.startDay + 1);
 
     const newSlab: FineSlab = {
       startDay: newStart,
@@ -206,8 +211,8 @@ export default function FineSettings({ user }: { user: UserProfile }) {
           <p className="text-xs text-rose-200 mt-0.5">{config?.slabs.length || 0} penalty slabs configured</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{config?.gracePeriodDays || 0}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Grace Days</p>
+              <p className="text-xl font-black">{config?.slabs.length || 0}</p>
+              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Slabs</p>
             </div>
             <div className="bg-white/15 rounded-xl p-2.5 text-center">
               <p className="text-xl font-black">{config?.isEnabled ? 'ON' : 'OFF'}</p>
@@ -231,15 +236,6 @@ export default function FineSettings({ user }: { user: UserProfile }) {
               >
                 <div className={`w-4 h-4 bg-white rounded-full transition-transform ${config?.isEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
               </div>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-600 mb-1.5">Grace Period (Days)</p>
-              <input
-                type="number"
-                value={config?.gracePeriodDays || 0}
-                onChange={(e) => setConfig(prev => prev ? { ...prev, gracePeriodDays: Number(e.target.value) } : null)}
-                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none"
-              />
             </div>
           </div>
 
@@ -266,22 +262,20 @@ export default function FineSettings({ user }: { user: UserProfile }) {
           <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100 flex gap-2">
             <Info className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
             <p className="text-[10px] text-indigo-700 leading-relaxed">
-              <b>Day 0</b> = due date. <b>Grace period</b> = days after due date with no fine (e.g. grace 5 → no fine until day 6).
-              Each slab's <b>Start Day</b> must be &gt; grace period and &gt; previous slab's End Day.
+              <b>Day 1</b> = the day AFTER the due date (e.g. due 10th → day 1 = 11th).
+              The first slab must start at day 1, and every next slab must start the day after the previous one's End Day — no gaps, no overlaps.
             </p>
           </div>
 
           {config?.slabs.map((slab, index) => {
             const err = validation.slabs[index] || {};
-            const isGap = err.order?.startsWith('Gap:');
-            const hasError = !!(err.startDay || err.endDay || err.penalty || (err.order && !isGap));
+            const hasError = !!(err.startDay || err.endDay || err.penalty || err.order);
             return (
               <div key={index} className={`bg-white border rounded-2xl p-4 shadow-sm ${hasError ? 'border-rose-300 bg-rose-50/30' : 'border-slate-100'}`}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${hasError ? 'bg-rose-100 text-rose-700' : 'bg-rose-50 text-rose-700'}`}>Slab {index + 1}</span>
                     {hasError && <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />}
-                    {isGap && !hasError && <span className="text-[10px] text-amber-600 font-semibold">⚠ {err.order}</span>}
                   </div>
                   <button onClick={() => removeSlab(index)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg">
                     <Trash2 className="w-3.5 h-3.5" />
@@ -333,7 +327,7 @@ export default function FineSettings({ user }: { user: UserProfile }) {
                     {err.penalty && <p className="text-[10px] text-rose-600 mt-0.5 font-medium">{err.penalty}</p>}
                   </div>
                 </div>
-                {err.order && !isGap && (
+                {err.order && (
                   <p className="mt-2 text-[10px] text-rose-600 font-medium flex items-start gap-1">
                     <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />{err.order}
                   </p>
@@ -402,9 +396,9 @@ export default function FineSettings({ user }: { user: UserProfile }) {
               <div className="mb-6 p-3 bg-indigo-50 rounded-xl border border-indigo-100 flex gap-3">
                 <Info className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-indigo-700">
-                  <b>Day 0</b> = due date &nbsp;·&nbsp; <b>Grace period</b> days after due date have no fine &nbsp;·&nbsp;
-                  Slab <b>Start Day</b> must be &gt; grace period &nbsp;·&nbsp; Slabs must not overlap &nbsp;·&nbsp;
-                  Leave End Day blank to make the last slab open-ended.
+                  <b>Day 1</b> = the day AFTER the due date (e.g. due 10th → day 1 = 11th).
+                  The first slab must start at day 1, and every next slab must start exactly the day after the previous slab's End Day —
+                  no gaps, no overlaps. Leave the last slab's End Day blank to make it open-ended.
                 </p>
               </div>
 
@@ -419,8 +413,7 @@ export default function FineSettings({ user }: { user: UserProfile }) {
               <div className="space-y-4">
                 {config?.slabs.map((slab, index) => {
                   const err = validation.slabs[index] || {};
-                  const isGap = err.order?.startsWith('Gap:');
-                  const hasError = !!(err.startDay || err.endDay || err.penalty || (err.order && !isGap));
+                  const hasError = !!(err.startDay || err.endDay || err.penalty || err.order);
                   return (
                     <div key={index} className={`p-4 rounded-2xl border transition-colors ${hasError ? 'bg-rose-50/40 border-rose-300' : 'bg-slate-50 border-slate-100'}`}>
                       <div className="flex items-center justify-between mb-3">
@@ -432,9 +425,6 @@ export default function FineSettings({ user }: { user: UserProfile }) {
                             <span className="flex items-center gap-1 text-xs text-rose-600 font-semibold">
                               <AlertTriangle className="w-3.5 h-3.5" /> Fix errors below
                             </span>
-                          )}
-                          {isGap && !hasError && (
-                            <span className="text-xs text-amber-600 font-semibold">⚠ {err.order}</span>
                           )}
                         </div>
                         <button
@@ -506,7 +496,7 @@ export default function FineSettings({ user }: { user: UserProfile }) {
                         </div>
                       </div>
 
-                      {err.order && !isGap && (
+                      {err.order && (
                         <p className="mt-2 text-xs text-rose-600 font-semibold flex items-start gap-1.5">
                           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />{err.order}
                         </p>
@@ -540,18 +530,6 @@ export default function FineSettings({ user }: { user: UserProfile }) {
                     <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 ${config?.isEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
                   </div>
                 </div>
-
-                <FormField
-                  label="Grace Period (Days)"
-                  hint={`No fine during these days after due date. First slab must start on day ${(config?.gracePeriodDays || 0) + 1} or later.`}
-                >
-                  <Input
-                    type="number"
-                    min={0}
-                    value={config?.gracePeriodDays || 0}
-                    onChange={(e) => setConfig(prev => prev ? { ...prev, gracePeriodDays: Number(e.target.value) } : null)}
-                  />
-                </FormField>
 
                 <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-3">
                   <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />

@@ -18,6 +18,7 @@ import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { fmtMonthYear, fmtDate } from '../../lib/utils';
 import { useToast } from '../../components/Toast';
+import { PaymentSuccess, StaggeredList } from '../../components/animations';
 import { logActivity } from '../../services/activityService';
 import {
   PageHeader,
@@ -50,6 +51,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClass, setSelectedClass] = useState('all');
   const [students, setStudents] = useState<Student[]>([]);
+  const [paymentSuccess, setPaymentSuccess] = useState<{ amount: number; receiptNumber?: string } | null>(null);
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
@@ -423,6 +425,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       setIsModalOpen(false);
       fetchData();
+      // Celebrate the successful payment
+      setPaymentSuccess({ amount: payAmount, receiptNumber });
 
       // Auto-send WhatsApp receipt to parent (cash, bank, online — any method)
       try {
@@ -774,6 +778,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       });
 
       showToast(`Advance payment of ₹${total.toLocaleString('en-IN')} recorded — receipt ${receiptNumber}`, 'success');
+      setPaymentSuccess({ amount: total, receiptNumber });
 
       logActivity(
         user,
@@ -1032,6 +1037,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
   return (
     <>
+      <PaymentSuccess
+        show={paymentSuccess != null}
+        amount={paymentSuccess?.amount}
+        message={paymentSuccess?.receiptNumber ? `Receipt #${paymentSuccess.receiptNumber}` : undefined}
+        onDismiss={() => setPaymentSuccess(null)}
+      />
+
       {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
       <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
         <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
@@ -1091,7 +1103,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           ))}
         </div>
 
-        <div className="px-4 pt-2 space-y-2.5">
+        <div className="px-4 pt-2">
           {filteredStudents.length === 0 ? (
             <div className="py-12 text-center">
               <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
@@ -1099,7 +1111,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               <p className="text-xs text-slate-500 mt-1">Try a different search or class</p>
             </div>
           ) : (
-            filteredStudents.slice(0, 50).map((student) => {
+            <StaggeredList className="space-y-2.5">
+            {filteredStudents.slice(0, 50).map((student) => {
               const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
               const studentRequest = studentRequests[0];
               const currentFine = studentRequest ? (fineConfig ? calculateFine(studentRequest, fineConfig) : 0) : 0;
@@ -1232,7 +1245,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                   })()}
                 </div>
               );
-            })
+            })}
+            </StaggeredList>
           )}
         </div>
 

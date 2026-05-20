@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { UserProfile, Notice, Homework, Attendance, FeeRequest } from '../../types';
+import { MobilePageEnter } from '../../components/animations';
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
@@ -153,7 +154,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
   return (
     <>
       {/* ─── Mobile Simplified UI ───────────────────────────────────────────── */}
-      <div className="md:hidden space-y-5 -mx-4 -mt-4">
+      <MobilePageEnter className="md:hidden space-y-5 -mx-4 -mt-4">
         {/* Greeting header */}
         <div className="bg-gradient-to-br from-emerald-500 to-teal-700 px-5 pt-6 pb-8 text-white rounded-b-3xl shadow-lg">
           <p className="text-xs font-medium text-emerald-100 uppercase tracking-widest">Student Portal</p>
@@ -215,7 +216,7 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
             </div>
           </div>
         )}
-      </div>
+      </MobilePageEnter>
 
       {/* ─── Desktop UI (unchanged) ─────────────────────────────────────────── */}
       <div className="hidden md:block space-y-8">
