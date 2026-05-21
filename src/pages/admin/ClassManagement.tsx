@@ -30,15 +30,17 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('classes');
 
-  // Count of students enrolled in a given class + section
+  // Students store their section as `sec.name || 'A'` (see StudentManagement),
+  // so a single-section class (sec.name === '') stores 'A'. Normalize both
+  // sides with `|| 'A'` so the roster matches regardless of how it was saved.
   const countStudents = (classId: string, section: string) =>
-    students.filter(s => s.classId === classId && (s.section || '') === (section || '')).length;
+    students.filter(s => s.classId === classId && (s.section || 'A') === (section || 'A')).length;
 
   // Roster for the section currently being viewed, sorted by name
   const rosterStudents = useMemo(() => {
     if (!viewingSection) return [];
     return students
-      .filter(s => s.classId === viewingSection.classId && (s.section || '') === (viewingSection.section || ''))
+      .filter(s => s.classId === viewingSection.classId && (s.section || 'A') === (viewingSection.section || 'A'))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [students, viewingSection]);
 
