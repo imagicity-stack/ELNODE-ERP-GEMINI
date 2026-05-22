@@ -1,0 +1,24 @@
+# Treat all binary files as binary — prevents git from corrupting them
+# with text encoding transforms (line endings, UTF-8 replacement, etc.)
+
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.webp   binary
+*.svg    text eol=lf
+
+*.jar    binary
+*.apk    binary
+*.aab    binary
+*.keystore binary
+*.jks    binary
+
+*.ttf    binary
+*.otf    binary
+*.woff   binary
+*.woff2  binary
+
+*.pdf    binary
+*.zip    binary
