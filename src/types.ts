@@ -449,6 +449,33 @@ export interface Notice {
   attachments?: NoticeAttachment[];
 }
 
+// ─── Notification Center ──────────────────────────────────────────────────────
+export type NotificationCategory = 'exam' | 'fee' | 'notice' | 'event' | 'general';
+export type NotificationTargetType = 'all' | 'role' | 'class' | 'individual';
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  category: NotificationCategory;
+  priority: 'normal' | 'high';
+  // Audience tokens a recipient matches against: 'all', 'role:<role>',
+  // 'class:<classId>', 'class:<classId>:<section>', 'user:<uid>'.
+  audience: string[];
+  targetType: NotificationTargetType;
+  targetSummary: string;     // human-readable description of who it went to
+  link?: string;             // optional in-app route to open on tap
+  createdAt: string;         // ISO timestamp
+  createdBy: { uid: string; name: string };
+}
+
+export interface UserNotificationState {
+  lastReadAt: string;        // notifications created after this are unread
+  dismissedIds: string[];
+  updatedAt: string;
+}
+
+
 export interface SchoolEvent {
   id: string;
   title: string;

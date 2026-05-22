@@ -49,6 +49,7 @@ import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserRole, UserProfile } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { requestNotificationPermission, startNotificationListeners } from '../services/notificationService';
+import NotificationCenter from './NotificationCenter';
 import { useToast } from './Toast';
 import { usePermissions } from '../hooks/usePermissions';
 import { logActivity } from '../services/activityService';
@@ -199,6 +200,7 @@ const navItems: NavItem[] = [
 
   // ── Communication ─────────────────────────────────────────────────────────
   { label: 'Notices', icon: Megaphone, path: '/notices', roles: ['super_admin', 'principal', 'office_staff'], section: 'Communication', moduleId: 'notices' },
+  { label: 'Notifications', icon: Bell, path: '/notifications', roles: ['super_admin', 'principal'], section: 'Communication' },
   { label: 'Broadcast', icon: LayoutDashboard, path: '/broadcast', roles: ['super_admin', 'grievance_officer'], section: 'Communication' },
   { label: 'WhatsApp', icon: MessageSquare, path: '/whatsapp', roles: ['super_admin', 'accounts'], section: 'Communication' },
 
@@ -267,10 +269,6 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-
-  // Web Notifications API is not available in Android WebView — guard every access.
-  const notifSupported = typeof Notification !== 'undefined';
-  const notifPermission = notifSupported ? Notification.permission : 'denied';
 
   const config = roleConfig[role] || roleConfig.super_admin;
   const { canAccess, loading: permissionsLoading } = usePermissions(role);
@@ -584,38 +582,8 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
           <div className="flex items-center gap-3">
             {customHeader}
 
-            {/* Notifications — hidden on platforms that don't support the API */}
-            {notifSupported && (
-            <button
-              onClick={async () => {
-                if (notifPermission === 'denied') {
-                  showToast('Notifications are blocked. Please enable them in your browser settings.', 'error');
-                  return;
-                }
-                const granted = await requestNotificationPermission();
-                if (granted) {
-                  window.location.reload();
-                }
-              }}
-              className="relative p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all transition-colors"
-              title={notifPermission === 'denied' ? "Notifications Denied - Enable in Browser" : "Enable Notifications"}
-            >
-              <Bell className={cn(
-                "w-5 h-5",
-                notifPermission === 'granted' ? 'text-indigo-600' :
-                notifPermission === 'denied' ? 'text-slate-300' : 'text-slate-400'
-              )} />
-              {notifPermission === 'granted' && (
-                <span className="absolute top-2 right-2 w-2 h-2 bg-emerald-500 rounded-full border-2 border-white" />
-              )}
-              {notifPermission === 'default' && (
-                <span className="absolute top-2 right-2 w-2 h-2 bg-amber-500 rounded-full border-2 border-white animate-pulse" />
-              )}
-              {notifPermission === 'denied' && (
-                <span className="absolute top-2 right-2 w-2 h-2 bg-slate-300 rounded-full border-2 border-white" />
-              )}
-            </button>
-            )}
+            {/* Notification center — bell, unread badge, and dropdown panel */}
+            <NotificationCenter user={user} />
 
             <div className="h-7 w-px bg-slate-100 mx-1" />
 

@@ -35,6 +35,7 @@ import PaymentAnalytics from '../accounts/PaymentAnalytics';
 import ProfileSettings from '../shared/ProfileSettings';
 import SchoolSettings from './SchoolSettings';
 import WhatsAppNotifications from './WhatsAppNotifications';
+import NotificationManager from './NotificationManager';
 import GrievanceTracker from '../grievance/GrievanceTracker';
 import FeeFollowup from '../grievance/FeeFollowup';
 import BroadcastCenter from '../grievance/BroadcastCenter';
@@ -65,6 +66,7 @@ export default function AdminPortal({ user }: { user: UserProfile }) {
         <Route path="/timetable" element={<TimetableManagement user={user} />} />
         <Route path="/grading-scales" element={<GradingScaleManagement user={user} />} />
         <Route path="/notices" element={<NoticeBoard user={user} />} />
+        <Route path="/notifications" element={<NotificationManager user={user} />} />
         <Route path="/payroll-settings" element={<PayrollSettings user={user} />} />
         <Route path="/fine-settings" element={<FineSettings user={user} />} />
         <Route path="/permissions" element={<RolePermissionsManager user={user} />} />

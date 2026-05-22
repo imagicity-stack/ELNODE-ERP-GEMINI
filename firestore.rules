@@ -512,6 +512,27 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Notification center — broadcast notifications composed by admins/principal.
+    // Read by any signed-in user (client filters to the user's audience tokens),
+    // mirroring the existing /notices posture. Immutable once sent.
+    match /notifications/{id} {
+      allow read: if isSignedIn();
+      allow create: if isAnyAdmin()
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() > 0
+                    && request.resource.data.title.size() <= 200
+                    && request.resource.data.body is string
+                    && request.resource.data.body.size() <= 2000
+                    && request.resource.data.audience is list;
+      allow update: if false;
+      allow delete: if isAnyAdmin();
+    }
+
+    // Per-user notification state (read cursor + dismissed ids). Owner-only.
+    match /userNotificationState/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+    }
+
     // Safety fallback — deny everything not explicitly matched above
     match /{document=**} {
       allow read, write: if false;
