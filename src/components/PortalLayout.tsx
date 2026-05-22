@@ -268,6 +268,10 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Web Notifications API is not available in Android WebView — guard every access.
+  const notifSupported = typeof Notification !== 'undefined';
+  const notifPermission = notifSupported ? Notification.permission : 'denied';
+
   const config = roleConfig[role] || roleConfig.super_admin;
   const { canAccess, loading: permissionsLoading } = usePermissions(role);
 
@@ -580,36 +584,38 @@ export default function PortalLayout({ children, user, customHeader }: PortalLay
           <div className="flex items-center gap-3">
             {customHeader}
 
-            {/* Notifications */}
-            <button 
+            {/* Notifications — hidden on platforms that don't support the API */}
+            {notifSupported && (
+            <button
               onClick={async () => {
-                if (Notification.permission === 'denied') {
+                if (notifPermission === 'denied') {
                   showToast('Notifications are blocked. Please enable them in your browser settings.', 'error');
                   return;
                 }
                 const granted = await requestNotificationPermission();
                 if (granted) {
-                  window.location.reload(); // Reload to start listeners
+                  window.location.reload();
                 }
               }}
               className="relative p-2 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all transition-colors"
-              title={Notification.permission === 'denied' ? "Notifications Denied - Enable in Browser" : "Enable Notifications"}
+              title={notifPermission === 'denied' ? "Notifications Denied - Enable in Browser" : "Enable Notifications"}
             >
               <Bell className={cn(
-                "w-5 h-5", 
-                Notification.permission === 'granted' ? 'text-indigo-600' : 
-                Notification.permission === 'denied' ? 'text-slate-300' : 'text-slate-400'
+                "w-5 h-5",
+                notifPermission === 'granted' ? 'text-indigo-600' :
+                notifPermission === 'denied' ? 'text-slate-300' : 'text-slate-400'
               )} />
-              {Notification.permission === 'granted' && (
+              {notifPermission === 'granted' && (
                 <span className="absolute top-2 right-2 w-2 h-2 bg-emerald-500 rounded-full border-2 border-white" />
               )}
-              {Notification.permission === 'default' && (
+              {notifPermission === 'default' && (
                 <span className="absolute top-2 right-2 w-2 h-2 bg-amber-500 rounded-full border-2 border-white animate-pulse" />
               )}
-              {Notification.permission === 'denied' && (
+              {notifPermission === 'denied' && (
                 <span className="absolute top-2 right-2 w-2 h-2 bg-slate-300 rounded-full border-2 border-white" />
               )}
             </button>
+            )}
 
             <div className="h-7 w-px bg-slate-100 mx-1" />
 

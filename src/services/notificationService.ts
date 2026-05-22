@@ -28,7 +28,7 @@ export async function requestNotificationPermission() {
 }
 
 export function showLocalNotification(title: string, options?: NotificationOptions) {
-  if (Notification.permission === 'granted') {
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     // Check if we are in a mobile environment or desktop
     // PWAs can show notifications via service worker or direct Notification API
     // Direct API works if the tab is active or in background (depending on browser)
@@ -57,7 +57,7 @@ export function startNotificationListeners(
   
   const handleNotify = (title: string, body: string, type: 'info' | 'success' = 'info', tag: string) => {
     // 1. Show browser notification if allowed
-    if (Notification.permission === 'granted') {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       showLocalNotification(title, { body, tag });
     }
     // 2. Show UI toast via callback
