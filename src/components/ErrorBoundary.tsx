@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCcw, Home } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 
 interface Props {
   children: ReactNode;
@@ -64,10 +65,10 @@ export class ErrorBoundary extends Component<Props, State> {
               </button>
             </div>
 
-            {process.env.NODE_ENV === 'development' && (
+            {(process.env.NODE_ENV === 'development' || Capacitor.isNativePlatform()) && (
               <div className="mt-8 pt-8 border-t border-gray-50">
                 <p className="text-left text-xs font-mono text-red-500 bg-red-50 p-4 rounded-xl overflow-auto max-h-40">
-                  {this.state.error?.stack}
+                  {this.state.error?.message}{'\n\n'}{this.state.error?.stack}
                 </p>
               </div>
             )}
