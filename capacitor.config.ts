@@ -13,6 +13,10 @@ const config: CapacitorConfig = {
       channel: 'Production',
       autoUpdateMethod: 'background',
       maxVersions: 3
+    },
+    FirebaseAuthentication: {
+      skipNativeAuth: true,
+      providers: ['google.com']
     }
   }
 };
