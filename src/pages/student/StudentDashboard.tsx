@@ -1,35 +1,12 @@
 import {
-  BookOpen,
-  Calendar,
-  CreditCard,
-  CheckSquare,
-  Clock,
-  TrendingUp,
-  Bell,
-  ArrowRight,
-  ClipboardCheck,
-  FileText,
-  Users,
-  ChevronRight,
-  Sparkles,
+  Bell, Search, ClipboardCheck, Wallet, CheckSquare, CalendarDays,
+  BookOpen, FileText, ChevronRight, Sparkles,
 } from 'lucide-react';
 import { UserProfile, Notice, Homework, Attendance, FeeRequest } from '../../types';
-import { MobilePageEnter } from '../../components/animations';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../firebase';
-import {
-  PageHeader,
-  Card,
-  StatCard,
-  Badge,
-  Button,
-  Avatar,
-  Spinner,
-  EmptyState,
-} from '../../components/ui';
-import UpdatesSection from '../../components/UpdatesSection';
 import { useData } from '../../contexts/DataContext';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { buildStudentContext } from '../../lib/aiContext';
@@ -41,6 +18,7 @@ interface StudentDashboardProps {
 
 export default function StudentDashboard({ user }: StudentDashboardProps) {
   const { classesMap } = useData();
+  const navigate = useNavigate();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -52,7 +30,6 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Fetch Notices
         const noticesQ = query(
           collection(db, 'notices'),
           where('targetRoles', 'array-contains', 'student'),
@@ -62,7 +39,6 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
         const noticesSnap = await getDocs(noticesQ);
         setNotices(noticesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notice)));
 
-        // Fetch Homework
         if (user.classId) {
           const homeworkQ = query(
             collection(db, 'homework'),
@@ -74,7 +50,6 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
           setHomework(homeworkSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Homework)));
         }
 
-        // Fetch Attendance
         const attendanceQ = query(
           collection(db, 'attendance'),
           where('studentId', '==', user.studentId || user.uid)
@@ -82,7 +57,6 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
         const attendanceSnap = await getDocs(attendanceQ);
         setAttendance(attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Attendance)));
 
-        // Fetch Fee Requests
         const feesQ = query(
           collection(db, 'feeRequests'),
           where('studentId', '==', user.studentId || user.uid),
@@ -90,9 +64,8 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
         );
         const feesSnap = await getDocs(feesQ);
         setFeeRequests(feesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
-
       } catch (err) {
-        console.error("Error fetching student dashboard data:", err);
+        console.error('Error fetching student dashboard data:', err);
       } finally {
         setLoading(false);
       }
@@ -102,281 +75,214 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
 
   const totalDays = attendance.length;
   const presentDays = attendance.filter(a => a.status === 'present').length;
-  const attendancePercentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
-  const pendingFeeAmount = feeRequests.reduce((sum, f) => sum + ((f.totalAmount || 0) - (f.paidAmount || 0)), 0);
+  const attendancePct = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
+  const pendingFee = feeRequests.reduce((s, f) => s + ((f.totalAmount || 0) - (f.paidAmount || 0)), 0);
+  const totalFee = feeRequests.reduce((s, f) => s + (f.totalAmount || 0), 0);
+  const paidFee = totalFee - pendingFee;
+  const feePctPaid = totalFee > 0 ? Math.round((paidFee / totalFee) * 100) : 100;
 
-  const mobileTiles = [
-    {
-      to: '/student/attendance',
-      label: 'Attendance',
-      icon: ClipboardCheck,
-      hint: `${attendancePercentage}% present`,
-      bg: 'from-emerald-500 to-emerald-700',
-    },
-    {
-      to: '/student/fees',
-      label: 'Fees',
-      icon: CreditCard,
-      hint: pendingFeeAmount > 0 ? `₹${pendingFeeAmount.toLocaleString('en-IN')} due` : 'All clear',
-      urgent: pendingFeeAmount > 0,
-      bg: 'from-violet-500 to-violet-700',
-    },
-    {
-      to: '/student/homework',
-      label: 'Homework',
-      icon: CheckSquare,
-      hint: homework.length > 0 ? `${homework.length} pending` : 'All done',
-      bg: 'from-amber-500 to-amber-700',
-    },
-    {
-      to: '/student/timetable',
-      label: 'Timetable',
-      icon: Calendar,
-      hint: 'Class schedule',
-      bg: 'from-sky-500 to-sky-700',
-    },
-    {
-      to: '/student/subjects',
-      label: 'Subjects',
-      icon: BookOpen,
-      hint: 'My subjects',
-      bg: 'from-indigo-500 to-indigo-700',
-    },
-    {
-      to: '/student/leaves',
-      label: 'Leave',
-      icon: FileText,
-      hint: 'Apply for leave',
-      bg: 'from-rose-500 to-rose-700',
-    },
+  const firstName = (user.name || 'there').split(' ')[0];
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const className = `${classesMap[user.classId] || user.classId || ''}${user.section ? ` · ${user.section}` : ''}`;
+
+  // Last ~24 attendance records as bars (most recent last)
+  const bars = attendance
+    .slice()
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .slice(-24);
+
+  const actions = [
+    { icon: ClipboardCheck, label: 'Attendance', sub: `${attendancePct}% present`, to: '/student/attendance' },
+    { icon: Wallet, label: 'Pay fees', sub: pendingFee > 0 ? `₹${pendingFee.toLocaleString('en-IN')} due` : 'All clear', to: '/student/fees' },
+    { icon: CheckSquare, label: 'Homework', sub: homework.length ? `${homework.length} pending` : 'All done', to: '/student/homework' },
+    { icon: CalendarDays, label: 'Timetable', sub: 'Class schedule', to: '/student/timetable' },
+    { icon: BookOpen, label: 'Subjects', sub: 'My subjects', to: '/student/subjects' },
+    { icon: FileText, label: 'Leave', sub: 'Apply', to: '/student/leaves' },
   ];
 
   return (
-    <>
-      {/* ─── Mobile Simplified UI ───────────────────────────────────────────── */}
-      <MobilePageEnter className="md:hidden space-y-5 -mx-4 -mt-4">
-        {/* Greeting header */}
-        <div className="bg-gradient-to-br from-emerald-500 to-teal-700 px-5 pt-6 pb-8 text-white rounded-b-3xl shadow-lg">
-          <p className="text-xs font-medium text-emerald-100 uppercase tracking-widest">Student Portal</p>
-          <h1 className="text-2xl font-bold mt-1">{user.name}</h1>
-          <p className="text-xs text-emerald-100 mt-1">
-            {classesMap[user.classId] || user.classId || ''}{user.section ? ` · ${user.section}` : ''}
-          </p>
-          {/* Stats row */}
-          <div className="mt-5 grid grid-cols-3 gap-2">
-            {[
-              { label: 'Attendance', value: `${attendancePercentage}%` },
-              { label: 'Homework', value: `${homework.length} pending` },
-              { label: 'Fees Due', value: pendingFeeAmount > 0 ? `₹${pendingFeeAmount.toLocaleString('en-IN')}` : 'Nil' },
-            ].map(({ label, value }) => (
-              <div key={label} className="bg-white/15 backdrop-blur-sm rounded-xl px-2 py-2 text-center">
-                <p className="text-sm font-bold">{value}</p>
-                <p className="text-[9px] text-white/70 mt-0.5">{label}</p>
+    <div className="pb-2">
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">{greet}</div>
+          <h1>{firstName},<br />let's begin.</h1>
+        </div>
+        <div className="flex items-center" style={{ gap: 8 }}>
+          <button className="icon-btn mobile-only" aria-label="search"><Search size={18} /></button>
+          <button className="icon-btn mobile-only" aria-label="notices" onClick={() => navigate('/student/notices')}>
+            <Bell size={18} />
+            {notices.length > 0 && (
+              <span style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: '50%', background: 'var(--coral)' }} />
+            )}
+          </button>
+          <div className="avatar">{(user.name || 'S').charAt(0).toUpperCase()}</div>
+        </div>
+      </div>
+
+      {/* Hero — fee standing */}
+      <div className="pad" style={{ marginTop: 6 }}>
+        <div className="card inked" style={{ position: 'relative', overflow: 'hidden' }}>
+          <div className="flex between center">
+            <span className="eyebrow" style={{ color: 'var(--cream)', opacity: 0.65 }}>
+              {pendingFee > 0 ? 'Outstanding balance' : 'Fees'}
+            </span>
+            <span className="mono small" style={{ opacity: 0.75 }}>{className}</span>
+          </div>
+          <div className="t-num" style={{ fontSize: 44, marginTop: 12, lineHeight: 1 }}>
+            {pendingFee > 0 ? <>₹{pendingFee.toLocaleString('en-IN')}</> : 'All cleared'}
+          </div>
+          {pendingFee > 0 ? (
+            <>
+              <div style={{ color: '#D7D3C5', marginTop: 6, fontSize: 13 }}>
+                {feeRequests[0]?.dueDate ? `Next due ${fmtDate(feeRequests[0].dueDate)}` : 'Payment pending'}
               </div>
-            ))}
+              <div className="bar" style={{ marginTop: 16, background: 'rgba(255,255,255,0.12)' }}>
+                <i style={{ width: `${feePctPaid}%`, background: 'var(--accent)' }} />
+              </div>
+              <div className="flex between" style={{ marginTop: 8 }}>
+                <span className="mono tiny" style={{ opacity: 0.7 }}>{feePctPaid}% paid</span>
+                <Link to="/student/fees" className="mono tiny" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+                  Pay now →
+                </Link>
+              </div>
+            </>
+          ) : (
+            <div style={{ color: '#D7D3C5', marginTop: 6, fontSize: 13 }}>
+              You have no pending dues. Nicely done.
+            </div>
+          )}
+          <div className="display" style={{ position: 'absolute', right: -8, bottom: -22, fontSize: 110, color: 'rgba(255,255,255,0.05)', pointerEvents: 'none' }}>
+            ₹
           </div>
         </div>
+      </div>
 
-        {/* Action tiles */}
-        <div className="grid grid-cols-2 gap-3 px-4">
-          {mobileTiles.map(({ to, label, icon: Icon, hint, urgent, bg }) => (
-            <Link
-              key={to}
-              to={to}
-              className={`relative bg-gradient-to-br ${bg} rounded-2xl p-4 text-white shadow-md active:scale-95 transition-transform min-h-[110px] flex flex-col justify-between`}
-            >
-              <Icon className="w-7 h-7" strokeWidth={2.25} />
-              <div>
-                <p className="text-base font-bold leading-tight">{label}</p>
-                <p className="text-[11px] text-white/80 mt-0.5">{hint}</p>
+      {/* Stats row */}
+      <div className="pad" style={{ marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 10 }}>
+          <Link to="/student/attendance" className="card" style={{ textAlign: 'left', display: 'block', textDecoration: 'none', color: 'inherit' }}>
+            <div className="eyebrow">Attendance</div>
+            <div className="t-num" style={{ fontSize: 38, marginTop: 4 }}>
+              {attendancePct}<span style={{ fontSize: 18, color: 'var(--ink-3)' }}>%</span>
+            </div>
+            <div className="small muted" style={{ marginTop: 2 }}>
+              {totalDays > 0 ? `${presentDays}/${totalDays} days` : 'No records yet'}
+            </div>
+            {bars.length > 0 && (
+              <div className="flex" style={{ gap: 3, marginTop: 10 }}>
+                {bars.map((a, i) => (
+                  <span key={i} style={{
+                    flex: 1, height: 14, borderRadius: 2,
+                    background: a.status === 'present' ? 'var(--ink)' : 'var(--coral)',
+                  }} />
+                ))}
               </div>
-              {urgent && (
-                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-yellow-300 rounded-full animate-pulse" />
-              )}
-            </Link>
-          ))}
+            )}
+          </Link>
+          <Link to="/student/homework" className="card accent" style={{ textAlign: 'left', display: 'block', textDecoration: 'none', color: 'var(--accent-ink)' }}>
+            <div className="eyebrow" style={{ color: 'var(--accent-ink)', opacity: 0.7 }}>Homework</div>
+            <div className="t-num" style={{ fontSize: 38, marginTop: 4 }}>{homework.length}</div>
+            <div className="small" style={{ marginTop: 2, opacity: 0.75 }}>
+              {homework.length ? 'pending tasks' : 'all caught up'}
+            </div>
+            <div className="mono tiny" style={{ marginTop: 10, opacity: 0.75 }}>
+              {homework.length ? '▲ DUE SOON' : '✓ CLEAR'}
+            </div>
+          </Link>
         </div>
+      </div>
 
-        {/* Latest notices */}
-        {notices.length > 0 && (
-          <div className="px-4 pb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Bell className="w-4 h-4 text-emerald-600" />
-                Notices
-              </h3>
+      {/* Quick actions */}
+      <div className="section-head"><h2>Quick actions</h2></div>
+      <div className="hscroll">
+        {actions.map((a) => (
+          <button key={a.label} className="card" style={{ minWidth: 134, textAlign: 'left', padding: 14, flexShrink: 0 }} onClick={() => navigate(a.to)}>
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--cream-2)', display: 'grid', placeItems: 'center' }}>
+              <a.icon size={18} />
             </div>
-            <div className="space-y-2">
-              {notices.slice(0, 2).map((notice) => (
-                <div key={notice.id} className="bg-white border border-slate-100 rounded-xl p-3">
-                  <p className="text-sm font-bold text-slate-900 line-clamp-1">{notice.title}</p>
-                  <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{notice.content}</p>
-                </div>
-              ))}
+            <div style={{ fontWeight: 600, fontSize: 13, marginTop: 10 }}>{a.label}</div>
+            <div className="small muted" style={{ marginTop: 2 }}>{a.sub}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Upcoming homework */}
+      <div className="section-head">
+        <h2>Upcoming homework</h2>
+        <Link to="/student/homework" style={{ fontSize: 12, color: 'var(--ink-3)', textDecoration: 'none' }}>View all →</Link>
+      </div>
+      <div className="pad stack">
+        {loading ? (
+          <div className="card muted small" style={{ textAlign: 'center', padding: 24 }}>Loading…</div>
+        ) : homework.length > 0 ? (
+          homework.map((hw) => (
+            <button key={hw.id} className="card" style={{ textAlign: 'left', display: 'flex', gap: 14, alignItems: 'center', padding: '14px 16px', width: '100%' }} onClick={() => navigate('/student/homework')}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'var(--cream-2)', fontFamily: 'var(--display)', fontWeight: 700, fontSize: 16 }}>
+                {(hw.subjectId || '?').slice(0, 2).toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hw.content}</div>
+                <div className="small muted" style={{ marginTop: 2 }}>{hw.subjectId} · Due {fmtDate(hw.dueDate)}</div>
+              </div>
+              <ChevronRight size={16} className="muted" />
+            </button>
+          ))
+        ) : (
+          <div className="card" style={{ textAlign: 'center', padding: 28 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--cream-2)', display: 'grid', placeItems: 'center', margin: '0 auto 10px' }}>
+              <CheckSquare size={22} className="muted" />
             </div>
+            <div className="bold">You're all caught up</div>
+            <div className="small muted" style={{ marginTop: 2 }}>No pending homework right now.</div>
           </div>
         )}
-      </MobilePageEnter>
-
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title={`Hello, ${user.name}!`}
-        subtitle="Welcome to your student portal. Check your latest updates below."
-        icon={BookOpen}
-        iconColor="gradient-emerald"
-        actions={
-          <div className="text-right hidden sm:block">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Current Class</p>
-            <p className="text-sm font-bold text-emerald-600">{classesMap[user.classId] || user.classId || 'N/A'} - {user.section || 'N/A'}</p>
-          </div>
-        }
-      />
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard
-          label="Attendance"
-          value={`${attendancePercentage}%`}
-          icon={TrendingUp}
-          gradient="gradient-emerald"
-          index={0}
-        />
-        <StatCard
-          label="Active Homework"
-          value={`${homework.length} Active`}
-          icon={CheckSquare}
-          gradient="gradient-blue"
-          index={1}
-        />
-        <StatCard
-          label="Fees Due"
-          value={`₹${(pendingFeeAmount || 0).toLocaleString()}`}
-          icon={CreditCard}
-          gradient="bg-gradient-to-br from-red-500 to-rose-600"
-          index={2}
-        />
       </div>
 
-      <UpdatesSection user={user} className="mb-8" />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Homework Tracking */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-emerald-600" />
-                Upcoming Homework
-              </h3>
-              <Link to="/student/homework" className="text-sm text-emerald-600 font-medium hover:underline">View All</Link>
+      {/* Notice strip */}
+      {notices.length > 0 && (
+        <div className="pad" style={{ marginTop: 16 }}>
+          <button
+            className="card"
+            style={{ width: '100%', textAlign: 'left', display: 'flex', gap: 14, padding: 14, alignItems: 'center', borderLeft: '4px solid var(--coral)' }}
+            onClick={() => navigate('/student/notices')}
+          >
+            <div className="eyebrow" style={{ color: 'var(--coral)' }}>New</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{notices[0].title}</div>
+              <div className="small muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{notices[0].content}</div>
             </div>
-            <div className="space-y-3">
-              {homework.length > 0 ? homework.map((hw) => (
-                <div key={hw.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-white hover:shadow-sm transition-all border border-transparent hover:border-slate-100">
-                  <div className="flex items-center gap-4">
-                    <Avatar name={hw.subjectId} size="sm" />
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 line-clamp-1">{hw.content}</h4>
-                      <p className="text-xs text-slate-500">{hw.subjectId} • Due {fmtDate(hw.dueDate)}</p>
-                    </div>
-                  </div>
-                  <Badge variant="warning">pending</Badge>
-                </div>
-              )) : (
-                <EmptyState
-                  icon={CheckSquare}
-                  title="No pending homework"
-                  description="You're all caught up!"
-                />
-              )}
-            </div>
-          </Card>
-
-          {/* Recent Notices */}
-          <Card>
-            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-              <Bell className="w-5 h-5 text-emerald-600" />
-              School Notices
-            </h3>
-            <div className="space-y-6">
-              {notices.length > 0 ? notices.map((notice) => (
-                <div key={notice.id} className="relative pl-6 border-l-2 border-emerald-100">
-                  <div className="absolute -left-[5px] top-0 w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
-                  <div className="flex items-center justify-between mb-1">
-                    <h4 className="text-sm font-bold text-slate-900">{notice.title}</h4>
-                    <span className="text-xs text-slate-400">{new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-                  </div>
-                  <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{notice.content}</p>
-                </div>
-              )) : (
-                <EmptyState
-                  icon={Bell}
-                  title="No recent notices"
-                  description="Nothing new from the school."
-                />
-              )}
-            </div>
-          </Card>
+            <ChevronRight size={16} />
+          </button>
         </div>
+      )}
 
-        {/* Sidebar: Timetable & Fee */}
-        <div className="space-y-8">
-          {/* Today's Timetable */}
-          <Card>
-            <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-emerald-600" />
-              Today's Schedule
-            </h3>
-            <p className="text-sm text-slate-400 italic text-center py-4">Check your full timetable for details.</p>
-            <Link
-              to="/student/timetable"
-              className="w-full mt-2 py-2 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all flex items-center justify-center gap-2"
-            >
-              Full Timetable
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </Card>
+      <div style={{ height: 16 }} />
 
-          {/* Fee Status Card */}
-          <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 rounded-2xl text-white shadow-xl shadow-emerald-600/20">
-            <div className="flex items-center justify-between mb-6">
-              <CreditCard className="w-6 h-6 opacity-50" />
-              <Badge variant="default" className="bg-white/20 text-white border-0 text-[10px] uppercase tracking-widest">
-                {feeRequests.length > 0 ? 'Pending' : 'Up to date'}
-              </Badge>
-            </div>
-            <p className="text-xs opacity-80">Outstanding Balance</p>
-            <h2 className="text-3xl font-bold mt-1">₹{(pendingFeeAmount || 0).toLocaleString()}</h2>
-            {feeRequests.length > 0 && (
-              <p className="text-[10px] mt-4 opacity-70">Next Due Date: {fmtDate(feeRequests[0].dueDate)}</p>
-            )}
-            <Link
-              to="/student/fees"
-              className="block w-full mt-6 py-2.5 bg-white text-emerald-600 rounded-xl text-sm font-bold text-center hover:bg-emerald-50 transition-all"
-            >
-              View Fee Details
-            </Link>
-          </div>
-        </div>
-      </div>
-      </div>
-
-      {/* AI Insights floating button */}
+      {/* AI insights floating button */}
       <button
         onClick={() => setAiOpen(true)}
-        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white px-4 py-3 rounded-2xl shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 active:scale-95 transition-all text-sm font-bold"
-        aria-label="Open AI Insights"
+        className="fixed z-30 flex items-center gap-2"
+        style={{
+          bottom: 'calc(76px + env(safe-area-inset-bottom))',
+          right: 16,
+          background: 'var(--ink)', color: 'var(--cream)',
+          padding: '12px 16px', borderRadius: 999, border: 0,
+          fontWeight: 600, fontSize: 14, cursor: 'pointer',
+          boxShadow: '0 8px 24px rgba(14,15,17,0.25)',
+        }}
+        aria-label="Ask AI"
       >
-        <Sparkles className="w-4 h-4" />
-        <span className="hidden sm:inline">Ask AI</span>
+        <Sparkles className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+        Ask AI
       </button>
 
       <AIInsightsPanel
         open={aiOpen}
         onClose={() => setAiOpen(false)}
         label="Student AI"
-        greeting={`Hi ${user.name}! I can see your attendance, fee status, homework, and exam results. What would you like to know?`}
+        greeting={`Hi ${firstName}! I can see your attendance, fee status, homework, and exam results. What would you like to know?`}
         contextBuilder={() => buildStudentContext(user.studentId || user.uid, user.classId || '')}
         placeholder="Ask about your fees, attendance, results…"
         suggestedPrompts={[
@@ -405,6 +311,6 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
           </div>
         ) : null}
       />
-    </>
+    </div>
   );
 }

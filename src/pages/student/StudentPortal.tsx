@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import PortalLayout from '../../components/PortalLayout';
+import StudentShell from '../../components/StudentShell';
 import { UserProfile } from '../../types';
 import StudentDashboard from './StudentDashboard';
 import StudentHomework from './StudentHomework';
@@ -20,7 +20,7 @@ export default function StudentPortal({ user }: { user: UserProfile }) {
   const { studentData: student } = useData();
 
   return (
-    <PortalLayout user={user}>
+    <StudentShell user={user}>
       <Routes>
         <Route path="/" element={<StudentDashboard user={user} />} />
         <Route path="/homework" element={<StudentHomework user={user} />} />
@@ -37,6 +37,6 @@ export default function StudentPortal({ user }: { user: UserProfile }) {
         <Route path="/diary" element={<LessonLogs user={user} student={student || undefined} />} />
         <Route path="*" element={<Navigate to="/student" />} />
       </Routes>
-    </PortalLayout>
+    </StudentShell>
   );
 }
