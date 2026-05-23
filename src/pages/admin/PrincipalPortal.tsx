@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import PortalLayout from '../../components/PortalLayout';
+import PrincipalShell from '../../components/PrincipalShell';
 import { UserProfile } from '../../types';
 import PrincipalDashboard from './PrincipalDashboard';
 import StudentManagement from './StudentManagement';
@@ -24,7 +24,7 @@ import GrievanceTracker from '../grievance/GrievanceTracker';
 
 export default function PrincipalPortal({ user }: { user: UserProfile }) {
   return (
-    <PortalLayout user={user}>
+    <PrincipalShell user={user}>
       <Routes>
         <Route path="/" element={<PrincipalDashboard user={user} />} />
         <Route path="/students" element={<StudentManagement user={user} />} />
@@ -48,6 +48,6 @@ export default function PrincipalPortal({ user }: { user: UserProfile }) {
         <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="*" element={<Navigate to="/principal" />} />
       </Routes>
-    </PortalLayout>
+    </PrincipalShell>
   );
 }
