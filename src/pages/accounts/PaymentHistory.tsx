@@ -25,7 +25,7 @@ import { useData } from '../../contexts/DataContext';
 import { useToast } from '../../components/Toast';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { fmtDate } from '../../lib/utils';
-import { saveText } from '../../lib/download';
+import { saveText, openExternalUrl } from '../../lib/download';
 import Papa from 'papaparse';
 import {
   PageHeader,
@@ -158,6 +158,136 @@ export default function PaymentHistory({ user }: { user: UserProfile }) {
     } catch { showToast('Failed to generate receipt', 'error'); }
   };
 
+  // Shared expanded-detail markup, used by both the desktop table and mobile cards.
+  const renderDetail = (p: FeePayment, req: any, grossTotal: number | null, discountTotal: number) => (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Head Breakdown */}
+      {req?.heads && req.heads.length > 0 && (
+        <div className="md:col-span-2">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Fee Head Breakdown</p>
+          <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-bold text-slate-600">Head</th>
+                  <th className="px-3 py-2 text-right font-bold text-slate-600">Gross</th>
+                  <th className="px-3 py-2 text-right font-bold text-slate-600">Discount</th>
+                  <th className="px-3 py-2 text-right font-bold text-slate-600">Net</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {req.heads.map((h: any, i: number) => (
+                  <tr key={i} className={h.discount > 0 ? 'bg-emerald-50/50' : ''}>
+                    <td className="px-3 py-2">
+                      <p className="font-semibold text-slate-800">{h.name}</p>
+                      {h.discount > 0 && h.discountReason && (
+                        <p className="text-[9px] text-emerald-600 mt-0.5 italic">Reason: {h.discountReason}</p>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right text-slate-600">₹{(h.amount || 0).toLocaleString('en-IN')}</td>
+                    <td className="px-3 py-2 text-right font-bold text-emerald-600">
+                      {h.discount > 0 ? `-₹${h.discount.toLocaleString('en-IN')}` : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right font-bold text-slate-900">₹{(h.finalAmount ?? h.amount ?? 0).toLocaleString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                {discountTotal > 0 && (
+                  <>
+                    <tr>
+                      <td className="px-3 py-1.5 font-semibold text-slate-600" colSpan={2}>Gross Total</td>
+                      <td></td>
+                      <td className="px-3 py-1.5 text-right font-semibold text-slate-700">₹{(grossTotal ?? 0).toLocaleString('en-IN')}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-1.5 font-bold text-emerald-700" colSpan={2}>Total Discount</td>
+                      <td className="px-3 py-1.5 text-right font-bold text-emerald-600">-₹{discountTotal.toLocaleString('en-IN')}</td>
+                      <td></td>
+                    </tr>
+                  </>
+                )}
+                {(req.waivedAmount || 0) > 0 && (
+                  <tr>
+                    <td className="px-3 py-1.5 text-slate-500" colSpan={2}>Fine Waiver</td>
+                    <td className="px-3 py-1.5 text-right text-slate-500">-₹{req.waivedAmount!.toLocaleString('en-IN')}</td>
+                    <td></td>
+                  </tr>
+                )}
+                <tr className="bg-slate-900">
+                  <td className="px-3 py-2 font-black text-white" colSpan={3}>Amount Paid (This Receipt)</td>
+                  <td className="px-3 py-2 text-right font-black text-white">₹{p.amount.toLocaleString('en-IN')}</td>
+                </tr>
+                {(req.paidAmount || 0) < (req.totalAmount || 0) - (req.waivedAmount || 0) - 0.01 && (
+                  <tr>
+                    <td className="px-3 py-1.5 font-bold text-rose-600" colSpan={3}>Balance Due</td>
+                    <td className="px-3 py-1.5 text-right font-black text-rose-600">
+                      ₹{Math.max(0, (req.totalAmount || 0) - (req.waivedAmount || 0) - (req.paidAmount || 0)).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                )}
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Meta */}
+      <div className="space-y-3">
+        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Payment Details</p>
+        <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-2.5">
+          {[
+            { label: 'Method', value: p.method.replace(/_/g, ' ').toUpperCase() },
+            p.transactionId && { label: 'Transaction ID', value: p.transactionId },
+            p.referenceNumber && { label: 'Reference No.', value: p.referenceNumber },
+            p.voucherNumber && { label: 'Cash Voucher No.', value: p.voucherNumber },
+          ].filter(Boolean).map((row: any) => (
+            <div key={row.label} className="flex items-start justify-between gap-2">
+              <span className="text-[10px] text-slate-500 font-semibold shrink-0">{row.label}</span>
+              <span className="text-xs font-bold text-slate-800 text-right break-all">{row.value}</span>
+            </div>
+          ))}
+
+          {p.voucherImageUrl && (
+            <div>
+              <p className="text-[10px] text-slate-500 font-semibold mb-1">Cash Voucher</p>
+              <button onClick={() => openExternalUrl(p.voucherImageUrl!)}
+                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium">
+                <ExternalLink className="w-3 h-3" /> View Voucher
+              </button>
+            </div>
+          )}
+
+          {p.remarks && (
+            <div className="pt-2 border-t border-slate-100">
+              <p className="text-[10px] text-slate-500 font-semibold mb-1 flex items-center gap-1">
+                <MessageSquare className="w-3 h-3" /> Remarks
+              </p>
+              <p className="text-xs text-slate-700 italic">"{p.remarks}"</p>
+            </div>
+          )}
+
+          {req?.waiverReason && (
+            <div className="pt-2 border-t border-slate-100">
+              <p className="text-[10px] text-violet-600 font-semibold mb-1 flex items-center gap-1">
+                <BadgePercent className="w-3 h-3" /> Fine Waiver Reason
+              </p>
+              <p className="text-xs text-slate-700 italic">"{req.waiverReason}"</p>
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => handleDownloadReceipt(p)}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Download Receipt PDF
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -257,7 +387,9 @@ export default function PaymentHistory({ user }: { user: UserProfile }) {
         ) : filteredPayments.length === 0 ? (
           <EmptyState icon={FileText} title="No payments found" description="Adjust filters to see more." />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Desktop table */}
+          <div className="overflow-x-auto hidden md:block">
             <Table>
               <Thead>
                 <tr>
@@ -357,133 +489,7 @@ export default function PaymentHistory({ user }: { user: UserProfile }) {
                       {isExpanded && (
                         <tr>
                           <td colSpan={8} className="bg-amber-50/40 border-t border-amber-100 px-6 py-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-                              {/* Head Breakdown */}
-                              {req?.heads && req.heads.length > 0 && (
-                                <div className="md:col-span-2">
-                                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Fee Head Breakdown</p>
-                                  <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
-                                    <table className="w-full text-xs">
-                                      <thead className="bg-slate-50">
-                                        <tr>
-                                          <th className="px-3 py-2 text-left font-bold text-slate-600">Head</th>
-                                          <th className="px-3 py-2 text-right font-bold text-slate-600">Gross</th>
-                                          <th className="px-3 py-2 text-right font-bold text-slate-600">Discount</th>
-                                          <th className="px-3 py-2 text-right font-bold text-slate-600">Net</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-slate-100">
-                                        {req.heads.map((h, i) => (
-                                          <tr key={i} className={h.discount > 0 ? 'bg-emerald-50/50' : ''}>
-                                            <td className="px-3 py-2">
-                                              <p className="font-semibold text-slate-800">{h.name}</p>
-                                              {h.discount > 0 && h.discountReason && (
-                                                <p className="text-[9px] text-emerald-600 mt-0.5 italic">Reason: {h.discountReason}</p>
-                                              )}
-                                            </td>
-                                            <td className="px-3 py-2 text-right text-slate-600">₹{(h.amount || 0).toLocaleString('en-IN')}</td>
-                                            <td className="px-3 py-2 text-right font-bold text-emerald-600">
-                                              {h.discount > 0 ? `-₹${h.discount.toLocaleString('en-IN')}` : '—'}
-                                            </td>
-                                            <td className="px-3 py-2 text-right font-bold text-slate-900">₹{(h.finalAmount ?? h.amount ?? 0).toLocaleString('en-IN')}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                      <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                                        {discountTotal > 0 && (
-                                          <>
-                                            <tr>
-                                              <td className="px-3 py-1.5 font-semibold text-slate-600" colSpan={2}>Gross Total</td>
-                                              <td></td>
-                                              <td className="px-3 py-1.5 text-right font-semibold text-slate-700">₹{(grossTotal ?? 0).toLocaleString('en-IN')}</td>
-                                            </tr>
-                                            <tr>
-                                              <td className="px-3 py-1.5 font-bold text-emerald-700" colSpan={2}>Total Discount</td>
-                                              <td className="px-3 py-1.5 text-right font-bold text-emerald-600">-₹{discountTotal.toLocaleString('en-IN')}</td>
-                                              <td></td>
-                                            </tr>
-                                          </>
-                                        )}
-                                        {(req.waivedAmount || 0) > 0 && (
-                                          <tr>
-                                            <td className="px-3 py-1.5 text-slate-500" colSpan={2}>Fine Waiver</td>
-                                            <td className="px-3 py-1.5 text-right text-slate-500">-₹{req.waivedAmount!.toLocaleString('en-IN')}</td>
-                                            <td></td>
-                                          </tr>
-                                        )}
-                                        <tr className="bg-slate-900">
-                                          <td className="px-3 py-2 font-black text-white" colSpan={3}>Amount Paid (This Receipt)</td>
-                                          <td className="px-3 py-2 text-right font-black text-white">₹{p.amount.toLocaleString('en-IN')}</td>
-                                        </tr>
-                                        {(req.paidAmount || 0) < (req.totalAmount || 0) - (req.waivedAmount || 0) - 0.01 && (
-                                          <tr>
-                                            <td className="px-3 py-1.5 font-bold text-rose-600" colSpan={3}>Balance Due</td>
-                                            <td className="px-3 py-1.5 text-right font-black text-rose-600">
-                                              ₹{Math.max(0, (req.totalAmount || 0) - (req.waivedAmount || 0) - (req.paidAmount || 0)).toLocaleString('en-IN')}
-                                            </td>
-                                          </tr>
-                                        )}
-                                      </tfoot>
-                                    </table>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Payment Meta */}
-                              <div className="space-y-3">
-                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Payment Details</p>
-                                <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-2.5">
-                                  {[
-                                    { label: 'Method', value: p.method.replace(/_/g, ' ').toUpperCase() },
-                                    p.transactionId && { label: 'Transaction ID', value: p.transactionId },
-                                    p.referenceNumber && { label: 'Reference No.', value: p.referenceNumber },
-                                    p.voucherNumber && { label: 'Cash Voucher No.', value: p.voucherNumber },
-                                  ].filter(Boolean).map((row: any) => (
-                                    <div key={row.label} className="flex items-start justify-between gap-2">
-                                      <span className="text-[10px] text-slate-500 font-semibold shrink-0">{row.label}</span>
-                                      <span className="text-xs font-bold text-slate-800 text-right break-all">{row.value}</span>
-                                    </div>
-                                  ))}
-
-                                  {p.voucherImageUrl && (
-                                    <div>
-                                      <p className="text-[10px] text-slate-500 font-semibold mb-1">Cash Voucher</p>
-                                      <a href={p.voucherImageUrl} target="_blank" rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium">
-                                        <ExternalLink className="w-3 h-3" /> View Voucher
-                                      </a>
-                                    </div>
-                                  )}
-
-                                  {p.remarks && (
-                                    <div className="pt-2 border-t border-slate-100">
-                                      <p className="text-[10px] text-slate-500 font-semibold mb-1 flex items-center gap-1">
-                                        <MessageSquare className="w-3 h-3" /> Remarks
-                                      </p>
-                                      <p className="text-xs text-slate-700 italic">"{p.remarks}"</p>
-                                    </div>
-                                  )}
-
-                                  {req?.waiverReason && (
-                                    <div className="pt-2 border-t border-slate-100">
-                                      <p className="text-[10px] text-violet-600 font-semibold mb-1 flex items-center gap-1">
-                                        <BadgePercent className="w-3 h-3" /> Fine Waiver Reason
-                                      </p>
-                                      <p className="text-xs text-slate-700 italic">"{req.waiverReason}"</p>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <button
-                                  onClick={() => handleDownloadReceipt(p)}
-                                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition-colors"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                  Download Receipt PDF
-                                </button>
-                              </div>
-                            </div>
+                            {renderDetail(p, req, grossTotal, discountTotal)}
                           </td>
                         </tr>
                       )}
@@ -493,6 +499,69 @@ export default function PaymentHistory({ user }: { user: UserProfile }) {
               </Tbody>
             </Table>
           </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden divide-y divide-slate-100">
+            {filteredPayments.map((p) => {
+              const student = globalStudents.find(s => s.id === p.studentId);
+              const req = feeRequests.find(r => r.id === p.feeRequestId);
+              const className = student ? (classes.find(c => c.id === student.classId)?.name || student.classId) : 'N/A';
+              const grossTotal = req?.heads.reduce((s, h) => s + (h.amount || 0), 0) ?? null;
+              const discountTotal = req?.heads.reduce((s, h) => s + (h.discount || 0), 0) ?? 0;
+              const isExpanded = expandedId === p.id;
+              const methodColor = METHOD_COLORS[p.method] || 'bg-slate-50 text-slate-600 border-slate-200';
+              const isPartial = req && (req.paidAmount || 0) < (req.totalAmount || 0) - (req.waivedAmount || 0) - 0.01;
+
+              return (
+                <div key={p.id} className={isExpanded ? 'bg-amber-50/50' : ''}>
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                    className="w-full text-left px-4 py-3.5 active:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      {/* Student + receipt */}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                          {student?.photoURL ? <img src={student.photoURL} className="w-full h-full object-cover" /> : <User className="w-4 h-4 text-slate-400" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 text-sm leading-tight truncate">{student?.name || 'Unknown'}</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider truncate">{className} · {student?.schoolNumber}</p>
+                          <p className="text-[10px] text-amber-600 font-bold mt-0.5">{p.receiptNumber}</p>
+                        </div>
+                      </div>
+                      {/* Amount + chevron */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="text-right">
+                          <p className="text-base font-black text-slate-900">₹{(p.amount || 0).toLocaleString('en-IN')}</p>
+                          {isPartial && <p className="text-[9px] text-rose-500 font-bold">Partial</p>}
+                        </div>
+                        {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                      </div>
+                    </div>
+                    {/* Meta row */}
+                    <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${methodColor}`}>
+                        {p.method === 'online' ? <ExternalLink className="w-2.5 h-2.5" /> : <CreditCard className="w-2.5 h-2.5" />}
+                        {p.method.replace(/_/g, ' ').toUpperCase()}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-medium">{fmtDate(p.date)}</span>
+                      {discountTotal > 0 && (
+                        <span className="text-[10px] font-bold text-emerald-600">-₹{discountTotal.toLocaleString('en-IN')} disc.</span>
+                      )}
+                    </div>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="px-4 pb-4 pt-1">
+                      {renderDetail(p, req, grossTotal, discountTotal)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          </>
         )}
       </Card>
     </div>
