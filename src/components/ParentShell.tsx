@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
@@ -55,12 +55,15 @@ export default function ParentShell({
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
+  const mainRef = useRef<HTMLElement>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const userName = user.name || user.email || 'Parent';
   const initials = userName.charAt(0).toUpperCase();
 
   const isActive = (path: string) =>
     location.pathname === `${BASE}${path}` || (path === '' && location.pathname === BASE);
+
+  useEffect(() => { mainRef.current?.scrollTo(0, 0); }, [location.pathname]);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -254,7 +257,7 @@ export default function ParentShell({
         </div>
 
         {/* Scrollable content */}
-        <main className="flex-1 overflow-y-auto pb-24 lg:pb-8">
+        <main ref={mainRef} className="flex-1 overflow-y-auto pb-24 lg:pb-8">
           <div className="lg:max-w-3xl lg:mx-auto lg:px-8">
             {children}
           </div>

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
@@ -13,8 +13,6 @@ import NotificationCenter from './NotificationCenter';
 import { useToast } from './Toast';
 import { logActivity } from '../services/activityService';
 import { requestNotificationPermission, startNotificationListeners } from '../services/notificationService';
-
-const BASE = '/admin';
 
 const NAV = [
   { label: 'Dashboard', icon: Home, path: '' },
@@ -47,11 +45,15 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
+  const mainRef = useRef<HTMLElement>(null);
+  const BASE = '/' + location.pathname.split('/')[1];
   const userName = user.name || user.email || 'Admin';
   const initials = userName.charAt(0).toUpperCase();
 
   const isActive = (path: string) =>
     location.pathname === `${BASE}${path}` || (path === '' && location.pathname === BASE);
+
+  useEffect(() => { mainRef.current?.scrollTo(0, 0); }, [location.pathname]);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -159,7 +161,7 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
         </div>
 
         {/* Scrollable content — pages render their own topbar on mobile */}
-        <main className="flex-1 overflow-y-auto pb-24 lg:pb-8">
+        <main ref={mainRef} className="flex-1 overflow-y-auto pb-24 lg:pb-8">
           <div className="lg:max-w-3xl lg:mx-auto lg:px-8">
             {children}
           </div>
