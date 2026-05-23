@@ -258,7 +258,7 @@ export default function ParentShell({
 
         {/* Scrollable content */}
         <main ref={mainRef} className="flex-1 overflow-y-auto pb-24 lg:pb-8">
-          <div className="lg:max-w-3xl lg:mx-auto lg:px-8">
+          <div className="lg:max-w-7xl lg:mx-auto lg:px-10">
             {children}
           </div>
         </main>
