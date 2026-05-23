@@ -3,25 +3,34 @@ import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { UserProfile, Attendance } from '../../types';
 import { fmtDate } from '../../lib/utils';
-import {
-  PageHeader,
-  Card,
-  Badge,
-  Spinner,
-  EmptyState,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  StatCard,
-} from '../../components/ui';
-import { ClipboardCheck, Calendar, Clock, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { ClipboardCheck } from 'lucide-react';
 
 interface StudentAttendanceProps {
   user: UserProfile;
 }
+
+// Maps an attendance status to a swatch colour in the design palette.
+const statusColor = (status: string): string => {
+  switch (status) {
+    case 'present': return 'var(--ink)';
+    case 'late': return 'var(--accent)';
+    case 'approved_leave': return 'var(--sky)';
+    case 'leave_pending': return 'var(--ink-4)';
+    default: return 'var(--coral)'; // absent / uninformed
+  }
+};
+
+const statusLabel = (status: string): string => {
+  switch (status) {
+    case 'present': return 'Present';
+    case 'absent': return 'Absent';
+    case 'late': return 'Late';
+    case 'approved_leave': return 'Excused';
+    case 'leave_pending': return 'Pending';
+    case 'uninformed_absence': return 'Absent';
+    default: return status.replace(/_/g, ' ');
+  }
+};
 
 export default function StudentAttendance({ user }: StudentAttendanceProps) {
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -31,7 +40,6 @@ export default function StudentAttendance({ user }: StudentAttendanceProps) {
     const fetchAttendance = async () => {
       const studentId = user.studentId || user.schoolNumber || user.uid;
       if (!studentId) return;
-
       setLoading(true);
       try {
         const q = query(
@@ -50,156 +58,113 @@ export default function StudentAttendance({ user }: StudentAttendanceProps) {
         setLoading(false);
       }
     };
-
     fetchAttendance();
   }, [user.uid, user.studentId, user.schoolNumber]);
 
   const totalDays = attendance.length;
   const presentDays = attendance.filter(a => a.status === 'present').length;
-  const absentDays = attendance.filter(a => a.status === 'absent').length;
+  const absentDays = attendance.filter(a => a.status === 'absent' || a.status === 'uninformed_absence').length;
   const lateDays = attendance.filter(a => a.status === 'late').length;
-  const percentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
+  const pct = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
+  const pctColor = pct >= 75 ? 'var(--leaf)' : pct >= 60 ? 'var(--accent)' : 'var(--coral)';
 
-  const statusInfo = (status: string) => {
-    switch (status) {
-      case 'present': return { label: 'Present', color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' };
-      case 'absent': return { label: 'Absent', color: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' };
-      case 'late': return { label: 'Late', color: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' };
-      case 'approved_leave': return { label: 'Approved Leave', color: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' };
-      case 'leave_pending': return { label: 'Leave Pending', color: 'bg-purple-100 text-purple-700', dot: 'bg-purple-500' };
-      case 'uninformed_absence': return { label: 'Uninformed', color: 'bg-red-100 text-red-700', dot: 'bg-red-500' };
-      default: return { label: status.replace(/_/g, ' '), color: 'bg-slate-100 text-slate-700', dot: 'bg-slate-400' };
-    }
-  };
-
-  const percentColor = percentage >= 75 ? 'text-emerald-300' : percentage >= 60 ? 'text-amber-300' : 'text-rose-300';
+  // chronological for the grid
+  const grid = attendance.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
   return (
-    <>
-      {/* Mobile UI */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Student Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">My Attendance</h1>
-          <div className="mt-4 grid grid-cols-4 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className={`text-xl font-black ${percentColor}`}>{percentage}%</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Overall</p>
+    <div className="pb-2">
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">Attendance</div>
+          <h1>This term.</h1>
+        </div>
+      </div>
+
+      {/* Summary card */}
+      <div className="pad" style={{ marginTop: 6 }}>
+        <div className="card" style={{ padding: 20 }}>
+          <div className="eyebrow">Days present</div>
+          <div className="flex" style={{ alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+            <div className="t-num" style={{ fontSize: 52, lineHeight: 1 }}>
+              {presentDays}<span style={{ color: 'var(--ink-3)' }}>/{totalDays || 0}</span>
             </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{presentDays}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Present</p>
+            <div className="display" style={{ fontSize: 22, color: pctColor }}>{pct}%</div>
+          </div>
+
+          {grid.length > 0 ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gap: 3, marginTop: 16 }}>
+              {grid.map((a) => (
+                <span key={a.id} title={`${fmtDate(a.date)} · ${statusLabel(a.status)}`} style={{
+                  aspectRatio: '1 / 1', borderRadius: 2, background: statusColor(a.status),
+                }} />
+              ))}
             </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{absentDays}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Absent</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{lateDays}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Late</p>
-            </div>
+          ) : (
+            <div className="small muted" style={{ marginTop: 14 }}>No records yet.</div>
+          )}
+
+          <div className="flex" style={{ gap: 14, marginTop: 14, flexWrap: 'wrap' }}>
+            <Legend swatch="var(--ink)" label={`Present ${presentDays}`} />
+            <Legend swatch="var(--accent)" label={`Late ${lateDays}`} />
+            <Legend swatch="var(--coral)" label={`Absent ${absentDays}`} />
           </div>
         </div>
+      </div>
 
-        <div className="px-4 pt-4 pb-24 space-y-3">
-          {loading ? (
-            <div className="flex justify-center py-12"><Spinner /></div>
-          ) : attendance.length === 0 ? (
-            <EmptyState
-              icon={ClipboardCheck}
-              title="No attendance records"
-              description="Attendance records will appear here once they are marked by your teacher."
-            />
-          ) : (
-            attendance.map((record) => {
-              const info = statusInfo(record.status);
-              return (
-                <div key={record.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-4">
-                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${info.dot}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="text-sm font-bold text-slate-900">{fmtDate(record.date)}</span>
-                    </div>
-                    {record.remarks && (
-                      <p className="text-xs text-slate-500 italic mt-0.5 truncate">{record.remarks}</p>
-                    )}
+      {/* Records */}
+      <div className="section-head">
+        <h2>Records</h2>
+        {totalDays > 0 && <span className="mono tiny muted">{totalDays} days</span>}
+      </div>
+      <div className="pad stack">
+        {loading ? (
+          <div className="card muted small" style={{ textAlign: 'center', padding: 24 }}>Loading…</div>
+        ) : attendance.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 28 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--cream-2)', display: 'grid', placeItems: 'center', margin: '0 auto 10px' }}>
+              <ClipboardCheck size={22} className="muted" />
+            </div>
+            <div className="bold">No attendance records</div>
+            <div className="small muted" style={{ marginTop: 2 }}>They'll appear here once marked by your teacher.</div>
+          </div>
+        ) : (
+          attendance.map((record) => {
+            const isLate = record.status === 'late';
+            const isAbsent = record.status === 'absent' || record.status === 'uninformed_absence';
+            return (
+              <div key={record.id} className="card" style={{ padding: '14px 16px' }}>
+                <div className="flex between center">
+                  <div className="flex center gap-12">
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: statusColor(record.status), display: 'inline-block' }} />
+                    <div style={{ fontWeight: 600 }}>{fmtDate(record.date)}</div>
                   </div>
-                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full shrink-0 ${info.color} capitalize`}>
-                    {info.label}
+                  <span className="chip" style={
+                    isLate
+                      ? { background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'transparent' }
+                      : isAbsent
+                        ? { background: 'var(--coral)', color: '#fff', borderColor: 'transparent' }
+                        : {}
+                  }>
+                    {statusLabel(record.status)}
                   </span>
                 </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Desktop UI */}
-      <div className="hidden md:block space-y-6">
-        <PageHeader
-          title="My Attendance"
-          subtitle="Track your daily attendance and overall performance."
-          icon={ClipboardCheck}
-          iconColor="gradient-emerald"
-        />
-
-        {loading ? (
-          <Spinner />
-        ) : (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <StatCard label="Overall" value={`${percentage}%`} icon={Clock} gradient="gradient-emerald" index={0} />
-              <StatCard label="Present" value={presentDays.toString()} icon={CheckCircle2} gradient="gradient-blue" index={1} />
-              <StatCard label="Absent" value={absentDays.toString()} icon={XCircle} gradient="bg-gradient-to-br from-rose-500 to-red-600" index={2} />
-              <StatCard label="Late" value={lateDays.toString()} icon={AlertCircle} gradient="bg-gradient-to-br from-amber-500 to-orange-600" index={3} />
-            </div>
-
-            <Card padding="none">
-              <Table>
-                <Thead>
-                  <Tr>
-                    <Th>Date</Th>
-                    <Th>Status</Th>
-                    <Th>Remarks</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {attendance.map((record) => (
-                    <Tr key={record.id}>
-                      <Td>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-slate-400" />
-                          <span className="font-medium text-slate-900">{fmtDate(record.date)}</span>
-                        </div>
-                      </Td>
-                      <Td>
-                        <Badge variant={
-                          record.status === 'present' ? 'success' :
-                          record.status === 'absent' ? 'error' :
-                          record.status === 'approved_leave' ? 'info' :
-                          record.status === 'leave_pending' ? 'warning' :
-                          record.status === 'uninformed_absence' ? 'error' : 'warning'
-                        }>
-                          {record.status.replace('_', ' ')}
-                        </Badge>
-                      </Td>
-                      <Td className="text-slate-500 text-sm italic">{record.remarks || '-'}</Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </Table>
-              {attendance.length === 0 && (
-                <EmptyState
-                  icon={ClipboardCheck}
-                  title="No attendance records"
-                  description="Attendance records will appear here once they are marked by your teacher."
-                />
-              )}
-            </Card>
-          </>
+                {record.remarks && <div className="small muted" style={{ marginTop: 6 }}>{record.remarks}</div>}
+              </div>
+            );
+          })
         )}
       </div>
-    </>
+
+      <div style={{ height: 16 }} />
+    </div>
+  );
+}
+
+function Legend({ swatch, label }: { swatch: string; label: string }) {
+  return (
+    <div className="flex center gap-8">
+      <span style={{ width: 10, height: 10, borderRadius: 2, background: swatch, display: 'inline-block' }} />
+      <span className="tiny muted">{label}</span>
+    </div>
   );
 }
