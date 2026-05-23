@@ -9,18 +9,16 @@ import {
   Plus,
   Bell,
   Trash2,
-  Clock,
-  User,
-  Megaphone,
+  Search,
   Paperclip,
   FileText,
   X,
   Download,
+  Megaphone,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
 import {
-  PageHeader, Card, Badge, Button, IconButton, Modal, ConfirmModal,
-  SearchInput, FormField, Input, Select, Textarea, EmptyState
+  Modal, ConfirmModal,
+  FormField, Input, Select, Textarea, Button,
 } from '../../components/ui';
 import { usePermissions } from '../../hooks/usePermissions';
 
@@ -44,7 +42,6 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
   const isAdmin = user.role === 'super_admin' || user.role === 'principal';
   const canWrite = user.role === 'super_admin' || (user.role === 'principal' && !readOnly);
 
-  // Form State
   const [formData, setFormData] = useState({
     title: '',
     content: '',
@@ -55,9 +52,8 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
 
   const roles: UserRole[] = ['super_admin', 'teacher', 'student', 'parent', 'accounts', 'principal', 'grievance_officer'];
 
-  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB per file
+  const MAX_FILE_SIZE = 10 * 1024 * 1024;
   const MAX_FILES = 5;
-  // Must mirror isAllowedContentType() in storage.rules
   const ACCEPT_TYPES = 'image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt';
   const isAllowedType = (type: string) =>
     type.startsWith('image/') ||
@@ -99,8 +95,6 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
   const fetchNotices = async () => {
     try {
       let q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
-
-      // If not admin, only show notices targeted to their role
       if (!isAdmin) {
         q = query(
           collection(db, 'notices'),
@@ -108,7 +102,6 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
           orderBy('createdAt', 'desc')
         );
       }
-
       const querySnapshot = await getDocs(q);
       setNotices(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notice)));
     } catch (err) {
@@ -176,21 +169,17 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
     try {
       const notice = notices.find(n => n.id === deletingId);
       await deleteDoc(doc(db, 'notices', deletingId));
-
-      // Best-effort cleanup of attached storage files
       for (const att of notice?.attachments || []) {
         if (att.storagePath) {
           try { await deleteObject(ref(storage, att.storagePath)); } catch { /* ignore */ }
         }
       }
-
       await logActivity(
         user,
         'DELETE_NOTICE',
         'Super Admin',
         `Deleted notice: ${notice?.title || deletingId}`
       );
-
       fetchNotices();
       setIsDeleteModalOpen(false);
       setDeletingId(null);
@@ -206,48 +195,54 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
     return matchesSearch && matchesRole;
   });
 
-  const priorityVariant = (priority: string): 'error' | 'warning' | 'info' => {
-    if (priority === 'high') return 'error';
-    if (priority === 'medium') return 'warning';
-    return 'info';
+  const prioritySwatch = (priority: string) => {
+    if (priority === 'high') return 'var(--coral)';
+    if (priority === 'medium') return 'var(--accent)';
+    return 'var(--ink)';
   };
 
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">{isAdmin ? 'Admin Portal' : 'Notices'}</p>
-          <h1 className="text-xl font-bold mt-0.5">Notice Board</h1>
-          <p className="text-xs text-indigo-100 mt-0.5">{notices.length} active announcement{notices.length === 1 ? '' : 's'}</p>
+      <div className="stack pad">
+        <div className="topbar">
+          <div>
+            <div className="eyebrow">{notices.length} notice{notices.length === 1 ? '' : 's'}</div>
+            <h1>Notices</h1>
+          </div>
+          {canWrite && (
+            <div>
+              <button className="btn accent" onClick={() => setIsModalOpen(true)}>
+                <Plus style={{ width: 16, height: 16 }} /> New
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+          <Search style={{ width: 16, height: 16, color: 'var(--ink)', opacity: 0.4, flexShrink: 0 }} />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search notices..."
-            className="mt-3 w-full px-4 py-2.5 rounded-xl bg-white/15 backdrop-blur border border-white/20 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20"
+            placeholder="Search notices…"
+            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: '0.875rem', color: 'var(--ink)' }}
           />
         </div>
 
         {isAdmin && (
-          <div className="px-4 pt-3 overflow-x-auto flex gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="hscroll" style={{ display: 'flex', gap: '0.5rem' }}>
             <button
+              className={`chip${filterRole === 'all' ? ' solid' : ''}`}
               onClick={() => setFilterRole('all')}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
-                filterRole === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
-              )}
             >
               All
             </button>
             {roles.map(role => (
               <button
                 key={role}
+                className={`chip${filterRole === role ? ' solid' : ''}`}
                 onClick={() => setFilterRole(role)}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform capitalize",
-                  filterRole === role ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
-                )}
+                style={{ textTransform: 'capitalize', whiteSpace: 'nowrap' }}
               >
                 {role.replace('_', ' ')}
               </button>
@@ -255,205 +250,70 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
           </div>
         )}
 
-        <div className="px-4 pt-4 space-y-2.5">
-          {filteredNotices.length === 0 ? (
-            <div className="py-12 text-center">
-              <Bell className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No notices</p>
+        {filteredNotices.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: '3rem 1.5rem' }}>
+            <Bell style={{ width: 40, height: 40, margin: '0 auto 0.75rem', opacity: 0.25 }} />
+            <div style={{ fontWeight: 600, color: 'var(--ink)' }}>No notices found</div>
+            <div className="muted" style={{ fontSize: '0.82rem', marginTop: '0.25rem' }}>
+              {searchTerm ? 'Try a different search term.' : 'Post the first notice to the board.'}
             </div>
-          ) : (
-            filteredNotices.map((notice) => (
-              <div key={notice.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 relative overflow-hidden">
-                <div className={cn(
-                  'absolute left-0 top-0 bottom-0 w-1',
-                  notice.priority === 'high' ? 'bg-red-500' :
-                  notice.priority === 'medium' ? 'bg-amber-500' : 'bg-sky-500'
-                )} />
-                <div className="pl-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-bold text-slate-900 line-clamp-2">{notice.title}</h3>
-                      <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{notice.content}</p>
+          </div>
+        ) : (
+          <div className="stack">
+            {filteredNotices.map((notice) => (
+              <div key={notice.id} className="card" style={{ position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: prioritySwatch(notice.priority), borderRadius: '4px 0 0 4px' }} />
+                <div style={{ paddingLeft: '0.875rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="eyebrow" style={{ marginBottom: '0.25rem' }}>
+                        {new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {notice.authorName && <> · {notice.authorName}</>}
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--ink)' }}>{notice.title}</div>
+                      <div className="muted" style={{ fontSize: '0.82rem', marginTop: '0.25rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        {notice.content}
+                      </div>
                     </div>
-                    <Badge variant={priorityVariant(notice.priority)} className="text-[9px] shrink-0 capitalize">{notice.priority}</Badge>
+                    {canWrite && (
+                      <button className="icon-btn" onClick={() => handleDeleteNotice(notice.id)} title="Delete notice" style={{ flexShrink: 0 }}>
+                        <Trash2 style={{ width: 15, height: 15, color: 'var(--coral)' }} />
+                      </button>
+                    )}
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-                    <span className="flex items-center gap-1"><User className="w-3 h-3" />{notice.authorName}</span>
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-                  </div>
+
                   {notice.targetRoles && notice.targetRoles.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', marginTop: '0.625rem' }}>
                       {notice.targetRoles.map(role => (
-                        <span key={role} className="text-[9px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md capitalize">
+                        <span key={role} className="chip" style={{ fontSize: '0.7rem', textTransform: 'capitalize' }}>
                           {role.replace('_', ' ')}
                         </span>
                       ))}
                     </div>
                   )}
+
                   {notice.attachments && notice.attachments.length > 0 && (
-                    <div className="mt-2 space-y-1">
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.625rem' }}>
                       {notice.attachments.map((att, i) => (
                         <a
                           key={i}
                           href={att.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-lg active:scale-95 transition-transform"
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', fontWeight: 600, color: 'var(--accent)', background: 'var(--cream-2)', padding: '0.25rem 0.625rem', borderRadius: 6, textDecoration: 'none' }}
                         >
-                          <FileText className="w-3 h-3 shrink-0" />
-                          <span className="truncate flex-1">{att.name}</span>
-                          <Download className="w-3 h-3 shrink-0" />
+                          <FileText style={{ width: 13, height: 13 }} />
+                          <span style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.name}</span>
+                          <Download style={{ width: 13, height: 13 }} />
                         </a>
                       ))}
                     </div>
                   )}
-                  {canWrite && (
-                    <button
-                      onClick={() => handleDeleteNotice(notice.id)}
-                      className="mt-2 text-[11px] text-red-600 font-bold flex items-center gap-1 active:scale-95 transition-transform"
-                    >
-                      <Trash2 className="w-3 h-3" />Delete
-                    </button>
-                  )}
                 </div>
               </div>
-            ))
-          )}
-        </div>
-
-        {canWrite && (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-          >
-            <Plus className="w-6 h-6" strokeWidth={2.5} />
-          </button>
+            ))}
+          </div>
         )}
-      </div>
-
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Notice Board"
-        subtitle={isAdmin ? 'Manage school-wide announcements and communications.' : 'Stay updated with the latest school announcements.'}
-        icon={Bell}
-        iconColor="gradient-amber"
-        actions={
-          canWrite ? (
-            <Button icon={Plus} onClick={() => setIsModalOpen(true)}>
-              Post New Notice
-            </Button>
-          ) : undefined
-        }
-      />
-
-      {/* Filters */}
-      <Card padding="sm">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search notices..."
-            className="flex-1"
-          />
-          {isAdmin && (
-            <Select
-              value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value as any)}
-              className="sm:w-48"
-            >
-              <option value="all">All Audiences</option>
-              {roles.map(role => (
-                <option key={role} value={role}>{role.replace('_', ' ').toUpperCase()}</option>
-              ))}
-            </Select>
-          )}
-        </div>
-      </Card>
-
-      {/* Notice List */}
-      <div className="space-y-4">
-        {filteredNotices.map((notice) => (
-          <Card key={notice.id} className="relative overflow-hidden">
-            <div className={cn(
-              'absolute left-0 top-0 bottom-0 w-1',
-              notice.priority === 'high' ? 'bg-red-500' :
-              notice.priority === 'medium' ? 'bg-amber-500' : 'bg-sky-500'
-            )} />
-            <div className="pl-3 flex flex-col md:flex-row md:items-start justify-between gap-4">
-              <div className="flex-1 space-y-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant={priorityVariant(notice.priority)}>
-                    {notice.priority} Priority
-                  </Badge>
-                  <div className="flex items-center gap-1 text-xs text-slate-400">
-                    <Clock className="w-3 h-3" />
-                    {new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 mb-1">{notice.title}</h3>
-                  <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">{notice.content}</p>
-                </div>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {notice.targetRoles.map(role => (
-                    <Badge key={role} variant="default">
-                      {role.replace('_', ' ')}
-                    </Badge>
-                  ))}
-                </div>
-
-                {notice.attachments && notice.attachments.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {notice.attachments.map((att, i) => (
-                      <a
-                        key={i}
-                        href={att.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span className="truncate max-w-[200px]">{att.name}</span>
-                        <Download className="w-3.5 h-3.5" />
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col items-end gap-3 shrink-0">
-                <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg">
-                  <User className="w-3 h-3" />
-                  {notice.authorName}
-                </div>
-                {canWrite && (
-                  <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDeleteNotice(notice.id)} />
-                )}
-              </div>
-            </div>
-          </Card>
-        ))}
-
-        {filteredNotices.length === 0 && (
-          <Card>
-            <EmptyState
-              icon={Bell}
-              title="No notices found"
-              description={searchTerm ? 'Try a different search term.' : 'Post the first notice to the board.'}
-              action={
-                isAdmin && !searchTerm ? (
-                  <Button icon={Plus} size="sm" onClick={() => setIsModalOpen(true)}>
-                    Post Notice
-                  </Button>
-                ) : undefined
-              }
-            />
-          </Card>
-        )}
-      </div>
       </div>
 
       <ConfirmModal
@@ -470,7 +330,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
         title="Post New Notice"
         size="lg"
         footer={
-          <div className="flex items-center justify-end gap-3">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
             <Button variant="secondary" onClick={() => { setIsModalOpen(false); setFiles([]); }}>Cancel</Button>
             <Button form="notice-form" type="submit" loading={loading} icon={Megaphone}>
               Post Notice
@@ -497,12 +357,8 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
                       key={p}
                       type="button"
                       onClick={() => setFormData({ ...formData, priority: p })}
-                      className={cn(
-                        'flex-1 py-2 rounded-xl text-xs font-bold border transition-all capitalize',
-                        formData.priority === p
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                      )}
+                      className={formData.priority === p ? 'btn accent' : 'btn ghost'}
+                      style={{ flex: 1, fontSize: '0.75rem', textTransform: 'capitalize' }}
                     >
                       {p}
                     </button>
@@ -533,7 +389,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
                             setFormData({ ...formData, targetRoles: formData.targetRoles.filter(r => r !== role) });
                           }
                         }}
-                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-600/20"
+                        className="w-4 h-4 rounded"
                       />
                       <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
                         {role.replace('_', ' ')}
@@ -557,7 +413,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
 
           <FormField label="Attachments (Optional)">
             <div className="space-y-2">
-              <label className="flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-indigo-300 hover:bg-slate-50 transition-all text-sm font-semibold text-slate-500">
+              <label className="flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-slate-300 hover:bg-slate-50 transition-all text-sm font-semibold text-slate-500">
                 <Paperclip className="w-4 h-4" />
                 {files.length >= MAX_FILES ? `Max ${MAX_FILES} files reached` : 'Click to attach files'}
                 <input
@@ -574,7 +430,7 @@ export default function NoticeBoard({ user }: NoticeBoardProps) {
                 <div className="space-y-1.5">
                   {files.map((file, i) => (
                     <div key={i} className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-100 rounded-lg">
-                      <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <FileText className="w-4 h-4 text-slate-500 shrink-0" />
                       <span className="text-xs font-semibold text-slate-700 truncate flex-1">{file.name}</span>
                       <span className="text-[10px] text-slate-400 shrink-0">{formatSize(file.size)}</span>
                       <button

@@ -6,7 +6,7 @@ import {
   EyeOff,
   Loader2,
 } from 'lucide-react';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../../firebase';
@@ -88,14 +88,14 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
             const tData = { id: teacherDoc.id, ...teacherDoc.data() } as Teacher;
             setTeacherData(tData);
             if (tData.subjects) {
-              const names = await Promise.all(tData.subjects.map(async id => {
+              const names = await Promise.all(tData.subjects.map(async (id: string) => {
                 const docSnap = await getDoc(doc(db, 'subjects', id));
                 return docSnap.exists() ? docSnap.data().name : id;
               }));
               setSubjectNames(names);
             }
             if (tData.classes) {
-              const names = await Promise.all(tData.classes.map(async id => {
+              const names = await Promise.all(tData.classes.map(async (id: string) => {
                 const docSnap = await getDoc(doc(db, 'classes', id));
                 return docSnap.exists() ? docSnap.data().name : id;
               }));
@@ -268,7 +268,6 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
 
   const isSuperAdmin = user.role === 'super_admin';
   const canUploadPhoto = user.role === 'super_admin' || user.role === 'principal' || user.role === 'office_staff';
-
   const initials = (user.name || user.email || 'U')[0].toUpperCase();
 
   return (
@@ -329,7 +328,7 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
         {user.role === 'student' && studentData && (
           <>
             <IdentityRow label="Admission Number" value={studentData.admissionNumber} />
-            <IdentityRow label="Class &amp; Section" value={`${className} – ${studentData.section}`} />
+            <IdentityRow label="Class & Section" value={`${className} – ${studentData.section}`} />
             <IdentityRow label="House" value={houseName || 'Not Assigned'} />
           </>
         )}

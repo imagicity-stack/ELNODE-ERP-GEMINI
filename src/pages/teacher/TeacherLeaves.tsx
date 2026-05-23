@@ -23,34 +23,28 @@ import {
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { UserProfile, TeacherLeaveRequest, TeacherLeaveType } from '../../types';
 import {
-  PageHeader,
-  Card,
-  Button,
   Badge,
   Modal,
   FormField,
   Input,
   Select,
   Spinner,
-  EmptyState,
   Textarea,
+  Button,
 } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { format, differenceInCalendarDays, parseISO } from 'date-fns';
 import { logActivity } from '../../services/activityService';
 import { fmtDate } from '../../lib/utils';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+type TeacherLeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
-// Default casual leave quota; individual teachers may have `casualLeaveQuota`
-// set on their teacher doc (loaded at runtime and stored in teacherQuota state).
 const DEFAULT_CASUAL_LEAVE_QUOTA = 12;
 
 function countDays(startDate: string, endDate: string): number {
   if (!startDate || !endDate) return 0;
-  // differenceInCalendarDays is DST-safe (date-fns operates on midnight UTC)
   const diff = differenceInCalendarDays(parseISO(endDate), parseISO(startDate));
-  return diff < 0 ? 0 : diff + 1; // inclusive
+  return diff < 0 ? 0 : diff + 1;
 }
 
 function currentYearStart(): string {
@@ -69,7 +63,15 @@ function leaveTypeLabel(type: TeacherLeaveType): string {
   return map[type] ?? type;
 }
 
-// ─── Status Badge ─────────────────────────────────────────────────────────────
+function statusColor(status: TeacherLeaveStatus): string {
+  switch (status) {
+    case 'approved': return 'var(--leaf)';
+    case 'rejected': return 'var(--coral)';
+    case 'pending': return '#F59E0B';
+    case 'cancelled': return 'var(--ink-3)';
+    default: return 'var(--ink-3)';
+  }
+}
 
 function StatusBadge({ status, remarks }: { status: TeacherLeaveStatus; remarks?: string }) {
   switch (status) {
@@ -107,12 +109,9 @@ function StatusBadge({ status, remarks }: { status: TeacherLeaveStatus; remarks?
   }
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export default function TeacherLeaves({ user }: { user: UserProfile }) {
   const { showToast } = useToast();
 
-  // State
   const [leaves, setLeaves] = useState<TeacherLeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [applyModalOpen, setApplyModalOpen] = useState(false);
@@ -121,7 +120,6 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [casualLeaveQuota, setCasualLeaveQuota] = useState(DEFAULT_CASUAL_LEAVE_QUOTA);
 
-  // Form state
   const [leaveType, setLeaveType] = useState<TeacherLeaveType>('casual');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -130,14 +128,11 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
 
   const totalDays = countDays(startDate, endDate);
 
-  // ─── Fetch ──────────────────────────────────────────────────────────────────
-
   const fetchLeaves = async () => {
     try {
       setLoading(true);
       const teacherId = user.teacherId ?? user.uid;
 
-      // Load per-teacher casual leave quota if set on the teacher doc
       if (user.teacherId) {
         const teacherSnap = await getDoc(doc(db, 'teachers', user.teacherId));
         if (teacherSnap.exists()) {
@@ -169,8 +164,6 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Statistics ─────────────────────────────────────────────────────────────
-
   const yearStart = currentYearStart();
   const thisYearLeaves = leaves.filter(l => l.submittedAt >= yearStart && l.status !== 'cancelled');
   const totalApplied = thisYearLeaves.length;
@@ -182,8 +175,6 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
     .filter(l => l.leaveType === 'casual' && l.status === 'approved')
     .reduce((sum, l) => sum + l.totalDays, 0);
   const availableCasual = Math.max(0, casualLeaveQuota - usedCasualDays);
-
-  // ─── Apply Leave ────────────────────────────────────────────────────────────
 
   const resetForm = () => {
     setLeaveType('casual');
@@ -247,8 +238,6 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
     }
   };
 
-  // ─── Cancel Leave ────────────────────────────────────────────────────────────
-
   const handleCancel = async (leave: TeacherLeaveRequest) => {
     try {
       setCancelling(leave.id);
@@ -275,253 +264,119 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
     }
   };
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
-
   return (
     <>
-      {/* ── Mobile UI ─────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        {/* Mobile Header */}
-        <div className="bg-gradient-to-br from-teal-600 to-emerald-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-teal-200">Teacher Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">My Leaves</h1>
-          <p className="text-xs text-teal-100 mt-0.5">{totalApplied} applied this year · {pendingCount} pending</p>
+      <div className="topbar">
+        <div className="pad">
+          <p className="eyebrow">{pendingCount > 0 ? `${pendingCount} pending` : `${totalApplied} this year`}</p>
+          <h1 className="display">Leaves</h1>
+        </div>
+      </div>
 
-          {/* Stats row */}
-          <div className="mt-3 grid grid-cols-4 gap-2">
-            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{totalApplied}</p>
-              <p className="text-[9px] text-white/70 uppercase">Applied</p>
+      <div className="pad" style={{ paddingBottom: '2rem' }}>
+        <div className="stack">
+          {/* Stats + apply row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.625rem' }}>
+            <div className="card" style={{ padding: '0.875rem', textAlign: 'center' }}>
+              <p className="t-num" style={{ fontSize: '1.5rem' }}>{totalApplied}</p>
+              <p className="eyebrow" style={{ marginTop: '0.25rem' }}>Applied</p>
             </div>
-            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{approvedDays}</p>
-              <p className="text-[9px] text-white/70 uppercase">Approved</p>
+            <div className="card" style={{ padding: '0.875rem', textAlign: 'center' }}>
+              <p className="t-num" style={{ fontSize: '1.5rem', color: 'var(--leaf)' }}>{approvedDays}</p>
+              <p className="eyebrow" style={{ marginTop: '0.25rem' }}>Approved</p>
             </div>
-            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{pendingCount}</p>
-              <p className="text-[9px] text-white/70 uppercase">Pending</p>
+            <div className="card" style={{ padding: '0.875rem', textAlign: 'center' }}>
+              <p className="t-num" style={{ fontSize: '1.5rem', color: '#F59E0B' }}>{pendingCount}</p>
+              <p className="eyebrow" style={{ marginTop: '0.25rem' }}>Pending</p>
             </div>
-            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{availableCasual}</p>
-              <p className="text-[9px] text-white/70 uppercase">Casual</p>
+            <div className="card" style={{ padding: '0.875rem', textAlign: 'center' }}>
+              <p className="t-num" style={{ fontSize: '1.5rem' }}>{availableCasual}</p>
+              <p className="eyebrow" style={{ marginTop: '0.25rem' }}>Casual</p>
             </div>
           </div>
 
           <button
             onClick={() => setApplyModalOpen(true)}
-            className="mt-3 w-full py-2.5 rounded-xl bg-white/20 backdrop-blur border border-white/30 text-sm font-bold text-white flex items-center justify-center gap-2 active:scale-95 transition-transform"
+            className="btn accent"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%' }}
           >
-            <Plus className="w-4 h-4" /> Apply for Leave
+            <Plus className="w-4 h-4" />
+            Apply for Leave
           </button>
-        </div>
 
-        {/* Mobile Leave Cards */}
-        <div className="px-4 pt-4 space-y-2.5">
+          {/* Leave cards */}
           {loading ? (
-            <div className="py-12 text-center text-sm text-slate-500">Loading...</div>
+            <div className="flex justify-center py-12"><Spinner /></div>
           ) : leaves.length === 0 ? (
-            <div className="py-12 text-center">
-              <CalendarDays className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No leave requests yet</p>
-              <p className="text-xs text-slate-400 mt-1">Tap "Apply for Leave" to get started</p>
+            <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+              <CalendarDays className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--ink-3)' }} />
+              <p style={{ fontWeight: 700, color: 'var(--ink)' }}>No leave requests yet</p>
+              <p className="muted" style={{ fontSize: '0.8125rem', marginTop: '0.25rem' }}>
+                Apply for leave using the button above.
+              </p>
             </div>
           ) : (
-            leaves.map(leave => (
-              <div key={leave.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-900">{leaveTypeLabel(leave.leaveType)}</p>
-                    <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                      <CalendarDays className="w-3 h-3" />
-                      {format(new Date(leave.startDate), 'd MMM')}
-                      {leave.endDate !== leave.startDate ? ` → ${format(new Date(leave.endDate), 'd MMM')}` : ''}
-                      <span className="ml-1 text-slate-400">({leave.totalDays}d)</span>
-                    </p>
-                    <p className="text-[11px] text-slate-600 mt-1 line-clamp-2">{leave.reason}</p>
+            <div className="stack" style={{ gap: '0.5rem' }}>
+              {leaves.map(leave => (
+                <div
+                  key={leave.id}
+                  className="card"
+                  style={{ padding: '1rem', borderLeft: `3px solid ${statusColor(leave.status)}` }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--ink)' }}>
+                        {leaveTypeLabel(leave.leaveType)}
+                      </p>
+                      <p className="muted" style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
+                        <CalendarDays className="w-3 h-3" />
+                        {format(new Date(leave.startDate), 'd MMM')}
+                        {leave.endDate !== leave.startDate ? ` → ${format(new Date(leave.endDate), 'd MMM')}` : ''}
+                        <span style={{ marginLeft: '0.25rem' }}>({leave.totalDays}d)</span>
+                      </p>
+                      <p className="muted" style={{ fontSize: '0.75rem', marginTop: '0.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {leave.reason}
+                      </p>
+                    </div>
+                    <StatusBadge status={leave.status} remarks={leave.principalRemarks} />
                   </div>
-                  <StatusBadge status={leave.status} remarks={leave.principalRemarks} />
-                </div>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={() => setViewLeave(leave)}
-                    className="flex-1 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold active:scale-95 transition-transform"
-                  >
-                    View Details
-                  </button>
-                  {leave.status === 'pending' && (
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
                     <button
-                      onClick={() => handleCancel(leave)}
-                      disabled={cancelling === leave.id}
-                      className="flex-1 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-bold active:scale-95 transition-transform disabled:opacity-50"
+                      onClick={() => setViewLeave(leave)}
+                      className="btn ghost"
+                      style={{ flex: 1, fontSize: '0.75rem' }}
                     >
-                      {cancelling === leave.id ? 'Cancelling…' : 'Cancel'}
+                      View Details
                     </button>
-                  )}
+                    {leave.status === 'pending' && (
+                      <button
+                        onClick={() => handleCancel(leave)}
+                        disabled={cancelling === leave.id}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem',
+                          borderRadius: '0.625rem',
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--coral)',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          opacity: cancelling === leave.id ? 0.5 : 1,
+                        }}
+                      >
+                        {cancelling === leave.id ? 'Cancelling…' : 'Cancel'}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       </div>
 
-      {/* ── Desktop UI ────────────────────────────────────────────────────── */}
-      <div className="hidden md:block space-y-6">
-        <PageHeader
-          title="My Leaves"
-          subtitle="Apply and track your leave requests"
-          icon={CalendarDays}
-          iconColor="bg-teal-500"
-          actions={
-            <Button variant="primary" icon={Plus} onClick={() => setApplyModalOpen(true)}>
-              Apply for Leave
-            </Button>
-          }
-        />
-
-        {/* Stats Row */}
-        <div className="grid grid-cols-4 gap-4">
-          <Card className="p-4 bg-gradient-to-br from-indigo-50 to-white border-indigo-100">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-500 rounded-lg text-white">
-                <FileText className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Applied</p>
-                <h3 className="text-2xl font-black text-slate-900">{totalApplied}</h3>
-                <p className="text-[10px] text-slate-400">this year</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-4 bg-gradient-to-br from-emerald-50 to-white border-emerald-100">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-500 rounded-lg text-white">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Approved Days</p>
-                <h3 className="text-2xl font-black text-emerald-600">{approvedDays}</h3>
-                <p className="text-[10px] text-slate-400">days off granted</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-4 bg-gradient-to-br from-amber-50 to-white border-amber-100">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-500 rounded-lg text-white">
-                <Clock className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pending</p>
-                <h3 className="text-2xl font-black text-amber-600">{pendingCount}</h3>
-                <p className="text-[10px] text-slate-400">awaiting approval</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-4 bg-gradient-to-br from-teal-50 to-white border-teal-100">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-teal-500 rounded-lg text-white">
-                <CalendarDays className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Casual Available</p>
-                <h3 className="text-2xl font-black text-teal-600">{availableCasual}</h3>
-                <p className="text-[10px] text-slate-400">of {casualLeaveQuota} remaining</p>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Leaves Table */}
-        <Card className="p-0 overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-800">Leave History</h2>
-            <span className="text-xs text-slate-400 font-medium">{leaves.length} requests</span>
-          </div>
-
-          {loading ? (
-            <Spinner />
-          ) : leaves.length === 0 ? (
-            <EmptyState
-              icon={CalendarDays}
-              title="No leave requests yet"
-              description="Apply for leave using the button above and it will appear here."
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="text-left py-3 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Leave Type</th>
-                    <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Dates</th>
-                    <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Days</th>
-                    <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Reason</th>
-                    <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                    <th className="text-right py-3 px-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaves.map(leave => (
-                    <tr key={leave.id} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors group">
-                      <td className="py-4 px-6">
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">{leaveTypeLabel(leave.leaveType)}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            Submitted {format(new Date(leave.submittedAt), 'd MMM yyyy')}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="py-4 px-4">
-                        <p className="text-sm font-semibold text-slate-800 flex items-center gap-1">
-                          <CalendarDays className="w-3.5 h-3.5 text-teal-500" />
-                          {format(new Date(leave.startDate), 'd MMM')}
-                          {leave.endDate !== leave.startDate
-                            ? ` – ${format(new Date(leave.endDate), 'd MMM')}`
-                            : ''}
-                        </p>
-                      </td>
-                      <td className="py-4 px-4">
-                        <span className="text-sm font-bold text-slate-700">{leave.totalDays}</span>
-                        <span className="text-xs text-slate-400 ml-1">day{leave.totalDays !== 1 ? 's' : ''}</span>
-                      </td>
-                      <td className="py-4 px-4 max-w-[220px]">
-                        <p className="text-sm text-slate-600 truncate">{leave.reason}</p>
-                      </td>
-                      <td className="py-4 px-4">
-                        <StatusBadge status={leave.status} remarks={leave.principalRemarks} />
-                      </td>
-                      <td className="py-4 px-6 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            onClick={() => setViewLeave(leave)}
-                          >
-                            View
-                          </Button>
-                          {leave.status === 'pending' && (
-                            <Button
-                              variant="danger"
-                              size="xs"
-                              loading={cancelling === leave.id}
-                              onClick={() => handleCancel(leave)}
-                            >
-                              Cancel
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      </div>
-
-      {/* ── Apply Leave Modal ─────────────────────────────────────────────── */}
+      {/* Apply Leave Modal */}
       <Modal
         isOpen={applyModalOpen}
         onClose={() => { setApplyModalOpen(false); resetForm(); }}
@@ -622,7 +477,7 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
         </div>
       </Modal>
 
-      {/* ── View Leave Modal ──────────────────────────────────────────────── */}
+      {/* View Leave Modal */}
       <Modal
         isOpen={!!viewLeave}
         onClose={() => setViewLeave(null)}
@@ -633,7 +488,7 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
         {viewLeave && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-4">
-              <Card className="p-4 bg-slate-50 border-none shadow-none">
+              <div className="p-4 bg-slate-50 border-none shadow-none rounded-xl">
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2">Duration</p>
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-teal-100 rounded-lg">
@@ -651,9 +506,9 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
                     </p>
                   </div>
                 </div>
-              </Card>
+              </div>
 
-              <Card className="p-4 bg-slate-50 border-none shadow-none">
+              <div className="p-4 bg-slate-50 border-none shadow-none rounded-xl">
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2">Status</p>
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-indigo-100 rounded-lg">
@@ -666,7 +521,7 @@ export default function TeacherLeaves({ user }: { user: UserProfile }) {
                     </p>
                   </div>
                 </div>
-              </Card>
+              </div>
             </div>
 
             <div className="space-y-2">

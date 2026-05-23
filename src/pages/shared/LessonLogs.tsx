@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { UserProfile, LessonLog, Student } from '../../types';
 import {
-  BookOpen, Calendar as CalendarIcon, Search, Download, FileText,
-  Clock, ChevronRight, Paperclip, Edit2, Trash2, AlertTriangle,
-  History, User as UserIcon, RotateCw, Filter, X,
+  BookOpen, Search, Paperclip, Edit2, Trash2, AlertTriangle,
+  History, Filter, RotateCw, Download,
 } from 'lucide-react';
 import {
   collection, query, where, onSnapshot, orderBy, limit as fsLimit,
@@ -12,8 +11,7 @@ import {
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useData } from '../../contexts/DataContext';
 import {
-  PageHeader, Card, Badge, Button, EmptyState, Spinner, Modal,
-  FormField, Input, Textarea,
+  Modal, FormField, Input, Textarea, Button, Spinner,
 } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
@@ -214,161 +212,253 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
   const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); };
   const hasActiveFilters = !!(search || dateFrom || dateTo);
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Class Diary"
-        subtitle={student ? `Classwork and Homework for ${student.name}` : 'Daily lesson logs across classes'}
-        icon={BookOpen}
-        iconColor="gradient-blue"
-        actions={
-          <button
-            onClick={() => setShowFilters(s => !s)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-          >
-            <Filter className="w-4 h-4" />
-            Filters
-            {hasActiveFilters && <span className="px-1.5 py-0.5 rounded-full bg-blue-500 text-white text-[10px] font-bold">on</span>}
-          </button>
-        }
-      />
+  const dateRangeLabel = dateFrom || dateTo
+    ? `${dateFrom || '…'} → ${dateTo || '…'}`
+    : null;
 
-      {/* Search + filters */}
-      <Card padding="sm">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+  return (
+    <div>
+      {/* ── Topbar ── */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">
+            {logs.length > 0
+              ? `${logs.length} entries${dateRangeLabel ? ' · ' + dateRangeLabel : ''}`
+              : student
+                ? `${student.name}'s class diary`
+                : 'Daily lesson logs'}
+          </div>
+          <h1>Class Diary</h1>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Desktop: date range inline */}
+          <div className="flex gap-8 center" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
-              type="text"
-              placeholder="Search topic, content, subject, teacher..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              title="From date"
+              style={{
+                border: '1px solid var(--line)',
+                borderRadius: 10,
+                padding: '6px 10px',
+                fontSize: 13,
+                background: 'var(--paper)',
+                color: 'var(--ink)',
+                display: 'none',
+              }}
+              className="desktop-date-from"
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              title="To date"
+              style={{
+                border: '1px solid var(--line)',
+                borderRadius: 10,
+                padding: '6px 10px',
+                fontSize: 13,
+                background: 'var(--paper)',
+                color: 'var(--ink)',
+                display: 'none',
+              }}
+              className="desktop-date-to"
             />
           </div>
+          {/* Mobile: filter toggle */}
+          <button
+            className="icon-btn mobile-only"
+            onClick={() => setShowFilters(s => !s)}
+            title="Toggle filters"
+            style={{ position: 'relative' }}
+          >
+            <Filter size={18} />
+            {hasActiveFilters && (
+              <span style={{
+                position: 'absolute', top: 2, right: 2,
+                width: 7, height: 7, borderRadius: '50%',
+                background: 'var(--accent)',
+              }} />
+            )}
+          </button>
           {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="px-3 py-2 text-xs font-semibold text-slate-500 hover:text-rose-600 transition-colors"
-              title="Clear filters"
-            >
+            <button className="btn ghost" onClick={clearFilters} style={{ fontSize: 12 }}>
               Clear
             </button>
           )}
         </div>
+      </div>
+
+      <div className="pad">
+        {/* ── Search card ── */}
+        <div className="card flex center gap-8" style={{ padding: '10px 14px', marginBottom: 16 }}>
+          <Search size={16} style={{ color: 'var(--ink-3)', flexShrink: 0 }} />
+          <input
+            type="text"
+            placeholder="Search topic, content, subject, teacher…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{
+              flex: 1, border: 'none', outline: 'none',
+              background: 'transparent', fontSize: 14, color: 'var(--ink)',
+            }}
+          />
+        </div>
+
+        {/* ── Date filter panel (mobile toggle / desktop always shown via CSS) ── */}
         {showFilters && (
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">From</label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">To</label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
+          <div className="card" style={{ marginBottom: 16, padding: '14px 16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>From</div>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={e => setDateFrom(e.target.value)}
+                  style={{
+                    width: '100%', border: '1px solid var(--line)', borderRadius: 10,
+                    padding: '8px 10px', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)',
+                  }}
+                />
+              </div>
+              <div>
+                <div className="eyebrow" style={{ marginBottom: 4 }}>To</div>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={e => setDateTo(e.target.value)}
+                  style={{
+                    width: '100%', border: '1px solid var(--line)', borderRadius: 10,
+                    padding: '8px 10px', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)',
+                  }}
+                />
+              </div>
             </div>
           </div>
         )}
-      </Card>
 
-      {loading ? (
-        <div className="py-20 flex flex-col items-center gap-4">
-          <Spinner size="lg" />
-          <p className="text-slate-500 font-medium">Loading lesson logs...</p>
-        </div>
-      ) : visibleLogs.length > 0 ? (
-        <>
-          <div className="text-xs text-slate-400 font-semibold">
-            Showing {visibleLogs.length} of {logs.length} loaded {hasMore && '· more available'}
+        {/* ── Content ── */}
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 0', gap: 12 }}>
+            <Spinner size="lg" />
+            <p className="muted" style={{ fontSize: 14 }}>Loading lesson logs…</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {visibleLogs.map(log => (
-              <Card
-                key={log.id}
-                className="hover:shadow-lg transition-all cursor-pointer group border-l-4 border-l-blue-500"
-                onClick={() => setSelectedLog(log)}
-              >
-                <div className="flex flex-col h-full">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="min-w-0">
-                      <Badge variant="info" className="mb-2">
-                        {new Date(log.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
-                      </Badge>
-                      <h3 className="text-lg font-black text-slate-900 leading-tight group-hover:text-blue-600 transition-colors truncate">
+        ) : visibleLogs.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 0' }}>
+            <BookOpen size={40} style={{ color: 'var(--line)', margin: '0 auto 12px' }} />
+            <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>
+              {hasActiveFilters ? 'No matching logs' : 'No Logs Available'}
+            </p>
+            <p className="muted" style={{ fontSize: 14 }}>
+              {hasActiveFilters
+                ? 'Try adjusting your search or date filters.'
+                : student
+                  ? 'No classwork or homework has been logged for this class yet.'
+                  : 'Check back later for updates.'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+              Showing {visibleLogs.length} of {logs.length} loaded{hasMore ? ' · more available' : ''}
+            </p>
+
+            <div className="stack">
+              {visibleLogs.map(log => (
+                <div
+                  key={log.id}
+                  className="card"
+                  style={{ cursor: 'pointer', borderLeft: '4px solid var(--accent)' }}
+                  onClick={() => setSelectedLog(log)}
+                >
+                  {/* Header row */}
+                  <div className="row" style={{ alignItems: 'flex-start', padding: 0, marginBottom: 8 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="eyebrow" style={{ marginBottom: 4 }}>
+                        {subjects[log.subjectId] || log.subjectId}
+                        {' · '}
+                        {classes[log.classId] ? `Class ${classes[log.classId]}` : log.classId}
+                      </div>
+                      <p style={{ fontWeight: 800, fontSize: 15, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {log.topic}
-                      </h3>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1 truncate">
-                        {subjects[log.subjectId] || log.subjectId} • Class {classes[log.classId] || log.classId}
                       </p>
                     </div>
-                    <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-all shrink-0">
-                      <ChevronRight className="w-5 h-5" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      {log.classworkFileUrl && <Paperclip size={13} style={{ color: 'var(--accent)' }} />}
+                      {log.homeworkFileUrl && <Paperclip size={13} style={{ color: 'var(--leaf)' }} />}
+                      <span className="mono tiny" style={{ fontSize: 11 }}>
+                        {new Date(log.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="space-y-3 flex-1">
-                    <div className="flex items-start gap-2">
-                      <div className="w-1 h-1 rounded-full bg-blue-500 mt-2 shrink-0" />
-                      <p className="text-sm text-slate-600 line-clamp-2">
-                        <span className="font-bold">CW:</span> {log.classwork || 'No classwork noted'}
-                      </p>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-1 h-1 rounded-full bg-emerald-500 mt-2 shrink-0" />
-                      <p className="text-sm text-slate-600 line-clamp-2">
-                        <span className="font-bold">HW:</span> {log.homework || 'No homework assigned'}
-                      </p>
-                    </div>
-                  </div>
+                  {/* Classwork preview */}
+                  <p className="muted" style={{
+                    fontSize: 13, margin: '4px 0',
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  }}>
+                    <strong style={{ color: 'var(--ink)' }}>CW:</strong> {log.classwork || 'No classwork noted'}
+                  </p>
 
-                  <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase truncate">
-                      <Clock className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{teachers[log.teacherId] || 'Subject Teacher'}</span>
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      {log.classworkFileUrl && <Paperclip className="w-3 h-3 text-blue-400" />}
-                      {log.homeworkFileUrl && <Paperclip className="w-3 h-3 text-emerald-400" />}
+                  {/* Homework preview */}
+                  <p className="muted" style={{
+                    fontSize: 13, margin: '4px 0 8px',
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  }}>
+                    <strong style={{ color: 'var(--ink)' }}>HW:</strong> {log.homework || 'No homework assigned'}
+                  </p>
+
+                  {/* Footer */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                    <span className="eyebrow" style={{ fontSize: 10, letterSpacing: '0.08em' }}>
+                      {teachers[log.teacherId] || 'Subject Teacher'}
+                    </span>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       {log.updatedAt && log.updatedAt !== log.createdAt && (
-                        <span title={`Last edited by ${log.updatedByName || 'someone'}`} className="text-[10px] text-amber-500 font-bold">edited</span>
+                        <span style={{ fontSize: 10, color: 'var(--coral)', fontWeight: 700 }}>edited</span>
+                      )}
+                      {canEdit(log) && (
+                        <button
+                          className="icon-btn"
+                          title="Edit"
+                          onClick={e => { e.stopPropagation(); openEdit(log); }}
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                      )}
+                      {canDelete(log) && (
+                        <button
+                          className="icon-btn"
+                          title="Delete"
+                          onClick={e => { e.stopPropagation(); setDeleteCandidate(log); }}
+                          style={{ color: 'var(--coral)' }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       )}
                     </div>
                   </div>
                 </div>
-              </Card>
-            ))}
-          </div>
-
-          {hasMore && (
-            <div className="flex justify-center pt-4">
-              <Button onClick={loadMore} disabled={loadingMore} variant="secondary" icon={RotateCw}>
-                {loadingMore ? 'Loading...' : 'Load More'}
-              </Button>
+              ))}
             </div>
-          )}
-        </>
-      ) : (
-        <EmptyState
-          icon={FileText}
-          title={hasActiveFilters ? 'No matching logs' : 'No Logs Available'}
-          description={
-            hasActiveFilters
-              ? 'Try adjusting your search or date filters.'
-              : student
-                ? 'No classwork or homework has been logged for this class yet.'
-                : 'Check back later for updates.'
-          }
-        />
-      )}
+
+            {hasMore && (
+              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 20 }}>
+                <button
+                  className="btn ghost"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  <RotateCw size={15} className={loadingMore ? 'animate-spin' : ''} />
+                  {loadingMore ? 'Loading…' : 'Load More'}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {/* ─── Detail Modal ─────────────────────────────────────────────────── */}
       <Modal

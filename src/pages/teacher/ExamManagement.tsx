@@ -1,5 +1,5 @@
 import { UserProfile, Exam, ExamResult, Student, Subject, GradingScale, Teacher } from '../../types';
-import { Plus, FileText, TrendingUp, Calendar, Trash2, CheckCircle2, AlertCircle, Save, AlertTriangle } from 'lucide-react';
+import { Plus, FileText, Trash2, AlertTriangle } from 'lucide-react';
 import { validateExamSchedule, findExamConflicts, ExamConflict, ValidationIssue } from '../../services/examService';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
@@ -7,32 +7,18 @@ import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, getDocs, query, where, orderBy, doc, updateDoc, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import {
-  PageHeader,
-  StatCard,
-  Card,
+  Spinner,
   Badge,
   Button,
-  IconButton,
   Modal,
   ConfirmModal,
-  SearchInput,
   FormField,
   Input,
   Select,
   Textarea,
-  Table,
-  Thead,
-  Th,
-  Tbody,
-  Tr,
-  Td,
-  EmptyState,
-  Spinner,
 } from '../../components/ui';
 
 interface ExamManagementProps {
@@ -48,7 +34,7 @@ export default function ExamManagement({ user }: ExamManagementProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
 
@@ -82,7 +68,6 @@ export default function ExamManagement({ user }: ExamManagementProps) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch Teacher Profile
       const teacherIdForFetch = user.teacherId || user.uid;
       const teacherDoc = await getDoc(doc(db, 'teachers', teacherIdForFetch));
       if (teacherDoc.exists()) {
@@ -144,7 +129,6 @@ export default function ExamManagement({ user }: ExamManagementProps) {
   const handleScheduleExam = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate first
     const issues = validateExamSchedule({
       startDate: newExam.startDate,
       endDate: newExam.endDate || newExam.startDate,
@@ -159,7 +143,6 @@ export default function ExamManagement({ user }: ExamManagementProps) {
       return;
     }
 
-    // Conflict check — if found and not yet overridden, show and require override
     if (!overrideConflicts) {
       setCheckingConflicts(true);
       try {
@@ -177,7 +160,6 @@ export default function ExamManagement({ user }: ExamManagementProps) {
           return;
         }
       } catch (err) {
-        // Non-fatal — log and continue
         console.warn('Conflict check failed:', err);
       } finally {
         setCheckingConflicts(false);
@@ -191,7 +173,7 @@ export default function ExamManagement({ user }: ExamManagementProps) {
         const timestamp = new Date().getTime();
         storagePath = `exams/syllabus/${user.uid}/${timestamp}_${newExam.syllabusPhoto.name}`;
         const storageRef = ref(storage, storagePath);
-        
+
         const uploadResult = await uploadBytes(storageRef, newExam.syllabusPhoto);
         syllabusPhotoUrl = await getDownloadURL(uploadResult.ref);
       }
@@ -255,241 +237,166 @@ export default function ExamManagement({ user }: ExamManagementProps) {
     }
   };
 
-  const generateReportCard = (exam: Exam) => {
-    if (exam.status !== 'published') {
-      showToast('Publish the exam results first (open the exam in Marks Entry → Publish).', 'error');
-      return;
-    }
-    showToast('Report cards are now available on individual student and parent portals.', 'info');
+  const statusVariantMap: Record<string, string> = {
+    scheduled: '#3B82F6',
+    ongoing: '#F59E0B',
+    completed: 'var(--leaf)',
+    published: '#8B5CF6',
   };
+
+  const statusFilters = ['all', 'scheduled', 'ongoing', 'completed', 'published'];
 
   const filteredExams = exams.filter(exam =>
-    exam.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    exam.classIds.some(cid => cid.toLowerCase().includes(searchTerm.toLowerCase()))
+    filterStatus === 'all' || exam.status === filterStatus
   );
-
-  const examStatusVariant = (status: string): 'success' | 'warning' | 'info' | 'indigo' => {
-    if (status === 'published') return 'indigo';
-    if (status === 'completed') return 'success';
-    if (status === 'ongoing') return 'warning';
-    return 'info';
-  };
 
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100">Exams & Results</p>
-          <h1 className="text-xl font-bold mt-0.5">Manage Exams</h1>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{exams.filter(e => e.status === 'scheduled').length}</p>
-              <p className="text-[9px] text-white/70">Upcoming</p>
+      <div className="topbar">
+        <div className="pad">
+          <p className="eyebrow">{exams.length} total</p>
+          <h1 className="display">Exams</h1>
+        </div>
+      </div>
+
+      <div className="pad" style={{ paddingBottom: '2rem' }}>
+        <div className="stack">
+          {/* Add button + stat strip */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
+            <div className="card" style={{ padding: '0.875rem', textAlign: 'center' }}>
+              <p className="t-num" style={{ fontSize: '1.5rem', color: '#3B82F6' }}>
+                {exams.filter(e => e.status === 'scheduled').length}
+              </p>
+              <p className="eyebrow" style={{ marginTop: '0.25rem' }}>Upcoming</p>
             </div>
-            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{exams.filter(e => e.status === 'completed').length}</p>
-              <p className="text-[9px] text-white/70">Done</p>
+            <div className="card" style={{ padding: '0.875rem', textAlign: 'center' }}>
+              <p className="t-num" style={{ fontSize: '1.5rem', color: 'var(--leaf)' }}>
+                {exams.filter(e => e.status === 'completed').length}
+              </p>
+              <p className="eyebrow" style={{ marginTop: '0.25rem' }}>Done</p>
             </div>
-            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{exams.filter(e => e.status === 'scheduled' && new Date(e.startDate) < new Date()).length}</p>
-              <p className="text-[9px] text-white/70">Pending</p>
+            <div className="card" style={{ padding: '0.875rem', textAlign: 'center' }}>
+              <p className="t-num" style={{ fontSize: '1.5rem', color: '#F59E0B' }}>
+                {exams.filter(e => e.status === 'scheduled' && new Date(e.startDate) < new Date()).length}
+              </p>
+              <p className="eyebrow" style={{ marginTop: '0.25rem' }}>Pending</p>
             </div>
           </div>
-        </div>
 
-        <div className="px-4 mt-3 mb-3">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search exams..."
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-blue-400"
-          />
-        </div>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="btn accent"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%' }}
+          >
+            <Plus className="w-4 h-4" />
+            Schedule Exam
+          </button>
 
-        <div className="px-4 space-y-2">
+          {/* Status filter chips */}
+          <div className="hscroll" style={{ gap: '0.5rem', paddingBottom: '0.25rem' }}>
+            {statusFilters.map((s) => (
+              <button
+                key={s}
+                onClick={() => setFilterStatus(s)}
+                className={`chip ${filterStatus === s ? 'solid' : ''}`}
+                style={{ flexShrink: 0, textTransform: 'capitalize' }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          {/* Exam cards */}
           {loading ? (
-            <div className="py-10 flex justify-center"><Spinner /></div>
+            <div className="flex justify-center py-12"><Spinner /></div>
           ) : filteredExams.length === 0 ? (
-            <div className="py-12 text-center">
-              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No exams scheduled</p>
-              <p className="text-xs text-slate-500 mt-1">Tap the + button to add</p>
+            <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+              <FileText className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--ink-3)' }} />
+              <p style={{ fontWeight: 700, color: 'var(--ink)' }}>No exams found</p>
+              <p className="muted" style={{ fontSize: '0.8125rem', marginTop: '0.25rem' }}>
+                Schedule an exam using the button above.
+              </p>
             </div>
           ) : (
-            filteredExams.map((exam) => (
-              <div key={exam.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
-                    {exam.name.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">{exam.name}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">
-                      {subjects.find(s => s.id === exam.subjectId)?.name || exam.subjectId} · {new Date(exam.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                    </p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">Max {exam.maxMarks} marks</p>
-                  </div>
-                  <Badge variant={examStatusVariant(exam.status)} className="text-[9px] shrink-0">
-                    {exam.status}
-                  </Badge>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => navigate(`/teacher/exams/${exam.id}/marks`)}
-                    className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold active:scale-95 transition-transform"
-                  >
-                    {exam.status === 'completed' ? 'Edit Results' : 'Enter Results'}
-                  </button>
-                  <button
-                    onClick={() => handleDelete(exam.id)}
-                    className="py-2.5 px-4 rounded-xl bg-red-50 text-red-600 text-xs font-bold active:scale-95 transition-transform"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* FAB */}
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-        >
-          <Plus className="w-6 h-6" strokeWidth={2.5} />
-        </button>
-      </div>
-
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Exam & Result Management"
-        subtitle="Schedule exams and manage student results for your classes."
-        icon={FileText}
-        iconColor="gradient-blue"
-        actions={
-          <Button icon={Plus} onClick={() => setIsModalOpen(true)}>
-            Schedule Exam
-          </Button>
-        }
-      />
-
-      {/* Exam Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          label="Upcoming Exams"
-          value={exams.filter(e => e.status === 'scheduled').length}
-          icon={Calendar}
-          gradient="gradient-blue"
-          index={0}
-        />
-        <StatCard
-          label="Completed"
-          value={exams.filter(e => e.status === 'completed').length}
-          icon={CheckCircle2}
-          gradient="gradient-emerald"
-          index={1}
-        />
-        <StatCard
-          label="Pending Results"
-          value={exams.filter(e => e.status === 'scheduled' && new Date(e.startDate) < new Date()).length}
-          icon={AlertCircle}
-          gradient="gradient-amber"
-          index={2}
-        />
-        <StatCard
-          label="Grading Scales"
-          value={gradingScales.length}
-          icon={TrendingUp}
-          gradient="gradient-violet"
-          index={3}
-        />
-      </div>
-
-      {/* Exam List */}
-      <Card padding="none">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search by exam title or class..."
-            className="max-w-md"
-          />
-        </div>
-        <Table>
-          <Thead>
-            <tr>
-              <Th>Exam Title</Th>
-              <Th>Class &amp; Subject</Th>
-              <Th>Date</Th>
-              <Th>Max Marks</Th>
-              <Th>Status</Th>
-              <Th className="text-right">Actions</Th>
-            </tr>
-          </Thead>
-          <Tbody>
-            {filteredExams.map((exam) => (
-              <Tr key={exam.id}>
-                <Td>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
+            <div className="stack" style={{ gap: '0.5rem' }}>
+              {filteredExams.map((exam) => (
+                <div
+                  key={exam.id}
+                  className="card"
+                  style={{
+                    padding: '1rem',
+                    borderLeft: `3px solid ${statusVariantMap[exam.status] || 'var(--line)'}`,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.875rem', marginBottom: '0.75rem' }}>
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: '0.625rem',
+                        background: 'var(--cream-2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.875rem',
+                        fontWeight: 800,
+                        color: 'var(--ink)',
+                        flexShrink: 0,
+                      }}
+                    >
                       {exam.name.charAt(0)}
                     </div>
-                    <span className="font-bold text-slate-900">{exam.name}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {exam.name}
+                      </p>
+                      <p className="muted" style={{ fontSize: '0.75rem', marginTop: '0.125rem' }}>
+                        {subjects.find(s => s.id === exam.subjectId)?.name || exam.subjectId}
+                        {' · '}
+                        {new Date(exam.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      </p>
+                      <p className="muted" style={{ fontSize: '0.75rem', marginTop: '0.125rem' }}>
+                        Max {exam.maxMarks} marks
+                      </p>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        textTransform: 'capitalize',
+                        padding: '0.25rem 0.625rem',
+                        borderRadius: '2rem',
+                        background: statusVariantMap[exam.status] || 'var(--cream-2)',
+                        color: 'white',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {exam.status}
+                    </span>
                   </div>
-                </Td>
-                <Td className="text-slate-600">
-                  {exam.classIds.join(', ')} &bull; {subjects.find(s => s.id === exam.subjectId)?.name || exam.subjectId}
-                </Td>
-                <Td className="text-slate-600">{new Date(exam.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Td>
-                <Td className="font-bold text-slate-900">{exam.maxMarks}</Td>
-                <Td>
-                  <Badge variant={examStatusVariant(exam.status)}>
-                    {exam.status}
-                  </Badge>
-                </Td>
-                <Td>
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      size="xs"
-                      variant={exam.status === 'completed' ? 'secondary' : 'primary'}
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
                       onClick={() => navigate(`/teacher/exams/${exam.id}/marks`)}
+                      className="btn accent"
+                      style={{ flex: 1, fontSize: '0.8125rem' }}
                     >
                       {exam.status === 'completed' ? 'Edit Results' : 'Enter Results'}
-                    </Button>
-                    <IconButton
-                      icon={Trash2}
-                      variant="danger"
-                      size="sm"
+                    </button>
+                    <button
                       onClick={() => handleDelete(exam.id)}
-                    />
+                      className="icon-btn"
+                      style={{ color: 'var(--coral)', flexShrink: 0 }}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
-        {filteredExams.length === 0 && (
-          loading
-            ? <Spinner />
-            : <EmptyState
-                icon={FileText}
-                title="No exams found"
-                description="No exams scheduled yet. Create one to get started."
-                action={
-                  <Button icon={Plus} size="sm" onClick={() => setIsModalOpen(true)}>
-                    Schedule Exam
-                  </Button>
-                }
-              />
-        )}
-      </Card>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Delete Confirmation Modal — shared by mobile + desktop */}
       <ConfirmModal
         isOpen={isDeleteModalOpen}
         onClose={() => { setIsDeleteModalOpen(false); setDeletingId(null); }}
@@ -514,7 +421,6 @@ export default function ExamManagement({ user }: ExamManagementProps) {
         }
       >
         <form id="exam-form" onSubmit={handleScheduleExam} className="space-y-5">
-          {/* Validation issues banner */}
           {validationIssues.length > 0 && (
             <div className="space-y-1">
               {validationIssues.map((iss, i) => (
@@ -529,7 +435,6 @@ export default function ExamManagement({ user }: ExamManagementProps) {
             </div>
           )}
 
-          {/* Conflicts banner with override */}
           {conflicts.length > 0 && (
             <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 space-y-2">
               <div className="flex items-start gap-2">
@@ -555,7 +460,6 @@ export default function ExamManagement({ user }: ExamManagementProps) {
             </div>
           )}
 
-          {/* Exam type toggle */}
           <div className="flex p-1 bg-slate-100 rounded-xl">
             {(['scheduled', 'surprise', 'internal', 'practical'] as const).map((type) => (
               <button
@@ -608,21 +512,21 @@ export default function ExamManagement({ user }: ExamManagementProps) {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-             <FormField label="Start Time">
-                <Input
-                  type="time"
-                  value={newExam.startTime}
-                  onChange={e => setNewExam({ ...newExam, startTime: e.target.value })}
-                />
-             </FormField>
-             <FormField label="Room / Venue">
-                <Input
-                  type="text"
-                  value={newExam.room}
-                  onChange={e => setNewExam({ ...newExam, room: e.target.value })}
-                  placeholder="e.g. Hall A"
-                />
-             </FormField>
+            <FormField label="Start Time">
+              <Input
+                type="time"
+                value={newExam.startTime}
+                onChange={e => setNewExam({ ...newExam, startTime: e.target.value })}
+              />
+            </FormField>
+            <FormField label="Room / Venue">
+              <Input
+                type="text"
+                value={newExam.room}
+                onChange={e => setNewExam({ ...newExam, room: e.target.value })}
+                placeholder="e.g. Hall A"
+              />
+            </FormField>
           </div>
 
           {newExam.type !== 'surprise' ? (

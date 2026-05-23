@@ -22,26 +22,15 @@ import { useToast } from '../../components/Toast';
 import { PaymentSuccess, StaggeredList } from '../../components/animations';
 import { logActivity } from '../../services/activityService';
 import {
-  PageHeader,
-  Card,
   Badge,
   Button,
   IconButton,
   Modal,
-  SearchInput,
   FormField,
   Input,
   Select,
   Textarea,
-  Table,
-  Thead,
-  Th,
-  Tbody,
-  Tr,
-  Td,
-  EmptyState,
   Avatar,
-  StatCard,
 } from '../../components/ui';
 
 interface FeeCollectionProps {
@@ -83,8 +72,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
   const [advanceStudent, setAdvanceStudent] = useState<Student | null>(null);
   const [advanceData, setAdvanceData] = useState({
-    selectedMonths: [] as string[],   // e.g. ["June 2025", "July 2025"]
-    selectedHeads: [] as string[],    // head names from the student's fee structure
+    selectedMonths: [] as string[],
+    selectedHeads: [] as string[],
     method: 'cash' as PaymentMethod,
     date: new Date().toISOString().split('T')[0],
     referenceNumber: '',
@@ -93,7 +82,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     remarks: '',
   });
   const [advanceLoading, setAdvanceLoading] = useState(false);
-  const [advancePayments, setAdvancePayments] = useState<any[]>([]);  // for showing existing advances
+  const [advancePayments, setAdvancePayments] = useState<any[]>([]);
 
   const [waiverData, setWaiverData] = useState({
     amount: '',
@@ -105,7 +94,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
   const [customHeadForm, setCustomHeadForm] = useState({ name: '', amount: '' });
   const [addGlobalHeadId, setAddGlobalHeadId] = useState('');
-  // Default fee due day comes from School Settings. Falls back to 10 until loaded.
   const [defaultFeeDueDay, setDefaultFeeDueDay] = useState<number>(10);
   const [requestData, setRequestData] = useState<{
     month: string;
@@ -143,14 +131,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       if (fineSnap.exists()) setFineConfig(fineSnap.data() as FineConfig);
     }).catch(onErr);
 
-    // Load school settings so we use the configured default fee due day
     getSchoolSettings().then(s => {
       if (s.defaultFeeDueDay && s.defaultFeeDueDay >= 1 && s.defaultFeeDueDay <= 28) {
         setDefaultFeeDueDay(s.defaultFeeDueDay);
       }
     }).catch(() => {/* settings load is non-critical */});
 
-    // Check for search param in URL
     const params = new URLSearchParams(window.location.search);
     const searchParam = params.get('search');
     if (searchParam) {
@@ -262,18 +248,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       );
       const requestRef = doc(db, 'feeRequests', pendingRequest.id);
 
-      // Pre-fetch prior payments for this fee request so we can allocate the new
-      // amount across the request's heads (derived bookkeeping; authoritative
-      // totals stay on the transactional fee-request read below).
       const priorPaymentsSnap = await getDocs(query(
         collection(db, 'feePayments'),
         where('feeRequestId', '==', pendingRequest.id)
       ));
       const priorPayments = priorPaymentsSnap.docs.map(d => d.data() as FeePayment);
 
-      // Upload cash voucher image (if attached) before the transaction so the
-      // resulting URL is part of the payment doc. Orphaned files on tx failure
-      // are acceptable — voucher photos are small and rare.
       let voucherImageUrl: string | undefined;
       if (paymentData.method === 'cash' && paymentData.voucherImage) {
         try {
@@ -291,8 +271,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         }
       }
 
-      // Atomic transaction: re-read the fee request, validate against latest state,
-      // create payment + update request together. Prevents stale-read overpayments.
       const txResult = await runTransaction(db, async (tx) => {
         const fresh = await tx.get(requestRef);
         if (!fresh.exists()) throw new Error('Fee request no longer exists');
@@ -303,8 +281,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         }
 
         const currentFine = fineConfig ? calculateFine(freshData, fineConfig) : 0;
-        // Fine is a separate obligation handled via waiver — cash payments apply
-        // to fee heads only so partial payments are never inflated by the fine.
         const feeTotal = freshData.totalAmount - (freshData.waivedAmount || 0);
         const alreadyPaid = freshData.paidAmount || 0;
         const feeRemaining = Math.max(0, feeTotal - alreadyPaid);
@@ -320,9 +296,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         const newStatus: FeeRequest['status'] =
           newPaidAmount + 0.001 >= feeTotal ? 'paid' : 'partially_paid';
 
-        // ── Allocate the new payment across the request's heads (FIFO).
-        // Uses balances derived from prior payments' allocations. Falls back to
-        // the user-selected head if the request has no head breakdown.
         const headBalances = new Map<string, number>();
         (freshData.heads || []).forEach(h => {
           headBalances.set(h.name, (h.finalAmount ?? h.amount ?? 0));
@@ -341,7 +314,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
         const allocations: { headName: string; amount: number }[] = [];
         let remainingToAllocate = payAmount;
-        // Prefer the user-selected head first, then walk the rest in declared order.
         const orderedHeads = (freshData.heads || []).map(h => h.name);
         const ordered = orderedHeads.includes(paymentData.head)
           ? [paymentData.head, ...orderedHeads.filter(n => n !== paymentData.head)]
@@ -355,7 +327,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           allocations.push({ headName: name, amount: Number(take.toFixed(2)) });
           remainingToAllocate -= take;
         }
-        // Any leftover (e.g. fine portion, or request had no heads) gets a fallback row
         if (remainingToAllocate > 0.001) {
           allocations.push({
             headName: paymentData.head || 'Other',
@@ -369,7 +340,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           feeRequestId: pendingRequest.id,
           feeHead: paymentData.head,
           amount: payAmount,
-          fineAmount: 0, // Fine snapshot lives on the FeeRequest; payments record cash collected
+          fineAmount: 0,
           allocations,
           date: paymentData.date,
           method: paymentData.method,
@@ -396,10 +367,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       const paymentDoc = txResult.paymentDoc;
 
-      // activity logged below after student.feeStatus update
-
-      // Recompute student.feeStatus from the latest set of requests (best-effort,
-      // derived field — done after the atomic write so it never blocks payment).
       try {
         const allReqSnap = await getDocs(query(
           collection(db, 'feeRequests'),
@@ -426,10 +393,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       setIsModalOpen(false);
       fetchData();
-      // Celebrate the successful payment
       setPaymentSuccess({ amount: payAmount, receiptNumber });
 
-      // Auto-send WhatsApp receipt to parent (cash, bank, online — any method)
       try {
         const parentPhone = selectedStudent.parentDetails?.phone;
         if (parentPhone) {
@@ -453,7 +418,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
             }),
           });
         }
-      } catch { /* non-fatal — payment is already recorded */ }
+      } catch { /* non-fatal */ }
     } catch (err: any) {
       const msg = err?.message || '';
       if (msg && !msg.toLowerCase().includes('firestore') && !msg.toLowerCase().includes('permission')) {
@@ -470,14 +435,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     e.preventDefault();
     if (!selectedStudent) return;
 
-    // Validate all discounts have a reason
     const missingReason = requestData.heads.find(h => h.discount > 0 && !h.discountReason?.trim());
     if (missingReason) {
       showToast(`Please enter a reason for the discount on "${missingReason.name}"`, 'error');
       return;
     }
 
-    // Block duplicate fee requests for the same student + month (unless we're editing that same request)
     if (!isEditingRequest) {
       const duplicate = feeRequests.find(
         r => r.studentId === selectedStudent.id && r.month === requestData.month
@@ -506,7 +469,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       };
 
       if (isEditingRequest && currentRequestId) {
-        // Preserve createdAt and immutable bookkeeping fields on edit
         const editPayload: Partial<FeeRequest> = {
           ...requestPayload,
           updatedAt: new Date().toISOString(),
@@ -535,12 +497,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         } as Omit<FeeRequest, 'id'>;
         const newReqRef = await addDoc(collection(db, 'feeRequests'), newRequest);
 
-        // ── Auto-apply matching advance payments for this month ──────────────
-        // For each unconsumed advance entry covering this request's month, sum
-        // up the amounts that overlap with the request's heads, create a
-        // synthetic FeePayment that "spends" the advance against the request,
-        // then mark the advance entry as consumed. FIFO across multiple
-        // advances so the oldest advance is applied first.
         let advanceApplied = 0;
         try {
           const matches = await getUnconsumedForMonth(selectedStudent.id, requestData.month);
@@ -548,8 +504,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           const requestHeadAmounts = new Map(requestData.heads.map(h => [h.name, h.finalAmount]));
 
           for (const { advance, entry, entryIndex } of matches) {
-            // Sum advance amounts that overlap with request heads, capped at
-            // the request's per-head finalAmount so we never over-apply.
             let entryApplied = 0;
             const allocations: { headName: string; amount: number }[] = [];
             for (const h of entry.heads) {
@@ -559,7 +513,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               if (take <= 0) continue;
               entryApplied += take;
               allocations.push({ headName: h.name, amount: Number(take.toFixed(2)) });
-              // Reduce the remaining cap so a second advance entry can't double-apply
               requestHeadAmounts.set(h.name, cap - take);
             }
             if (entryApplied <= 0.001) continue;
@@ -644,7 +597,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       voucherImage: null,
       remarks: '',
     });
-    // Load existing advance payments for visibility (so accountant can see what's already paid)
     try {
       const existing = await getAdvancePaymentsForStudent(student.id);
       setAdvancePayments(existing);
@@ -655,7 +607,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     setIsAdvanceModalOpen(true);
   };
 
-  // Build the list of months available to pay in advance (next 12 starting this month)
   const getUpcomingMonths = (): string[] => {
     const months: string[] = [];
     const now = new Date();
@@ -666,8 +617,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     return months;
   };
 
-  // Merge class-specific heads with global heads for advance modal.
-  // Class structure amounts take precedence; global heads not in the structure are appended.
   const getAvailableHeadsForAdvance = (student: Student | null) => {
     if (!student) return [] as FeeHead[];
     const structure = feeStructures.find(s => s.classId === student.classId);
@@ -703,7 +652,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       return;
     }
 
-    // Block paying in advance for months that already have an unconsumed advance
     try {
       const existing = await getAdvancePaymentsForStudent(advanceStudent.id);
       const alreadyCovered = new Set<string>();
@@ -728,7 +676,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       );
       const { total } = calcAdvanceTotal();
 
-      // Upload voucher photo first (if any) so URL is in the doc
       let voucherImageUrl: string | undefined;
       if (advanceData.method === 'cash' && advanceData.voucherImage) {
         try {
@@ -746,14 +693,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         }
       }
 
-      // Receipt
       const settings = await getSchoolSettings();
       const receiptNumber = await getNextReceiptNumber(
         settings.receiptPrefix || 'EHSREC',
         settings.receiptStartNumber ?? 1,
       );
 
-      // monthlyBreakdown: each selected month gets the same head set / amounts
       const monthlyBreakdown = advanceData.selectedMonths.map(m => ({
         month: m,
         heads: heads.map(h => ({ name: h.name, amount: h.amount })),
@@ -799,7 +744,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         },
       );
 
-      // WhatsApp notification to parent (non-fatal)
       const phone = advanceStudent.parentDetails?.phone;
       if (phone) {
         try {
@@ -834,14 +778,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     try {
       const student = students.find(s => s.id === studentId);
       await deleteDoc(doc(db, 'feeRequests', requestId));
-      
-      // Update student status based on remaining requests
+
       const remainingRequests = feeRequests.filter(r => r.studentId === studentId && r.id !== requestId);
       const isStillPending = remainingRequests.some(r => r.status !== 'paid');
       await updateDoc(doc(db, 'students', studentId), { feeStatus: isStillPending ? 'pending' : 'paid' });
-      
+
       showToast('Fee request cancelled', 'success');
-      
+
       const cancelledReq = feeRequests.find(r => r.id === requestId);
       await logActivity(
         user,
@@ -856,7 +799,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           month: cancelledReq?.month,
         }
       );
-      
+
       fetchData();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'feeRequests');
@@ -874,12 +817,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       const paymentRef = doc(db, 'feePayments', paymentId);
       const requestRef = payment.feeRequestId ? doc(db, 'feeRequests', payment.feeRequestId) : null;
 
-      // Atomic delete + rollback. Re-reads request inside the transaction so
-      // the rolled-back paidAmount reflects current DB state, not stale UI cache.
       await runTransaction(db, async (tx) => {
         const payDoc = await tx.get(paymentRef);
         if (!payDoc.exists()) {
-          // Already deleted — nothing to do, treat as success
           return;
         }
 
@@ -900,7 +840,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         tx.delete(paymentRef);
       });
 
-      // Recompute derived student.feeStatus (best-effort, post-transaction)
       try {
         const allReqSnap = await getDocs(query(
           collection(db, 'feeRequests'),
@@ -908,7 +847,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         ));
         const stillPending = allReqSnap.docs.some(d => {
           const r = d.data() as FeeRequest;
-          if (d.id === payment.feeRequestId) return true; // just rolled back
+          if (d.id === payment.feeRequestId) return true;
           return r.status !== 'paid';
         });
         await updateDoc(doc(db, 'students', payment.studentId), {
@@ -986,7 +925,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
   const openRequestModal = (student: Student, request?: FeeRequest) => {
     setSelectedStudent(student);
-    // Pre-load advance payments so the coverage notice works in the modal
     getAdvancePaymentsForStudent(student.id)
       .then(setAdvancePayments)
       .catch(() => setAdvancePayments([]));
@@ -1018,7 +956,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   };
 
   const filteredStudents = students.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           s.schoolNumber.includes(searchTerm);
     const matchesClass = selectedClass === 'all' || s.classId === selectedClass;
     return matchesSearch && matchesClass;
@@ -1036,6 +974,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     .filter(f => f.status !== 'paid')
     .reduce((sum, f) => sum + (f.totalAmount - (f.paidAmount || 0)), 0);
 
+  const today = new Date().toISOString().split('T')[0];
+
   return (
     <>
       <PaymentSuccess
@@ -1045,200 +985,213 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         onDismiss={() => setPaymentSuccess(null)}
       />
 
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Fee Collection</h1>
-
-          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Total Outstanding</p>
-            <p className="text-3xl font-black mt-1">₹{totalOutstanding.toLocaleString('en-IN')}</p>
-            <p className="text-[11px] text-emerald-100/90 mt-1">across {feeRequests.filter(f => f.status !== 'paid').length} pending requests</p>
-          </div>
-
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">₹{((todayCollection/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">Today</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">₹{((monthCollection/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">Month</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">{students.length}</p>
-              <p className="text-[9px] text-white/80">Students</p>
-            </div>
-          </div>
+      {/* ── topbar ── */}
+      <div className="topbar pad">
+        <div>
+          <div className="eyebrow">Accounts</div>
+          <h1>Fee Collection</h1>
         </div>
+        <div>
+          {(user.role === 'super_admin' || user.role === 'accounts') && (
+            <button className="btn accent" onClick={() => {
+              if (filteredStudents.length > 0) openRequestModal(filteredStudents[0]);
+            }}>
+              <Plus size={15} />
+              Collect Fee
+            </button>
+          )}
+        </div>
+      </div>
 
-        <div className="px-4 pt-4 pb-2">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <div className="pad stack">
+        {/* ── Search + class filter chips ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--ink)', opacity: 0.4, pointerEvents: 'none' }} />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search student name or roll no..."
-              className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-emerald-400"
+              style={{
+                width: '100%',
+                paddingLeft: '2.25rem',
+                paddingRight: '0.75rem',
+                paddingTop: '0.6rem',
+                paddingBottom: '0.6rem',
+                border: '1.5px solid var(--line)',
+                borderRadius: '0.75rem',
+                fontSize: '0.9rem',
+                background: 'var(--paper)',
+                color: 'var(--ink)',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
             />
+          </div>
+          <div className="hscroll" style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => setSelectedClass('all')}
+              className={selectedClass === 'all' ? 'chip solid' : 'chip'}
+            >
+              All Classes
+            </button>
+            {classes.map(c => (
+              <button
+                key={c.id}
+                onClick={() => setSelectedClass(c.id)}
+                className={selectedClass === c.id ? 'chip solid' : 'chip'}
+              >
+                {c.name}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="px-4 overflow-x-auto flex gap-2 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          <button
-            onClick={() => setSelectedClass('all')}
-            className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap active:scale-95 transition-transform ${selectedClass === 'all' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
-          >
-            All Classes
-          </button>
-          {classes.map(c => (
-            <button
-              key={c.id}
-              onClick={() => setSelectedClass(c.id)}
-              className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap active:scale-95 transition-transform ${selectedClass === c.id ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
-
-        <div className="px-4 pt-2">
+        {/* ── Student fee cards ── */}
+        <div className="stack">
           {filteredStudents.length === 0 ? (
-            <div className="py-12 text-center">
-              <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No students found</p>
-              <p className="text-xs text-slate-500 mt-1">Try a different search or class</p>
+            <div className="card" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+              <Users size={40} style={{ color: 'var(--line)', margin: '0 auto 0.75rem' }} />
+              <p style={{ fontWeight: 700, color: 'var(--ink)' }}>No students found</p>
+              <p className="muted" style={{ fontSize: '0.85rem' }}>Try a different search or class</p>
             </div>
           ) : (
-            <StaggeredList className="space-y-2.5">
-            {filteredStudents.slice(0, 50).map((student) => {
+            filteredStudents.slice(0, 50).map((student) => {
               const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
               const studentRequest = studentRequests[0];
               const currentFine = studentRequest ? (fineConfig ? calculateFine(studentRequest, fineConfig) : 0) : 0;
-              // balance = remaining on the CURRENT (first pending) request only, fine excluded
               const balance = studentRequest
                 ? Math.max(0, (studentRequest.totalAmount || 0) - (studentRequest.waivedAmount || 0) - (studentRequest.paidAmount || 0))
                 : 0;
               const className = classes.find(c => c.id === student.classId)?.name || student.classId;
+              const isOverdue = studentRequest?.dueDate && studentRequest.dueDate < today;
 
               return (
-                <div key={student.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5">
-                  <div className="flex items-center gap-3">
-                    <Avatar name={student.name} size="sm" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-900 truncate">{student.name}</p>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                        {className} • {student.section} • #{student.schoolNumber}
-                      </p>
+                <div key={student.id} className="card">
+                  {/* Header row */}
+                  <div className="row" style={{ alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <Avatar name={student.name} size="sm" />
+                      <div>
+                        <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{student.name}</div>
+                        <div className="mono tiny muted">{className} · {student.section} · #{student.schoolNumber}</div>
+                      </div>
                     </div>
                     {studentRequest && (
                       <Badge
-                        variant={studentRequest.status === 'paid' ? 'success' : studentRequest.status === 'overdue' ? 'error' : 'warning'}
-                        className="text-[9px] shrink-0"
+                        variant={studentRequest.status === 'paid' ? 'success' : isOverdue ? 'error' : 'warning'}
                       >
-                        {studentRequest.status.replace('_', ' ')}
+                        {isOverdue ? 'Overdue' : studentRequest.status.replace('_', ' ')}
                       </Badge>
                     )}
                   </div>
 
-                  {/* Partial payment request banner */}
-                  {studentRequest?.partialPaymentRequest?.status === 'pending' && (
-                    <div className="mt-2 flex items-center gap-2 px-2.5 py-1.5 bg-amber-50 border border-amber-100 rounded-xl">
-                      <Clock className="w-3 h-3 text-amber-500 shrink-0" />
-                      <p className="text-[10px] text-amber-700 font-bold flex-1">
-                        Parent requested ₹{studentRequest.partialPaymentRequest.requestedAmount.toLocaleString()} partial — committed by {new Date(studentRequest.partialPaymentRequest.committedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                      </p>
+                  {/* Fee heads summary */}
+                  {studentRequest?.heads && studentRequest.heads.length > 0 && (
+                    <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      {studentRequest.heads.map((h, i) => (
+                        <span key={i} className="chip" style={{ fontSize: '0.72rem' }}>
+                          {h.name}: ₹{(h.finalAmount || h.amount || 0).toLocaleString()}
+                        </span>
+                      ))}
                     </div>
                   )}
 
+                  {/* Amounts */}
                   {studentRequest && (
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-slate-50 rounded-lg py-1.5">
-                        <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Total</p>
-                        <p className="text-xs font-bold text-slate-900">₹{(studentRequest.totalAmount || 0).toLocaleString()}</p>
+                    <div style={{ marginTop: '0.75rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.4rem 0' }}>
+                        <div className="eyebrow" style={{ fontSize: '0.65rem' }}>Total</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>₹{(studentRequest.totalAmount || 0).toLocaleString()}</div>
                       </div>
-                      <div className="bg-emerald-50 rounded-lg py-1.5">
-                        <p className="text-[9px] text-emerald-700 uppercase tracking-widest font-bold">Paid</p>
-                        <p className="text-xs font-bold text-emerald-700">₹{(studentRequest.paidAmount || 0).toLocaleString()}</p>
+                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.4rem 0' }}>
+                        <div className="eyebrow" style={{ fontSize: '0.65rem', color: 'var(--leaf)' }}>Paid</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--leaf)' }}>₹{(studentRequest.paidAmount || 0).toLocaleString()}</div>
                       </div>
-                      <div className="bg-rose-50 rounded-lg py-1.5">
-                        <p className="text-[9px] text-rose-700 uppercase tracking-widest font-bold">Balance</p>
-                        <p className="text-xs font-bold text-rose-700">₹{balance.toLocaleString()}</p>
+                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.4rem 0' }}>
+                        <div className="eyebrow" style={{ fontSize: '0.65rem', color: 'var(--coral)' }}>Balance</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--coral)' }}>₹{balance.toLocaleString()}</div>
                       </div>
                     </div>
                   )}
 
-                  <div className="mt-3 flex items-center gap-2">
+                  {/* Action buttons */}
+                  <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     {!studentRequest ? (
                       <button
+                        className="btn accent"
                         onClick={() => openRequestModal(student)}
-                        className="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
+                        style={{ flex: 1 }}
                       >
-                        <Plus className="w-3.5 h-3.5" /> Generate Request
+                        <Plus size={14} /> Generate Request
                       </button>
                     ) : (
                       <>
                         <button
+                          className="btn ghost"
                           onClick={() => openRequestModal(student, studentRequest)}
-                          className="py-2 px-3 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1 active:scale-95 transition-transform"
                         >
-                          <Receipt className="w-3.5 h-3.5" /> Edit
+                          <Receipt size={14} /> Edit
                         </button>
                         {studentRequest?.partialPaymentRequest?.status === 'pending' && user.role !== 'super_admin' ? (
-                          <div className="flex-1 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold flex items-center justify-center gap-1 text-center px-2">
-                            <Clock className="w-3 h-3 shrink-0" /> Partial req pending — super admin only
+                          <div style={{ flex: 1, textAlign: 'center', fontSize: '0.75rem', color: 'var(--ink)', opacity: 0.6, padding: '0.5rem', border: '1px solid var(--line)', borderRadius: '0.5rem' }}>
+                            Partial req pending
                           </div>
                         ) : (
                           <button
+                            className="btn accent"
+                            style={{ flex: 1 }}
                             onClick={() => {
                               setSelectedStudent(student);
                               const defaultHead = studentRequest?.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
                               setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
                               setIsModalOpen(true);
                             }}
-                            className="flex-1 py-2 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform shadow-sm"
                           >
-                            <IndianRupee className="w-3.5 h-3.5" /> Collect ₹{(studentRequest?.totalAmount || 0).toLocaleString()}
+                            <IndianRupee size={14} /> Collect ₹{(studentRequest?.totalAmount || 0).toLocaleString()}
                           </button>
                         )}
+                        <button
+                          className="btn ghost"
+                          onClick={() => handleCancelRequest(studentRequest.id, student.id)}
+                          title="Cancel request"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </>
                     )}
                   </div>
 
-                  <button
-                    onClick={() => openAdvanceModal(student)}
-                    className="mt-2 w-full py-1.5 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-[11px] font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
-                  >
-                    <Wallet className="w-3.5 h-3.5" /> Record Advance Payment
-                  </button>
-
                   {/* Payment history toggle */}
                   <button
                     onClick={() => setExpandedStudentId(expandedStudentId === student.id ? null : student.id)}
-                    className="mt-2 w-full flex items-center justify-center gap-1 py-1.5 rounded-xl text-[11px] font-bold text-slate-500 hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                    style={{ marginTop: '0.5rem', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', fontSize: '0.75rem', color: 'var(--ink)', opacity: 0.5, background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }}
                   >
-                    <History className="w-3.5 h-3.5" />
+                    <History size={13} />
                     Payment History
-                    {expandedStudentId === student.id
-                      ? <ChevronUp className="w-3.5 h-3.5" />
-                      : <ChevronDown className="w-3.5 h-3.5" />}
+                    {expandedStudentId === student.id ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                   </button>
 
                   {expandedStudentId === student.id && (() => {
                     const studentPayments = payments.filter(p => p.studentId === student.id);
                     return (
-                      <div className="mt-2 border-t border-slate-100 pt-2 space-y-1.5">
+                      <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--line)', paddingTop: '0.5rem' }}>
                         {studentPayments.length === 0 ? (
-                          <p className="text-center text-[11px] text-slate-400 py-2">No payments recorded yet</p>
+                          <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--ink)', opacity: 0.4, padding: '0.5rem 0' }}>No payments recorded yet</p>
                         ) : studentPayments.map(p => (
-                          <div key={p.id} className="flex items-center justify-between px-1 py-1">
+                          <div key={p.id} className="row" style={{ padding: '0.35rem 0', alignItems: 'center' }}>
                             <div>
-                              <p className="text-xs font-bold text-slate-800">₹{(p.amount || 0).toLocaleString()}</p>
-                              <p className="text-[10px] text-slate-400">{p.head} · {p.method} · {fmtDate(p.date)}</p>
+                              <span style={{ fontWeight: 700, fontSize: '0.8rem' }}>₹{(p.amount || 0).toLocaleString()}</span>
+                              <span className="mono tiny muted" style={{ marginLeft: '0.5rem' }}>{p.method} · {fmtDate(p.date)}</span>
                             </div>
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700">PAID</span>
+                            <div style={{ display: 'flex', gap: '0.3rem' }}>
+                              <button className="icon-btn" onClick={() => handleDownloadReceipt(p)} title="Download receipt"><Receipt size={13} /></button>
+                              <button className="icon-btn" onClick={() => handleSendWhatsApp(p)} title="Send WhatsApp"><MessageSquare size={13} /></button>
+                              {user.role === 'super_admin' && (
+                                <button className="icon-btn" onClick={() => handleDeletePayment(p.id)} title="Delete" style={{ color: 'var(--coral)' }}><Trash2 size={13} /></button>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1246,365 +1199,34 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                   })()}
                 </div>
               );
-            })}
-            </StaggeredList>
+            })
           )}
         </div>
 
+        {/* ── Export FAB ── */}
         <button
           onClick={exportCollectionReport}
-          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          style={{
+            position: 'fixed',
+            bottom: '1.5rem',
+            right: '1.5rem',
+            zIndex: 40,
+            width: '3.25rem',
+            height: '3.25rem',
+            background: 'var(--ink)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
+          }}
           aria-label="Export"
         >
-          <Download className="w-6 h-6" strokeWidth={2.5} />
+          <Download size={20} />
         </button>
-      </div>
-
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Fee Collection"
-        subtitle="Track and manage student fee payments"
-        icon={IndianRupee}
-        iconColor="gradient-amber"
-        actions={
-          <Button variant="primary" icon={Download} onClick={exportCollectionReport}>
-            Export Collection Report
-          </Button>
-        }
-      />
-
-      {/* Collection Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          label="Today's Collection"
-          value={`₹${(todayCollection || 0).toLocaleString()}`}
-          icon={IndianRupee}
-          gradient="gradient-amber"
-          index={0}
-        />
-        <StatCard
-          label="This Month"
-          value={`₹${(monthCollection || 0).toLocaleString()}`}
-          icon={CheckCircle2}
-          gradient="gradient-amber"
-          index={1}
-        />
-        <StatCard
-          label="Pending Dues"
-          value={`₹${(feeRequests.filter(f => f.status !== 'paid').reduce((sum, f) => sum + (f.totalAmount - (f.paidAmount || 0)), 0) || 0).toLocaleString()}`}
-          icon={AlertCircle}
-          gradient="gradient-amber"
-          index={2}
-        />
-        <StatCard
-          label="Overdue"
-          value={`₹${(feeRequests.filter(f => f.status === 'overdue').reduce((sum, f) => sum + (f.totalAmount - (f.paidAmount || 0)), 0) || 0).toLocaleString()}`}
-          icon={Clock}
-          gradient="gradient-amber"
-          index={3}
-        />
-      </div>
-
-      {/* Transactions Table */}
-      <Card padding="none">
-        <div className="p-4 border-b bg-slate-50/50 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-1 items-center gap-4 min-w-[300px]">
-            <SearchInput
-              value={searchTerm}
-              onChange={setSearchTerm}
-              placeholder="Search by student name or school number..."
-              className="flex-1"
-            />
-            <Select 
-              value={selectedClass} 
-              onChange={(e) => setSelectedClass(e.target.value)}
-              className="w-40"
-            >
-              <option value="all">All Classes</option>
-              {classes.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button 
-              variant="secondary" 
-              size="sm" 
-              icon={Plus}
-              onClick={() => {
-                // Future enhancement: Bulk generate requests
-                showToast("Select a class to generate bulk requests", "info");
-              }}
-            >
-              Bulk Generate
-            </Button>
-          </div>
-        </div>
-        {filteredStudents.length > 0 ? (
-          <Table>
-            <Thead>
-              <tr>
-                <Th>Student</Th>
-                <Th>School No.</Th>
-                <Th>Total Due</Th>
-                <Th>Paid</Th>
-                <Th>Balance</Th>
-                <Th>Status</Th>
-                <Th className="text-right">Actions</Th>
-              </tr>
-            </Thead>
-            <Tbody>
-              {filteredStudents.map((student) => {
-                const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
-                const studentRequest = studentRequests[0];
-                const currentFine = studentRequest ? (fineConfig ? calculateFine(studentRequest, fineConfig) : 0) : 0;
-                const balance = studentRequest
-                  ? Math.max(0, (studentRequest.totalAmount || 0) - (studentRequest.waivedAmount || 0) - (studentRequest.paidAmount || 0))
-                  : 0;
-
-                const studentPayments = payments.filter(p => p.studentId === student.id);
-                const isExpanded = expandedStudentId === student.id;
-                return (
-                  <React.Fragment key={student.id}>
-                  <Tr>
-                    <Td>
-                      <div className="flex items-center gap-3">
-                        <Avatar name={student.name} size="sm" />
-                        <div>
-                          <p className="font-bold text-slate-900 leading-tight">{student.name}</p>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{classes.find(c => c.id === student.classId)?.name || student.classId} - {student.section}</p>
-                        </div>
-                      </div>
-                    </Td>
-                    <Td>{student.schoolNumber}</Td>
-                    <Td>
-                      {studentRequest ? (
-                        <div className="space-y-1">
-                          <p className="font-bold text-slate-900 leading-none">₹{(studentRequest.totalAmount || 0).toLocaleString()}</p>
-                          {currentFine > 0 && (
-                            <p className="text-[10px] text-rose-500 font-bold flex items-center gap-1">
-                              <Scale className="w-2.5 h-2.5" />
-                              +₹{currentFine.toLocaleString()} Fine
-                            </p>
-                          )}
-                          {(studentRequest.waivedAmount || 0) > 0 && (
-                            <p className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
-                              <ShieldOff className="w-2.5 h-2.5" />
-                              -₹{studentRequest.waivedAmount!.toLocaleString()} Waived
-                            </p>
-                          )}
-                          {studentRequest.partialPaymentRequest?.status === 'pending' && (
-                            <p className="text-[10px] text-amber-600 font-bold flex items-center gap-1">
-                              <Clock className="w-2.5 h-2.5" />
-                              Partial req: ₹{studentRequest.partialPaymentRequest.requestedAmount.toLocaleString()}
-                            </p>
-                          )}
-                        </div>
-                      ) : <span className="text-slate-400 text-sm">—</span>}
-                    </Td>
-                    <Td className="font-bold text-emerald-600">₹{(studentRequest?.paidAmount || 0).toLocaleString()}</Td>
-                    <Td className="font-bold text-red-600">₹{(balance || 0).toLocaleString()}</Td>
-                    <Td>
-                      {studentRequest ? (
-                        <Badge variant={studentRequest.status === 'paid' ? 'success' : studentRequest.status === 'overdue' ? 'error' : 'warning'}>
-                          {studentRequest.status.replace('_', ' ')}
-                        </Badge>
-                      ) : <span className="text-slate-400 text-xs">No request</span>}
-                    </Td>
-                    <Td className="text-right">
-                      {!studentRequest ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="success"
-                            size="xs"
-                            icon={Plus}
-                            onClick={() => openRequestModal(student)}
-                          >
-                            Request
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            icon={Wallet}
-                            onClick={() => openAdvanceModal(student)}
-                          >
-                            Advance
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            icon={Receipt}
-                            onClick={() => openRequestModal(student, studentRequest)}
-                          >
-                            Edit
-                          </Button>
-                          <IconButton
-                            icon={Trash2}
-                            variant="danger"
-                            size="sm"
-                            onClick={() => handleCancelRequest(studentRequest.id, student.id)}
-                          />
-                          {(user.role === 'super_admin' || user.role === 'accounts') && currentFine > 0 && (
-                            <IconButton
-                              icon={ShieldOff}
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => setWaiverData({
-                                isOpen: true,
-                                amount: (currentFine - (studentRequest.waivedAmount || 0)).toString(),
-                                reason: '',
-                                requestId: studentRequest.id,
-                                studentName: student.name
-                              })}
-                            />
-                          )}
-                          {studentRequest?.partialPaymentRequest?.status === 'pending' && user.role !== 'super_admin' ? (
-                            <Button variant="secondary" size="xs" disabled title="Partial request pending — only super admin can collect">
-                              Locked
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="primary"
-                              size="xs"
-                              icon={Plus}
-                              onClick={() => {
-                                setSelectedStudent(student);
-                                const defaultHead = studentRequest?.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
-                                setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
-                                setIsModalOpen(true);
-                              }}
-                            >
-                              Collect
-                            </Button>
-                          )}
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            icon={Wallet}
-                            onClick={() => openAdvanceModal(student)}
-                          >
-                            Advance
-                          </Button>
-                        </div>
-                      )}
-                    </Td>
-                  </Tr>
-                  {/* Expandable payment history row */}
-                  <Tr>
-                    <Td colSpan={7} className="!py-0 !px-0">
-                      <button
-                        onClick={() => setExpandedStudentId(isExpanded ? null : student.id)}
-                        className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-bold text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/40 transition-colors"
-                      >
-                        <History className="w-3 h-3" />
-                        {isExpanded ? 'Hide history' : 'Show payment history'}
-                        {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                      </button>
-                    </Td>
-                  </Tr>
-                  {isExpanded && (
-                    studentPayments.length === 0
-                      ? (
-                        <Tr>
-                          <Td colSpan={7} className="text-center text-xs text-slate-400 py-3 bg-slate-50/60">
-                            No payments recorded yet
-                          </Td>
-                        </Tr>
-                      )
-                      : studentPayments.map(p => (
-                        <Tr key={`hist-${p.id}`} className="bg-slate-50/60">
-                          <Td colSpan={2}>
-                            <div className="flex items-center gap-2 pl-2">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                              <div>
-                                <p className="text-xs font-bold text-slate-700">{p.head}</p>
-                                <p className="text-[10px] text-slate-400">{p.method}{p.referenceNumber ? ` · Ref: ${p.referenceNumber}` : ''}</p>
-                              </div>
-                            </div>
-                          </Td>
-                          <Td className="text-xs text-slate-500">{fmtDate(p.date)}</Td>
-                          <Td className="font-bold text-emerald-600 text-xs">₹{(p.amount || 0).toLocaleString()}</Td>
-                          <Td colSpan={3} className="text-[10px] text-slate-400 italic">{p.remarks || '—'}</Td>
-                        </Tr>
-                      ))
-                  )}
-                  </React.Fragment>
-                );
-              })}
-            </Tbody>
-          </Table>
-        ) : (
-          <EmptyState title="No students found" />
-        )}
-      </Card>
-
-      {/* Recent Payments */}
-      <Card padding="none">
-        <div className="p-6 border-b bg-slate-50/50">
-          <h3 className="font-bold text-slate-900 flex items-center gap-2">
-            <History className="w-5 h-5 text-amber-600" />
-            Recent Payments
-          </h3>
-        </div>
-        {payments.length > 0 ? (
-          <Table>
-            <Thead>
-              <tr>
-                <Th>Receipt No.</Th>
-                <Th>Student</Th>
-                <Th>Date</Th>
-                <Th>Amount</Th>
-                <Th>Method</Th>
-                <Th className="text-right">Actions</Th>
-              </tr>
-            </Thead>
-            <Tbody>
-              {payments.slice(0, 10).map((tx) => {
-                const student = students.find(s => s.id === tx.studentId);
-                return (
-                  <Tr key={tx.id}>
-                    <Td className="font-bold text-slate-900">{tx.receiptNumber}</Td>
-                    <Td>{student?.name || 'Unknown'}</Td>
-                    <Td>{fmtDate(tx.date)}</Td>
-                    <Td className="font-bold text-emerald-600">₹{(tx.amount || 0).toLocaleString()}</Td>
-                    <Td className="capitalize">{tx.method.replace('_', ' ')}</Td>
-                    <Td className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <IconButton
-                          icon={Download}
-                          onClick={() => handleDownloadReceipt(tx)}
-                          variant="ghost"
-                          title="Download receipt"
-                        />
-                        <IconButton
-                          icon={MessageSquare}
-                          onClick={() => handleSendWhatsApp(tx)}
-                          variant="ghost"
-                          title="Send WhatsApp receipt"
-                        />
-                        {user.role === 'super_admin' && (
-                          <IconButton
-                            icon={Trash2}
-                            onClick={() => handleDeletePayment(tx.id)}
-                            variant="danger"
-                            size="sm"
-                          />
-                        )}
-                      </div>
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </Tbody>
-          </Table>
-        ) : (
-          <EmptyState title="No payment history found." />
-        )}
-      </Card>
       </div>
 
       {/* Generate Fee Request Modal */}
@@ -1629,9 +1251,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                 setIsRequestModalOpen(false);
                 setIsEditingRequest(false);
               }}>Cancel</Button>
-              <Button 
-                variant="success" 
-                loading={loading} 
+              <Button
+                variant="success"
+                loading={loading}
                 onClick={(e: any) => {
                   const form = document.querySelector('form[data-request-form]') as HTMLFormElement;
                   if (form) form.requestSubmit();
@@ -1663,10 +1285,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
             </FormField>
           </div>
 
-          {/* Advance coverage notice */}
           {(() => {
             if (!selectedStudent || !requestData.month || isEditingRequest) return null;
-            // Check for unconsumed advance covering this month
             const coveredByAdvance = advancePayments.some(adv =>
               (adv.monthlyBreakdown || []).some((e: any) => e.month === requestData.month && !e.consumed)
             );
@@ -1691,7 +1311,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
             </div>
 
             <div className="rounded-xl border border-slate-200 overflow-hidden">
-              {/* Column header */}
               <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 border-b border-slate-200">
                 <span className="flex-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Head</span>
                 <span className="w-24 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">Amount</span>
@@ -1700,7 +1319,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                 <span className="w-7" />
               </div>
 
-              {/* Head rows */}
               {requestData.heads.length === 0 ? (
                 <div className="px-4 py-6 text-center text-xs text-amber-700 bg-amber-50">
                   No heads yet. Add a global head or a custom head below.
@@ -1764,7 +1382,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                 ))
               )}
 
-              {/* Totals row */}
               {requestData.heads.length > 0 && (
                 <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-t border-slate-200">
                   <span className="flex-1 text-xs font-bold text-slate-700">Total</span>
@@ -1776,7 +1393,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               )}
             </div>
 
-            {/* Add Global Head */}
             {(() => {
               const available = globalHeads.filter(gh => !requestData.heads.some(h => h.name === gh.name));
               if (available.length === 0) return null;
@@ -1811,7 +1427,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               );
             })()}
 
-            {/* Add Custom Head */}
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -1865,7 +1480,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         }
       >
         <form onSubmit={handleRecordPayment} data-payment-form className="space-y-5">
-          {/* Request summary — show all heads from the fee request */}
           {(() => {
             const pending = selectedStudent
               ? feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid')
@@ -1900,8 +1514,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                 </FormField>
               );
             }
-            // Accounts role: amount is locked to the full pending balance.
-            // Partial payments require super_admin approval.
             return (
               <FormField label="Amount to Collect (₹)" hint="Locked to full pending balance. Partial payments require super admin approval.">
                 <Input
@@ -2038,7 +1650,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       >
         {advanceStudent && (
           <div className="space-y-5">
-            {/* Existing advance payments — context for the accountant */}
             {advancePayments.length > 0 && (
               <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl">
                 <p className="text-[10px] font-bold text-violet-700 uppercase tracking-widest mb-2">Existing Advance Payments</p>
@@ -2055,7 +1666,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               </div>
             )}
 
-            {/* Months */}
             <FormField label="Months to Pay In Advance" required hint="Pick all months you want to pre-pay for. Already-covered months are blocked.">
               <div className="grid grid-cols-3 md:grid-cols-4 gap-2 mt-1">
                 {getUpcomingMonths().map(m => {
@@ -2092,7 +1702,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               </div>
             </FormField>
 
-            {/* Heads */}
             <FormField label="Fee Heads to Include" required hint="Synced from the class fee structure">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
                 {getAvailableHeadsForAdvance(advanceStudent).map(h => {
@@ -2128,7 +1737,6 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               )}
             </FormField>
 
-            {/* Payment Method */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField label="Payment Method" required>
                 <Select
@@ -2224,7 +1832,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       >
         <form onSubmit={handleWaiveFine} data-waiver-form className="space-y-4">
           <FormField label="Amount to Waive (₹)" required hint="Enter the amount you wish to waive from the calculated fine">
-            <Input 
+            <Input
               type="number"
               required
               value={waiverData.amount}
@@ -2232,7 +1840,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
             />
           </FormField>
           <FormField label="Reason for Waiver" required>
-            <Textarea 
+            <Textarea
               required
               value={waiverData.reason}
               onChange={(e) => setWaiverData({ ...waiverData, reason: e.target.value })}

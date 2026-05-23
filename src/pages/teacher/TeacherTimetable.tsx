@@ -9,17 +9,12 @@ import { cn } from '../../lib/utils';
 import { logActivity } from '../../services/activityService';
 import { validateLessonInput, sanitizeFileName, ConcurrentEditError, updateLessonLog } from '../../services/lessonLogService';
 import {
-  PageHeader,
-  Card,
-  Badge,
   Spinner,
-  EmptyState,
   Modal,
   FormField,
   Input,
   Textarea,
   Button,
-  IconButton,
 } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 
@@ -33,12 +28,9 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
   const { showToast } = useToast();
 
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-  const [mobileDay, setMobileDay] = useState<string>(todayName);
+  const [selectedDay, setSelectedDay] = useState<string>(todayName);
 
-  // ─── Leave + Substitute awareness ────────────────────────────────────────
-  // ISO dates on which this teacher has an approved leave
   const [approvedLeaveDays, setApprovedLeaveDays] = useState<Set<string>>(new Set());
-  // substituteAssignments where this teacher is the cover teacher, keyed by ISO date
   const [substituteByDate, setSubstituteByDate] = useState<Record<string, SubstituteAssignment[]>>({});
 
   useEffect(() => {
@@ -53,7 +45,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
         const fromIso = ninetyDaysAgo.toISOString().split('T')[0];
         const toIso = ninetyDaysOut.toISOString().split('T')[0];
 
-        // Fetch approved leaves for this teacher
         const leavesQ = query(
           collection(db, 'teacherLeaves'),
           where('teacherId', '==', tid),
@@ -63,7 +54,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
         const leaveDays = new Set<string>();
         leavesSnap.docs.forEach(d => {
           const data = d.data();
-          // Enumerate every day in the leave range
           const start = new Date(data.startDate);
           const end = new Date(data.endDate);
           for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
@@ -72,7 +62,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
         });
         setApprovedLeaveDays(leaveDays);
 
-        // Fetch substitute assignments where I'm the substitute
         const subQ = query(
           collection(db, 'substituteAssignments'),
           where('substituteTeacherId', '==', tid),
@@ -88,13 +77,12 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
         });
         setSubstituteByDate(byDate);
       } catch {
-        // Non-fatal: leave awareness is best-effort
+        // Non-fatal
       }
     };
     loadLeaveData();
   }, [teacherData?.id, user.uid]);
 
-  // Returns the ISO date for a given weekday name in the current week (Mon=start)
   const getIsoForWeekday = (dayName: string): string => {
     const today = new Date();
     const dayMap: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
@@ -111,7 +99,7 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{cw: number, hw: number}>({ cw: 0, hw: 0 });
-  
+
   const [lessonData, setLessonData] = useState({
     topic: '',
     classwork: '',
@@ -119,9 +107,7 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     classworkFile: null as File | null,
     homeworkFile: null as File | null,
   });
-  // Date the lesson was actually delivered (default: today; teacher can backfill up to 14 days)
   const [logDate, setLogDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  // Optimistic-concurrency token snapshotted at the time we loaded the existing log
   const [existingVersion, setExistingVersion] = useState<number>(0);
 
   const getPeriod = (day: string, slotId: string) => {
@@ -138,7 +124,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
 
   const uploadFile = (file: File, path: string, type: 'cw' | 'hw'): Promise<string> => {
     return new Promise((resolve, reject) => {
-      // 2MB Limit
       if (file.size > 2 * 1024 * 1024) {
         reject(new Error('File size exceeds 2MB limit.'));
         return;
@@ -147,12 +132,12 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
       const fileRef = ref(storage, path);
       const uploadTask = uploadBytesResumable(fileRef, file);
 
-      uploadTask.on('state_changed', 
+      uploadTask.on('state_changed',
         (snapshot) => {
           const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           setUploadProgress(prev => ({ ...prev, [type]: progress }));
-        }, 
-        (error) => reject(error), 
+        },
+        (error) => reject(error),
         async () => {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           resolve(downloadURL);
@@ -161,8 +146,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     });
   };
 
-  // Re-query existing log whenever the chosen log date changes (so backfilling a past lesson
-  // loads that day's existing entry instead of today's).
   const fetchExistingForDate = async (period: any, slot: any, date: string) => {
     const q = query(
       collection(db, 'lessonLogs'),
@@ -183,11 +166,11 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
         homeworkFile: null,
       });
       setExistingVersion(data.version ?? 0);
-      setSelectedPeriod(prev => ({ ...prev, existingId: docSnap.id, topic: data.topic }));
+      setSelectedPeriod((prev: any) => ({ ...prev, existingId: docSnap.id, topic: data.topic }));
     } else {
       setLessonData({ topic: '', classwork: '', homework: '', classworkFile: null, homeworkFile: null });
       setExistingVersion(0);
-      setSelectedPeriod(prev => ({ ...prev, existingId: null }));
+      setSelectedPeriod((prev: any) => ({ ...prev, existingId: null }));
     }
   };
 
@@ -208,7 +191,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     }
   };
 
-  // When teacher picks a different date in the modal, reload the existing log for that date
   useEffect(() => {
     if (!isModalOpen || !selectedPeriod?.slot) return;
     fetchExistingForDate(selectedPeriod, selectedPeriod.slot, logDate).catch(() => {});
@@ -219,7 +201,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     e.preventDefault();
     if (!selectedPeriod || saving) return;
 
-    // Input validation (length, required) — single source of truth for client/server expectations
     const validationError = validateLessonInput({
       topic: lessonData.topic,
       classwork: lessonData.classwork,
@@ -227,7 +208,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     });
     if (validationError) { showToast(validationError, 'error'); return; }
 
-    // Date sanity: don't allow future dates, and don't allow backfilling more than 14 days
     const today = new Date().toISOString().split('T')[0];
     if (logDate > today) { showToast('Lesson date cannot be in the future', 'error'); return; }
     const fourteenDaysAgo = new Date(); fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
@@ -242,7 +222,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
       const activeTimetable = timetables.find(t => t.classId === selectedPeriod.classId);
       const uploadedFiles: { classworkFileUrl?: string; classworkFileName?: string; homeworkFileUrl?: string; homeworkFileName?: string } = {};
 
-      // Upload files in parallel if present — sanitize filenames before they hit storage paths
       const uploadPromises: Promise<unknown>[] = [];
       if (lessonData.classworkFile) {
         const safe = sanitizeFileName(lessonData.classworkFile.name);
@@ -269,7 +248,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
       }
 
       if (selectedPeriod.existingId) {
-        // UPDATE path — version-checked transaction prevents silent overwrites
         await updateLessonLog(
           selectedPeriod.existingId,
           existingVersion,
@@ -285,7 +263,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
           `Updated log for ${subjects[selectedPeriod.subjectId]} - ${classes[selectedPeriod.classId]} (${logDate})`,
           { classId: selectedPeriod.classId, subjectId: selectedPeriod.subjectId, date: logDate });
       } else {
-        // CREATE path
         const nowIso = new Date().toISOString();
         const newLog: any = {
           classId: selectedPeriod.classId,
@@ -320,7 +297,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     } catch (err: any) {
       if (err instanceof ConcurrentEditError) {
         showToast(err.message, 'error');
-        // Reload the latest state so the teacher sees the other person's changes
         try { await fetchExistingForDate(selectedPeriod, selectedPeriod.slot, logDate); } catch {}
       } else if (err?.message?.startsWith('File size exceeds')) {
         showToast(err.message, 'error');
@@ -336,292 +312,239 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
         <Spinner size="lg" />
-        <p className="text-slate-500 font-medium animate-pulse">Loading your timetable...</p>
+        <p className="muted text-sm animate-pulse">Loading your timetable...</p>
       </div>
     );
   }
 
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-6 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 px-4 pt-5 pb-3 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100">My Timetable</p>
-          <h1 className="text-xl font-bold mt-0.5">{mobileDay === todayName ? 'Today' : mobileDay}</h1>
+      <div className="topbar">
+        <div className="pad">
+          <p className="eyebrow">{selectedDay === todayName ? 'Today' : selectedDay}</p>
+          <h1 className="display">Schedule</h1>
+        </div>
+      </div>
 
-          {/* Day chips */}
+      <div className="pad" style={{ paddingBottom: '2rem' }}>
+        <div className="stack">
+          {/* Day selector */}
           {config && (
-            <div className="mt-3 -mx-4 px-4 overflow-x-auto flex gap-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="hscroll" style={{ gap: '0.5rem', paddingBottom: '0.25rem' }}>
               {config.days.map((day) => (
                 <button
                   key={day}
-                  onClick={() => setMobileDay(day)}
-                  className={cn(
-                    "shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all",
-                    mobileDay === day
-                      ? "bg-white text-blue-700"
-                      : "bg-white/15 text-white border border-white/20"
-                  )}
+                  onClick={() => setSelectedDay(day)}
+                  className={cn('dpill', selectedDay === day ? 'today' : '', day === todayName ? 'on' : '')}
+                  style={{ flexShrink: 0 }}
                 >
                   {day.slice(0, 3)}
-                  {day === todayName && (
-                    <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-yellow-300 animate-pulse" />
-                  )}
                 </button>
               ))}
             </div>
           )}
-        </div>
 
-        {!config ? (
-          <div className="px-4 pt-8 text-center">
-            <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-sm font-bold text-slate-700">Timetable not configured</p>
-          </div>
-        ) : (
-          <div className="px-4 pt-4 space-y-2">
-            {/* Leave banner for mobile */}
-            {isOnLeaveDay(mobileDay) && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                <p className="text-xs font-bold text-amber-800">You are on approved leave today. Your classes have been covered.</p>
-              </div>
-            )}
+          {/* Leave banner */}
+          {isOnLeaveDay(selectedDay) && (
+            <div
+              className="card"
+              style={{
+                padding: '0.875rem',
+                borderLeft: '3px solid #F59E0B',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+              }}
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0" style={{ color: '#D97706' }} />
+              <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#92400E' }}>
+                You are on approved leave. Your classes have been covered.
+              </p>
+            </div>
+          )}
 
-            {config.slots.map((slot) => {
-              if (slot.type === 'break') {
-                return (
-                  <div key={slot.id} className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-2 flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-amber-700 uppercase">Short Break</span>
-                    <span className="text-[10px] text-amber-600">{slot.startTime}–{slot.endTime}</span>
-                  </div>
-                );
-              }
-              if (slot.type === 'lunch') {
-                return (
-                  <div key={slot.id} className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2 flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-blue-700 uppercase">Lunch Break</span>
-                    <span className="text-[10px] text-blue-600">{slot.startTime}–{slot.endTime}</span>
-                  </div>
-                );
-              }
-              const period = getPeriod(mobileDay, slot.id);
-              if (!period) {
-                return (
-                  <div key={slot.id} className="bg-white border border-dashed border-slate-200 rounded-xl px-4 py-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{slot.label}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{slot.startTime} – {slot.endTime}</p>
+          {!config ? (
+            <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+              <Calendar className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--ink-3)' }} />
+              <p style={{ fontWeight: 700, color: 'var(--ink)' }}>Timetable not configured</p>
+              <p className="muted" style={{ fontSize: '0.8125rem', marginTop: '0.25rem' }}>Contact the administrator.</p>
+            </div>
+          ) : (
+            <div className="stack" style={{ gap: '0.5rem' }}>
+              {config.slots.map((slot) => {
+                if (slot.type === 'break') {
+                  return (
+                    <div
+                      key={slot.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.5rem 0.875rem',
+                        background: 'var(--cream-2)',
+                        borderRadius: '0.75rem',
+                        border: '1px solid var(--line)',
+                      }}
+                    >
+                      <p className="eyebrow">Short Break</p>
+                      <p className="muted mono tiny">{slot.startTime}–{slot.endTime}</p>
                     </div>
-                    <span className="text-[10px] font-bold text-slate-300 uppercase">Free</span>
-                  </div>
-                );
-              }
-              // On leave: show period as "On Leave" — no log entry allowed
-              if (isOnLeaveDay(mobileDay)) {
-                return (
-                  <div key={slot.id} className="bg-amber-50 border border-l-4 border-l-amber-400 border-amber-100 rounded-xl px-4 py-3 flex items-center justify-between">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">{slot.label} · {slot.startTime}</p>
-                      <p className="text-sm font-bold text-amber-900 truncate mt-0.5">{subjects[period.subjectId] || period.subjectId}</p>
-                      <p className="text-[11px] text-amber-700 mt-0.5">Class {classes[period.classId] || period.classId}</p>
+                  );
+                }
+                if (slot.type === 'lunch') {
+                  return (
+                    <div
+                      key={slot.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.5rem 0.875rem',
+                        background: 'var(--cream-2)',
+                        borderRadius: '0.75rem',
+                        border: '1px solid var(--line)',
+                      }}
+                    >
+                      <p className="eyebrow">Lunch Break</p>
+                      <p className="muted mono tiny">{slot.startTime}–{slot.endTime}</p>
                     </div>
-                    <span className="text-[10px] font-bold text-amber-500 uppercase">On Leave</span>
-                  </div>
-                );
-              }
-              return (
-                <button
-                  key={slot.id}
-                  onClick={() => handleOpenLog(period, slot)}
-                  className="w-full text-left bg-white border-l-4 border-l-blue-500 border-y border-r border-slate-100 rounded-xl px-4 py-3 shadow-sm active:scale-[0.98] transition-transform"
-                >
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{slot.label} · {slot.startTime}</p>
-                      <p className="text-sm font-bold text-slate-900 truncate mt-0.5">{subjects[period.subjectId] || period.subjectId}</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Class {classes[period.classId] || period.classId}</p>
-                    </div>
-                    <Edit3 className="w-4 h-4 text-blue-500 shrink-0 mt-1" />
-                  </div>
-                </button>
-              );
-            })}
+                  );
+                }
 
-            {/* Substitute coverage today (mobile) */}
-            {(() => {
-              const isoDay = getIsoForWeekday(mobileDay);
-              const subs = substituteByDate[isoDay] || [];
-              if (subs.length === 0) return null;
-              return (
-                <div className="mt-4 pt-4 border-t border-slate-200">
-                  <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                    <UserCheck className="w-3.5 h-3.5" /> Covering for absent teacher
-                  </p>
-                  {subs.map(sa => {
-                    const slot = config.slots.find(s => s.id === sa.slotId);
-                    return (
-                      <div key={sa.id} className="bg-indigo-50 border border-l-4 border-l-indigo-400 border-indigo-100 rounded-xl px-4 py-3 mb-2">
-                        <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">{slot?.label || sa.slotId} · {slot?.startTime || ''}</p>
-                        <p className="text-sm font-bold text-indigo-900 mt-0.5">Class {classes[sa.classId] || sa.classId}</p>
-                        <p className="text-[11px] text-indigo-600 mt-0.5">Substitute cover</p>
+                const period = getPeriod(selectedDay, slot.id);
+                const isoDay = getIsoForWeekday(selectedDay);
+                const subForSlot = (substituteByDate[isoDay] || []).find(s => s.slotId === slot.id);
+                const onLeave = isOnLeaveDay(selectedDay);
+
+                if (!period && !subForSlot) {
+                  return (
+                    <div
+                      key={slot.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.75rem 0.875rem',
+                        background: 'transparent',
+                        borderRadius: '0.75rem',
+                        border: '1px dashed var(--line)',
+                      }}
+                    >
+                      <div>
+                        <p className="eyebrow">{slot.label}</p>
+                        <p className="muted mono tiny" style={{ marginTop: '0.125rem' }}>{slot.startTime} – {slot.endTime}</p>
                       </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </div>
-        )}
-      </div>
+                      <p className="eyebrow" style={{ color: 'var(--ink-3)' }}>Free</p>
+                    </div>
+                  );
+                }
 
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Teacher Timetable"
-        subtitle="Your weekly teaching schedule and class assignments."
-        icon={Calendar}
-        iconColor="gradient-blue"
-        actions={
-          <Badge variant="info">Academic Year 2026-27</Badge>
-        }
-      />
-
-      {!config ? (
-        <EmptyState
-          icon={Calendar}
-          title="Timetable not configured"
-          description="The school timetable settings haven't been initialized yet. Please contact the administrator."
-        />
-      ) : (
-        <>
-          {/* Leave banner (desktop) */}
-          {approvedLeaveDays.size > 0 && (() => {
-            const today = new Date().toISOString().split('T')[0];
-            if (approvedLeaveDays.has(today)) {
-              return (
-                <div className="flex items-center gap-3 px-5 py-3 bg-amber-50 border border-amber-200 rounded-xl">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-                  <p className="text-sm font-semibold text-amber-800">You are on approved leave today. Your classes have been assigned to substitutes — no lesson logs required.</p>
-                </div>
-              );
-            }
-            return null;
-          })()}
-
-        <Card padding="none">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-6 py-4 border-r border-slate-100 text-left text-xs font-bold text-slate-400 uppercase tracking-widest w-40">
-                    Time Slot
-                  </th>
-                  {config.days.map(day => {
-                    const onLeave = isOnLeaveDay(day);
-                    return (
-                      <th key={day} className={cn(
-                        "px-6 py-4 text-left text-xs font-bold uppercase tracking-widest min-w-[180px]",
-                        onLeave ? "text-amber-500 bg-amber-50/40" : "text-slate-500"
-                      )}>
-                        {day}
-                        {onLeave && <span className="ml-2 text-[9px] font-bold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full normal-case">On Leave</span>}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {config.slots.map((slot) => (
-                  <tr key={slot.id} className="group hover:bg-slate-50/70 transition-colors">
-                    <td className="px-6 py-6 border-r border-slate-100 bg-slate-50/30 whitespace-nowrap">
-                      <p className="text-xs font-bold text-slate-700">{slot.label}</p>
-                      <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1">
-                        <Clock className="w-2.5 h-2.5" />
-                        <span>{slot.startTime} - {slot.endTime}</span>
+                if (subForSlot && !period) {
+                  return (
+                    <div
+                      key={slot.id}
+                      className="card"
+                      style={{ padding: '0.875rem', borderLeft: '3px solid #6366F1' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.375rem' }}>
+                        <UserCheck className="w-3.5 h-3.5" style={{ color: '#6366F1' }} />
+                        <p className="eyebrow" style={{ color: '#6366F1' }}>Covering for absent teacher</p>
                       </div>
-                    </td>
-                    {config.days.map(day => {
-                      if (slot.type === 'break') {
-                        return (
-                          <td key={`${day}-${slot.id}`} className="px-4 py-2 bg-amber-50/30 text-center border-r border-slate-50/50">
-                            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Short Break</span>
-                          </td>
-                        );
-                      }
+                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--ink)' }}>
+                        Class {classes[subForSlot.classId] || subForSlot.classId}
+                      </p>
+                      <p className="muted mono tiny">{slot.startTime} – {slot.endTime}</p>
+                    </div>
+                  );
+                }
 
-                      if (slot.type === 'lunch') {
-                        return (
-                          <td key={`${day}-${slot.id}`} className="px-4 py-2 bg-blue-50/30 text-center border-r border-slate-50/50">
-                            <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Lunch Break</span>
-                          </td>
-                        );
-                      }
+                if (period && onLeave) {
+                  return (
+                    <div
+                      key={slot.id}
+                      className="card"
+                      style={{ padding: '0.875rem', borderLeft: '3px solid #F59E0B' }}
+                    >
+                      <p className="eyebrow" style={{ marginBottom: '0.25rem' }}>{slot.label} · {slot.startTime}</p>
+                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--ink)' }}>
+                        {subjects[period.subjectId] || period.subjectId}
+                      </p>
+                      <p className="muted" style={{ fontSize: '0.75rem', marginTop: '0.125rem' }}>
+                        Class {classes[period.classId] || period.classId} · On Leave
+                      </p>
+                    </div>
+                  );
+                }
 
-                      const period = getPeriod(day, slot.id);
-                      const subjectName = period ? subjects[period.subjectId] : null;
-                      const className = period ? classes[period.classId] : null;
-                      const onLeave = isOnLeaveDay(day);
+                if (period) {
+                  return (
+                    <button
+                      key={slot.id}
+                      onClick={() => handleOpenLog(period, slot)}
+                      className="card"
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '0.875rem',
+                        borderLeft: '3px solid var(--ink)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <p className="eyebrow" style={{ marginBottom: '0.25rem' }}>{slot.label} · {slot.startTime}</p>
+                          <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {subjects[period.subjectId] || period.subjectId}
+                          </p>
+                          <p className="muted" style={{ fontSize: '0.75rem', marginTop: '0.125rem' }}>
+                            Class {classes[period.classId] || period.classId}
+                          </p>
+                        </div>
+                        <Edit3 className="w-4 h-4 shrink-0" style={{ color: 'var(--ink-3)', marginTop: '0.25rem' }} />
+                      </div>
+                    </button>
+                  );
+                }
 
-                      // Check if I'm a substitute on this day+slot
-                      const isoDay = getIsoForWeekday(day);
-                      const subForSlot = (substituteByDate[isoDay] || []).find(s => s.slotId === slot.id);
+                return null;
+              })}
 
+              {/* Substitute coverage */}
+              {(() => {
+                const isoDay = getIsoForWeekday(selectedDay);
+                const subs = substituteByDate[isoDay] || [];
+                const subsNotInSlots = subs.filter(sa => !config.slots.find(sl => sl.id === sa.slotId && getPeriod(selectedDay, sl.id)));
+                if (subsNotInSlots.length === 0) return null;
+                return (
+                  <div style={{ paddingTop: '0.5rem' }}>
+                    <p className="section-head">Covering for absent teacher</p>
+                    {subs.map(sa => {
+                      const slot = config.slots.find(s => s.id === sa.slotId);
                       return (
-                        <td key={`${day}-${slot.id}`} className={cn("px-4 py-2 border-r border-slate-50/50", onLeave && "bg-amber-50/20")}>
-                          {/* Show substitute coverage if assigned */}
-                          {subForSlot && !period && (
-                            <div className="p-3 rounded-xl bg-indigo-50 border border-l-4 border-l-indigo-400 border-indigo-100 min-h-[60px]">
-                              <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1">Covering</p>
-                              <p className="text-xs font-bold text-indigo-900">Class {classes[subForSlot.classId] || subForSlot.classId}</p>
-                              <div className="flex items-center gap-1 mt-1 text-[10px] text-indigo-500">
-                                <UserCheck className="w-3 h-3" />
-                                <span>Substitute duty</span>
-                              </div>
-                            </div>
-                          )}
-                          {period && onLeave ? (
-                            // Teacher is on leave — show period as covered
-                            <div className="p-3 rounded-xl bg-amber-50 border border-l-4 border-l-amber-400 border-amber-100 min-h-[60px]">
-                              <p className="text-xs font-bold text-amber-700 truncate">{subjectName || period.subjectId}</p>
-                              <div className="flex items-center gap-1 mt-1 text-[10px] text-amber-500">
-                                <Users className="w-3 h-3" />
-                                <span>Class {className || period.classId} · On Leave</span>
-                              </div>
-                            </div>
-                          ) : period ? (
-                            <button
-                              onClick={() => handleOpenLog(period, slot)}
-                              className="w-full text-left p-3 rounded-xl bg-blue-50/50 border border-blue-100 group-hover:bg-white group-hover:shadow-sm transition-all border-l-4 border-l-blue-500 hover:border-blue-400"
-                            >
-                              <div className="flex items-center justify-between gap-1 mb-1">
-                                <p className="text-xs font-bold text-blue-600 truncate">{subjectName || period.subjectId}</p>
-                                <Edit3 className="w-3 h-3 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </div>
-                              <div className="flex items-center gap-2 text-[10px] text-slate-500">
-                                <Users className="w-3 h-3" />
-                                <span>Class {className || period.classId}</span>
-                              </div>
-                            </button>
-                          ) : !subForSlot ? (
-                            <div className="p-3 rounded-xl bg-slate-50/10 border border-dashed border-slate-100 flex items-center justify-center min-h-[60px]">
-                              <span className="text-[10px] font-bold text-slate-300 uppercase">Free</span>
-                            </div>
-                          ) : null}
-                        </td>
+                        <div
+                          key={sa.id}
+                          className="card"
+                          style={{ padding: '0.875rem', borderLeft: '3px solid #6366F1', marginBottom: '0.5rem' }}
+                        >
+                          <p className="eyebrow" style={{ color: '#6366F1' }}>
+                            {slot?.label || sa.slotId} · {slot?.startTime || ''}
+                          </p>
+                          <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--ink)', marginTop: '0.25rem' }}>
+                            Class {classes[sa.classId] || sa.classId}
+                          </p>
+                          <p className="muted" style={{ fontSize: '0.75rem', marginTop: '0.125rem' }}>Substitute duty</p>
+                        </div>
                       );
                     })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-        </>
-      )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Lesson Log Modal — shared by mobile + desktop */}
+      {/* Lesson Log Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -670,7 +593,6 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Classwork */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-slate-900 font-bold text-sm uppercase tracking-wider">
                 <BookOpen className="w-4 h-4 text-blue-500" />
@@ -715,20 +637,16 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
                   </div>
                   {((uploadProgress.cw > 0 && uploadProgress.cw < 100) || (saving && lessonData.classworkFile)) && (
                     <div className="w-full bg-slate-200 rounded-full h-1.5 mt-2 overflow-hidden">
-                      <div 
-                        className={cn(
-                          "h-full transition-all duration-300",
-                          uploadProgress.cw === 100 ? "bg-emerald-500" : "bg-blue-500"
-                        )} 
+                      <div
+                        className={cn("h-full transition-all duration-300", uploadProgress.cw === 100 ? "bg-emerald-500" : "bg-blue-500")}
                         style={{ width: `${uploadProgress.cw}%` }}
-                      ></div>
+                      />
                     </div>
                   )}
                 </label>
               </div>
             </div>
 
-            {/* Homework */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-slate-900 font-bold text-sm uppercase tracking-wider">
                 <CheckSquare className="w-4 h-4 text-emerald-500" />
@@ -773,13 +691,10 @@ export default function TeacherTimetable({ user }: TeacherTimetableProps) {
                   </div>
                   {((uploadProgress.hw > 0 && uploadProgress.hw < 100) || (saving && lessonData.homeworkFile)) && (
                     <div className="w-full bg-slate-200 rounded-full h-1.5 mt-2 overflow-hidden">
-                      <div 
-                        className={cn(
-                          "h-full transition-all duration-300",
-                          uploadProgress.hw === 100 ? "bg-emerald-500" : "bg-emerald-600"
-                        )} 
+                      <div
+                        className={cn("h-full transition-all duration-300", uploadProgress.hw === 100 ? "bg-emerald-500" : "bg-emerald-600")}
                         style={{ width: `${uploadProgress.hw}%` }}
-                      ></div>
+                      />
                     </div>
                   )}
                 </label>

@@ -10,22 +10,11 @@ import {
   normalizeEmail,
   ConcurrentEditError,
 } from '../../services/staffService';
-import {
-  Plus,
-  Briefcase,
-  Mail,
-  Calendar,
-  UserPlus,
-  Edit2,
-  CreditCard
-} from 'lucide-react';
+import { Plus, Search, Edit2, Mail, UserPlus } from 'lucide-react';
 import { useToast } from '../../components/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
 import { fmtDate } from '../../lib/utils';
-import {
-  PageHeader, Card, Badge, Button, IconButton, Modal,
-  FormField, Input, Select, Table, Thead, Th, Tbody, Tr, Td, EmptyState, Avatar
-} from '../../components/ui';
+import { Modal, FormField, Input, Select, Button } from '../../components/ui';
 
 interface StaffMember {
   id: string;
@@ -37,6 +26,7 @@ interface StaffMember {
   salary: number;
   status: 'active' | 'on-leave' | 'resigned';
   version?: number;
+  employeeId?: string;
 }
 
 const ALLOWED_ROLES: ReadonlyArray<StaffMember['role']> = [
@@ -45,12 +35,26 @@ const ALLOWED_ROLES: ReadonlyArray<StaffMember['role']> = [
 const PORTAL_ROLES: ReadonlyArray<string> = ['principal', 'accounts', 'grievance_officer'];
 const DEFAULT_PASSWORD = 'password123';
 
+function getInitials(name: string) {
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+}
+
+const roleLabel: Record<string, string> = {
+  principal: 'Principal',
+  accounts: 'Accounts',
+  admin: 'Admin',
+  security: 'Security',
+  transport: 'Transport',
+  grievance_officer: 'Grievance Officer',
+};
+
 export default function StaffManagement({ user }: { user: any }) {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
   const { showToast } = useToast();
 
   const { isReadOnly } = usePermissions(user.role);
@@ -82,7 +86,7 @@ export default function StaffManagement({ user }: { user: any }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return; // guard against double-submit
+    if (loading) return;
     setLoading(true);
     try {
       const salaryNum = Number(formData.salary);
@@ -246,171 +250,100 @@ export default function StaffManagement({ user }: { user: any }) {
     setIsModalOpen(true);
   };
 
-  const statusVariant = (status: string) => {
-    if (status === 'active') return 'success';
-    if (status === 'on-leave') return 'warning';
-    return 'error';
-  };
-
   const openAddModal = () => {
     setIsEditMode(false);
     setEditingStaff(null);
-    setFormData({ name: '', email: '', phone: '', role: 'accounts', joiningDate: '', salary: '' });
+    setFormData({ employeeId: '', name: '', email: '', phone: '', role: 'accounts', joiningDate: '', salary: '' });
     setIsModalOpen(true);
   };
 
+  const filteredStaff = staff.filter(m =>
+    m.name.toLowerCase().includes(search.toLowerCase()) ||
+    m.email.toLowerCase().includes(search.toLowerCase()) ||
+    (m.role || '').toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Staff & HR</h1>
-          <p className="text-xs text-indigo-100 mt-0.5">{staff.length} non-faculty members</p>
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">{staff.length} member{staff.length !== 1 ? 's' : ''}</div>
+          <h1>Staff</h1>
         </div>
-
-        <div className="px-4 pt-4 space-y-2.5">
-          {staff.length === 0 ? (
-            <div className="py-12 text-center">
-              <Briefcase className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No staff yet</p>
-              <p className="text-xs text-slate-500 mt-1">Tap + to add a member</p>
-            </div>
-          ) : (
-            staff.map((member) => (
-              <button
-                key={member.id}
-                onClick={() => !readOnly && handleEdit(member)}
-                className="w-full bg-white rounded-2xl shadow-sm border border-slate-100 p-3 text-left active:scale-[0.98] transition-transform"
-              >
-                <div className="flex items-center gap-3">
-                  <Avatar name={member.name} size="md" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">{member.name}</p>
-                    <p className="text-[11px] text-slate-500 truncate flex items-center gap-1">
-                      <Mail className="w-3 h-3 shrink-0" />{member.email}
-                    </p>
-                  </div>
-                  <Badge variant={statusVariant(member.status)} className="text-[9px] shrink-0">
-                    {member.status}
-                  </Badge>
-                </div>
-                <div className="mt-2 flex items-center justify-between text-[10px]">
-                  <span className="font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md uppercase">{member.role}</span>
-                  <span className="text-slate-500">₹{(member.salary || 0).toLocaleString()}</span>
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-
         {!readOnly && (
-          <button
-            onClick={openAddModal}
-            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-          >
-            <Plus className="w-6 h-6" strokeWidth={2.5} />
+          <button className="btn accent" onClick={openAddModal}>
+            <Plus size={15} /> Add Staff
           </button>
         )}
       </div>
 
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Staff & HR Management"
-        subtitle="Manage non-faculty staff members and their roles."
-        icon={Briefcase}
-        iconColor="gradient-blue"
-        actions={
-          !readOnly && (
-            <Button
-              icon={Plus}
-              onClick={() => {
-                setIsEditMode(false);
-                setEditingStaff(null);
-                setFormData({ name: '', email: '', phone: '', role: 'accounts', joiningDate: '', salary: '' });
-                setIsModalOpen(true);
-              }}
-            >
-              Add Staff Member
-            </Button>
-          )
-        }
-      />
-
-      <Card padding="none">
-        <Table>
-          <Thead>
-            <Tr>
-              <Th>Staff Member</Th>
-              <Th>Role</Th>
-              <Th className="hidden md:table-cell">Email</Th>
-              <Th className="hidden lg:table-cell">Joined</Th>
-              <Th className="hidden sm:table-cell">Salary</Th>
-              <Th>Status</Th>
-              <Th className="text-right">Actions</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {staff.map((member) => (
-              <Tr key={member.id}>
-                <Td>
-                  <div className="flex items-center gap-3">
-                    <Avatar name={member.name} size="sm" />
-                    <div>
-                      <span className="font-semibold text-slate-900 block">{member.name}</span>
-                      <span className="text-[10px] text-slate-400 md:hidden">{member.email}</span>
-                    </div>
-                  </div>
-                </Td>
-                <Td>
-                  <Badge variant="indigo">{member.role}</Badge>
-                </Td>
-                <Td className="hidden md:table-cell">
-                  <div className="flex items-center gap-1.5 text-slate-600">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    {member.email}
-                  </div>
-                </Td>
-                <Td className="hidden lg:table-cell">
-                  <div className="flex items-center gap-1.5 text-slate-600">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    {fmtDate(member.joiningDate)}
-                  </div>
-                </Td>
-                <Td className="hidden sm:table-cell">
-                  <div className="flex items-center gap-1.5 text-slate-600">
-                    <CreditCard className="w-3.5 h-3.5 text-slate-400" />
-                    ${(member.salary || 0).toLocaleString()}
-                  </div>
-                </Td>
-                <Td>
-                  <Badge variant={statusVariant(member.status)} dot>
-                    {member.status}
-                  </Badge>
-                </Td>
-                <Td className="text-right">
-                  {!readOnly && (
-                    <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(member)} />
-                  )}
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
-        {staff.length === 0 && (
-          <EmptyState
-            icon={Briefcase}
-            title="No staff members yet"
-            description="Add your first staff member to get started."
-            action={
-              <Button icon={Plus} size="sm" onClick={() => setIsModalOpen(true)}>
-                Add Staff Member
-              </Button>
-            }
+      <div className="pad stack">
+        {/* Search */}
+        <div className="card flex" style={{ gap: 10, padding: '10px 14px', alignItems: 'center' }}>
+          <Search size={16} className="muted" style={{ flexShrink: 0 }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search staff..."
+            style={{ border: 0, outline: 'none', background: 'transparent', flex: 1, fontSize: 14, fontFamily: 'var(--body)', color: 'var(--ink)' }}
           />
+        </div>
+
+        {/* Staff cards */}
+        {filteredStaff.length === 0 ? (
+          <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+            <p className="muted" style={{ fontSize: 14 }}>
+              {search ? 'No staff match your search.' : 'No staff members yet. Add one to get started.'}
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+            {filteredStaff.map(member => (
+              <div key={member.id} className="card" style={{ padding: '16px 18px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  {/* Avatar */}
+                  <div style={{
+                    width: 40, height: 40, borderRadius: '50%', background: 'var(--accent)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0,
+                  }}>
+                    {getInitials(member.name)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', marginBottom: 4 }}>
+                      {member.name}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                      <span className="chip solid" style={{ fontSize: 11 }}>{roleLabel[member.role] || member.role}</span>
+                      {member.status === 'active' && (
+                        <span className="chip" style={{ fontSize: 11, color: 'var(--leaf)', borderColor: 'var(--leaf)' }}>Active</span>
+                      )}
+                      {member.status === 'on-leave' && (
+                        <span className="chip" style={{ fontSize: 11, color: 'var(--coral)', borderColor: 'var(--coral)' }}>On Leave</span>
+                      )}
+                      {member.status === 'resigned' && (
+                        <span className="chip" style={{ fontSize: 11 }}>Resigned</span>
+                      )}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                      <Mail size={11} /> {member.email}
+                    </div>
+                    {member.joiningDate && (
+                      <div className="mono tiny" style={{ marginTop: 2 }}>
+                        Joined {fmtDate(member.joiningDate)}
+                      </div>
+                    )}
+                  </div>
+                  {!readOnly && (
+                    <button className="icon-btn" onClick={() => handleEdit(member)} title="Edit" style={{ flexShrink: 0 }}>
+                      <Edit2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
-      </Card>
       </div>
 
       <Modal

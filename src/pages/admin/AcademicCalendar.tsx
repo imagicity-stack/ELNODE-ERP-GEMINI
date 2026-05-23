@@ -4,14 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { logActivity } from '../../services/activityService';
 import { SchoolEvent, UserProfile } from '../../types';
 import { usePermissions } from '../../hooks/usePermissions';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Calendar as CalendarIcon,
-  Clock,
-  Bell
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import {
   format,
   addMonths,
@@ -27,7 +20,7 @@ import {
 } from 'date-fns';
 import { cn } from '../../lib/utils';
 import {
-  Card, Button, IconButton, Modal, ConfirmModal,
+  Button, Modal, ConfirmModal,
   FormField, Input, Select
 } from '../../components/ui';
 
@@ -50,7 +43,6 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
   const isAdmin = user.role === 'super_admin' || user.role === 'principal';
   const canWrite = user.role === 'super_admin' || (user.role === 'principal' && !readOnly);
 
-  // Form State
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -90,20 +82,11 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
         'Calendar Event Created',
         'Academic',
         `Created calendar event "${formData.title}" on ${formData.startDate}`,
-        {
-          eventId: eventRef.id,
-          title: formData.title,
-          type: formData.type,
-          startDate: formData.startDate,
-        }
+        { eventId: eventRef.id, title: formData.title, type: formData.type, startDate: formData.startDate }
       );
       setIsModalOpen(false);
       fetchEvents();
-      setFormData({
-        title: '', description: '', type: 'event',
-        startDate: '', endDate: '', allDay: true,
-        location: '', color: 'indigo'
-      });
+      setFormData({ title: '', description: '', type: 'event', startDate: '', endDate: '', allDay: true, location: '', color: 'indigo' });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'events');
     } finally {
@@ -139,260 +122,154 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
     }
   };
 
-  const renderHeader = () => (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl gradient-indigo flex items-center justify-center text-white shadow-lg">
-          <CalendarIcon className="w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{format(currentMonth, 'MMMM yyyy')}</h1>
-          <p className="text-slate-500 text-sm">Academic Calendar & Events</p>
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
-          <button
-            onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-            className="p-2 hover:bg-slate-50 rounded-lg transition-all text-slate-600"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setCurrentMonth(new Date())}
-            className="px-4 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-          >
-            Today
-          </button>
-          <button
-            onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-            className="p-2 hover:bg-slate-50 rounded-lg transition-all text-slate-600"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-        {canWrite && (
-          <Button icon={Plus} onClick={() => setIsModalOpen(true)}>
-            Add Event
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-
-  const renderDays = () => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    return (
-      <div className="grid grid-cols-7 mb-2">
-        {days.map(day => (
-          <div key={day} className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest py-2">
-            {day}
-          </div>
-        ))}
-      </div>
-    );
+  const eventDotColor = (type: string) => {
+    if (type === 'holiday') return 'var(--coral)';
+    if (type === 'exam') return 'var(--accent)';
+    if (type === 'meeting') return 'var(--leaf)';
+    return 'var(--ink)';
   };
 
-  const renderCells = () => {
-    const monthStart = startOfMonth(currentMonth);
-    const monthEnd = endOfMonth(monthStart);
-    const startDate = startOfWeek(monthStart);
-    const endDate = endOfWeek(monthEnd);
+  const eventTypeChipStyle = (type: string) => {
+    const base = { fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, textTransform: 'capitalize' as const, display: 'inline-block' };
+    if (type === 'holiday') return { ...base, background: 'color-mix(in srgb, var(--coral) 15%, transparent)', color: 'var(--coral)' };
+    if (type === 'exam') return { ...base, background: 'color-mix(in srgb, var(--accent) 15%, transparent)', color: 'var(--accent)' };
+    if (type === 'meeting') return { ...base, background: 'color-mix(in srgb, var(--leaf) 15%, transparent)', color: 'var(--leaf)' };
+    return { ...base, background: 'var(--cream-2)', color: 'var(--ink)' };
+  };
 
-    const rows = [];
-    let days = [];
-    let day = startDate;
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(monthStart);
+  const calStart = startOfWeek(monthStart);
+  const calEnd = endOfWeek(monthEnd);
 
-    while (day <= endDate) {
-      for (let i = 0; i < 7; i++) {
-        const formattedDate = format(day, 'd');
-        const cloneDay = day;
-        const dayEvents = events.filter(event =>
-          isSameDay(parseISO(event.startDate), cloneDay)
-        );
-
-        days.push(
-          <div
-            key={day.toString()}
-            className={cn(
-              'min-h-[110px] bg-white border border-slate-50 p-2 transition-all hover:bg-slate-50/60 cursor-pointer',
-              !isSameMonth(day, monthStart) && 'bg-slate-50/30 opacity-50',
-              isSameDay(day, new Date()) && 'ring-1 ring-inset ring-indigo-300 bg-indigo-50/20'
-            )}
-            onClick={() => {
-              setSelectedDate(cloneDay);
-              setFormData({ ...formData, startDate: format(cloneDay, 'yyyy-MM-dd') });
-            }}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className={cn(
-                'text-sm font-bold',
-                isSameDay(day, new Date())
-                  ? 'w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-sm text-xs'
-                  : 'text-slate-700'
-              )}>
-                {formattedDate}
-              </span>
-            </div>
-            <div className="space-y-0.5">
-              {dayEvents.map(event => (
-                <div
-                  key={event.id}
-                  className={cn(
-                    'px-1.5 py-0.5 rounded text-[10px] font-bold truncate cursor-pointer hover:opacity-80 transition-all',
-                    event.type === 'holiday' ? 'bg-red-50 text-red-600' :
-                    event.type === 'exam' ? 'bg-amber-50 text-amber-600' :
-                    event.type === 'meeting' ? 'bg-sky-50 text-sky-600' :
-                    'bg-indigo-50 text-indigo-600'
-                  )}
-                  title={event.title}
-                  onClick={(e) => { e.stopPropagation(); if (canWrite) handleDeleteEvent(event.id); }}
-                >
-                  {event.title}
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-        day = addDays(day, 1);
-      }
-      rows.push(
-        <div className="grid grid-cols-7" key={day.toString()}>
-          {days}
-        </div>
-      );
-      days = [];
+  const calRows: Date[][] = [];
+  let day = calStart;
+  while (day <= calEnd) {
+    const week: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      week.push(day);
+      day = addDays(day, 1);
     }
-    return (
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        {rows}
-      </div>
-    );
-  };
+    calRows.push(week);
+  }
 
   const upcomingEvents = events
     .filter(e => parseISO(e.startDate) >= new Date())
     .sort((a, b) => parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime());
 
+  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Academic Calendar</h1>
-          <p className="text-xs text-indigo-100 mt-0.5">{events.length} events · {upcomingEvents.length} upcoming</p>
-          <div className="mt-3 flex items-center justify-between bg-white/15 backdrop-blur rounded-xl px-3 py-2">
-            <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="active:scale-90 transition-transform">
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <p className="text-sm font-bold">{format(currentMonth, 'MMMM yyyy')}</p>
-            <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="active:scale-90 transition-transform">
-              <ChevronRight className="w-5 h-5" />
-            </button>
+      <div className="stack pad">
+        <div className="topbar">
+          <div>
+            <div className="eyebrow">{format(currentMonth, 'MMMM yyyy')}</div>
+            <h1>Calendar</h1>
           </div>
-        </div>
-
-        <div className="px-4 pt-4 space-y-2.5">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Upcoming Events</h3>
-          {upcomingEvents.length === 0 ? (
-            <div className="py-12 text-center">
-              <CalendarIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No upcoming events</p>
+          {canWrite && (
+            <div>
+              <button className="btn accent" onClick={() => setIsModalOpen(true)}>
+                <Plus style={{ width: 16, height: 16 }} /> Event
+              </button>
             </div>
-          ) : (
-            upcomingEvents.map(event => (
-              <div key={event.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex items-center gap-3">
-                <div className={cn(
-                  'w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0',
-                  event.type === 'holiday' ? 'bg-red-50 text-red-600' :
-                  event.type === 'exam' ? 'bg-amber-50 text-amber-600' :
-                  event.type === 'meeting' ? 'bg-violet-50 text-violet-600' :
-                  'bg-indigo-50 text-indigo-600'
-                )}>
-                  <span className="text-[9px] font-bold uppercase">{format(parseISO(event.startDate), 'MMM')}</span>
-                  <span className="text-sm font-bold leading-none">{format(parseISO(event.startDate), 'dd')}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-900 truncate">{event.title}</p>
-                  <p className="text-[11px] text-slate-500 capitalize">{event.type} · {event.allDay ? 'All Day' : format(parseISO(event.startDate), 'hh:mm a')}</p>
-                  {event.location && <p className="text-[10px] text-slate-400 truncate">{event.location}</p>}
-                </div>
-                {canWrite && (
-                  <button onClick={() => handleDeleteEvent(event.id)} className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center active:scale-90 transition-transform">
-                    <svg className="w-3.5 h-3.5 text-red-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
-                  </button>
-                )}
-              </div>
-            ))
           )}
         </div>
 
-        {canWrite && (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-          >
-            <Plus className="w-6 h-6" strokeWidth={2.5} />
+        <div className="card" style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.25rem' }}>
+          <button className="icon-btn" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+            <ChevronLeft style={{ width: 18, height: 18 }} />
           </button>
-        )}
-      </div>
-
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      {renderHeader()}
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <div className="lg:col-span-3">
-          {renderDays()}
-          {renderCells()}
+          <span className="display" style={{ fontSize: '1.25rem', fontWeight: 700 }}>{format(currentMonth, 'MMMM yyyy')}</span>
+          <button className="icon-btn" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+            <ChevronRight style={{ width: 18, height: 18 }} />
+          </button>
         </div>
 
-        <div className="space-y-5">
-          <Card>
-            <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Bell className="w-5 h-5 text-indigo-600" />
-              Upcoming Events
-            </h3>
-            <div className="space-y-4">
-              {events
-                .filter(e => parseISO(e.startDate) >= new Date())
-                .sort((a, b) => parseISO(a.startDate).getTime() - parseISO(b.startDate).getTime())
-                .slice(0, 5)
-                .map(event => (
-                  <div key={event.id} className="flex gap-3 group">
-                    <div className={cn(
-                      'w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 transition-all group-hover:scale-105',
-                      event.type === 'holiday' ? 'bg-red-50 text-red-600' :
-                      event.type === 'exam' ? 'bg-amber-50 text-amber-600' :
-                      'bg-indigo-50 text-indigo-600'
-                    )}>
-                      <span className="text-[9px] font-bold uppercase">{format(parseISO(event.startDate), 'MMM')}</span>
-                      <span className="text-sm font-bold">{format(parseISO(event.startDate), 'dd')}</span>
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-all truncate">{event.title}</h4>
-                      <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                        <Clock className="w-3 h-3" />
-                        {event.allDay ? 'All Day' : format(parseISO(event.startDate), 'hh:mm a')}
-                      </p>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--line)' }}>
+            {DAY_LABELS.map(d => (
+              <div key={d} className="eyebrow" style={{ textAlign: 'center', padding: '0.5rem 0', fontSize: '0.65rem' }}>{d}</div>
+            ))}
+          </div>
+          {calRows.map((week, wi) => (
+            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: wi < calRows.length - 1 ? '1px solid var(--line)' : undefined }}>
+              {week.map((d) => {
+                const dayEvents = events.filter(ev => isSameDay(parseISO(ev.startDate), d));
+                const isToday = isSameDay(d, new Date());
+                const inMonth = isSameMonth(d, currentMonth);
+                return (
+                  <div
+                    key={d.toString()}
+                    onClick={() => {
+                      setSelectedDate(d);
+                      setFormData(prev => ({ ...prev, startDate: format(d, 'yyyy-MM-dd') }));
+                    }}
+                    style={{
+                      minHeight: 72,
+                      padding: '0.375rem',
+                      borderRight: '1px solid var(--line)',
+                      opacity: inMonth ? 1 : 0.35,
+                      cursor: 'pointer',
+                      background: isToday ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'transparent',
+                    }}
+                  >
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 24, height: 24, borderRadius: '50%', fontSize: '0.78rem', fontWeight: isToday ? 700 : 500,
+                      background: isToday ? 'var(--accent)' : 'transparent',
+                      color: isToday ? 'var(--paper)' : 'var(--ink)',
+                    }}>
+                      {format(d, 'd')}
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
+                      {dayEvents.map(ev => (
+                        <span
+                          key={ev.id}
+                          title={ev.title}
+                          onClick={(e) => { e.stopPropagation(); if (canWrite) handleDeleteEvent(ev.id); }}
+                          style={{ width: 8, height: 8, borderRadius: '50%', background: eventDotColor(ev.type), cursor: canWrite ? 'pointer' : 'default', flexShrink: 0 }}
+                        />
+                      ))}
                     </div>
                   </div>
-                ))}
-              {events.filter(e => parseISO(e.startDate) >= new Date()).length === 0 && (
-                <p className="text-sm text-slate-400 text-center py-4">No upcoming events</p>
-              )}
+                );
+              })}
             </div>
-          </Card>
-
-          <div className="gradient-indigo p-5 rounded-2xl text-white shadow-lg">
-            <h3 className="font-bold mb-1">Academic Year 2026-27</h3>
-            <p className="text-xs text-white/80 leading-relaxed">
-              Stay updated with all school activities, holidays, and examination schedules.
-            </p>
-          </div>
+          ))}
         </div>
-      </div>
+
+        {upcomingEvents.length > 0 && (
+          <div className="stack">
+            <div className="section-head">Upcoming Events</div>
+            {upcomingEvents.map(event => (
+              <div key={event.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+                  <div style={{ flexShrink: 0, textAlign: 'center', minWidth: 42 }}>
+                    <div className="eyebrow" style={{ fontSize: '0.6rem' }}>{format(parseISO(event.startDate), 'MMM')}</div>
+                    <div style={{ fontWeight: 700, fontSize: '1.1rem', lineHeight: 1 }}>{format(parseISO(event.startDate), 'dd')}</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={eventTypeChipStyle(event.type)}>{event.type}</span>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: '0.2rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.title}</div>
+                    {event.endDate && event.endDate !== event.startDate && (
+                      <div className="muted" style={{ fontSize: '0.72rem' }}>
+                        {format(parseISO(event.startDate), 'MMM d')} – {format(parseISO(event.endDate), 'MMM d, yyyy')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {canWrite && (
+                  <button className="icon-btn" onClick={() => handleDeleteEvent(event.id)} title="Delete event">
+                    <svg style={{ width: 14, height: 14, color: 'var(--coral)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="3 6 5 6 21 6" /><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <ConfirmModal
@@ -408,7 +285,7 @@ export default function AcademicCalendar({ user }: AcademicCalendarProps) {
         onClose={() => setIsModalOpen(false)}
         title="Add New Event"
         footer={
-          <div className="flex items-center justify-end gap-3">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
             <Button form="event-form" type="submit" loading={loading} icon={Plus}>
               Add Event

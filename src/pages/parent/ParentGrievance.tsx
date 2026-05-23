@@ -5,9 +5,8 @@ import {
 import { db } from '../../firebase';
 import { UserProfile, Student, Grievance, GrievanceCategory, GrievancePriority } from '../../types';
 import { logActivity } from '../../services/activityService';
-import { Card, PageHeader } from '../../components/ui';
 import { useToast } from '../../components/Toast';
-import { MessageSquare, Plus, Clock, CheckCircle2, AlertCircle, ChevronDown, X, Send } from 'lucide-react';
+import { MessageCircle, Plus, Clock, CheckCircle2, AlertCircle, X, Send } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const CATEGORIES: { value: GrievanceCategory; label: string }[] = [
@@ -26,12 +25,12 @@ const PRIORITIES: { value: GrievancePriority; label: string; description: string
   { value: 'urgent', label: 'Urgent', description: 'Immediate action required' },
 ];
 
-const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
-  open: { label: 'Open', color: 'text-red-600 bg-red-50', icon: AlertCircle },
-  in_progress: { label: 'In Progress', color: 'text-amber-600 bg-amber-50', icon: Clock },
-  awaiting_response: { label: 'Awaiting Response', color: 'text-blue-600 bg-blue-50', icon: Clock },
-  resolved: { label: 'Resolved', color: 'text-emerald-600 bg-emerald-50', icon: CheckCircle2 },
-  closed: { label: 'Closed', color: 'text-slate-500 bg-slate-50', icon: CheckCircle2 },
+const statusConfig: Record<string, { label: string; bg: string; color: string; icon: any }> = {
+  open: { label: 'Open', bg: '#fee2e2', color: '#991b1b', icon: AlertCircle },
+  in_progress: { label: 'In Progress', bg: '#fef3c7', color: '#92400e', icon: Clock },
+  awaiting_response: { label: 'Awaiting Response', bg: '#dbeafe', color: '#1e40af', icon: Clock },
+  resolved: { label: 'Resolved', bg: '#d1fae5', color: '#065f46', icon: CheckCircle2 },
+  closed: { label: 'Closed', bg: 'var(--cream-2)', color: 'var(--ink-3)', icon: CheckCircle2 },
 };
 
 interface Props {
@@ -67,7 +66,6 @@ export default function ParentGrievance({ user, selectedStudent }: Props) {
     const unsub = onSnapshot(q, snap => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Grievance));
       setGrievances(list);
-      // Sync selected
       if (selectedGrievance) {
         const updated = list.find(g => g.id === selectedGrievance.id);
         if (updated) setSelectedGrievance(updated);
@@ -141,38 +139,41 @@ export default function ParentGrievance({ user, selectedStudent }: Props) {
   const publicNotes = (g: Grievance) => (g.notes || []).filter(n => !n.isInternal);
 
   return (
-    <div>
-      <PageHeader
-        title="My Grievances"
-        subtitle="Submit and track complaints or concerns"
-        icon={MessageSquare}
-        iconColor="bg-violet-500"
-        actions={
-          !showForm ? (
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              New Grievance
-            </button>
-          ) : undefined
-        }
-      />
+    <div className="pad stack" style={{ '--stack-gap': '20px' } as React.CSSProperties}>
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <p className="eyebrow">{selectedStudent?.name || 'Parent'}</p>
+          <h1 className="display" style={{ fontSize: 22 }}>Grievances</h1>
+        </div>
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="btn accent flex items-center gap-1.5"
+            style={{ fontSize: 13, padding: '8px 14px' }}
+          >
+            <Plus className="w-4 h-4" />
+            New Grievance
+          </button>
+        )}
+      </div>
 
       {/* Submit form */}
       {showForm && (
-        <Card className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-slate-900">Submit a Grievance</h2>
-            <button onClick={() => setShowForm(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100">
+        <div className="card">
+          <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+            <p style={{ fontSize: 14, fontWeight: 700 }}>Submit a Grievance</p>
+            <button
+              onClick={() => setShowForm(false)}
+              className="icon-btn"
+            >
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Title *</label>
+              <label className="eyebrow" style={{ display: 'block', marginBottom: 6 }}>Title *</label>
               <input
                 type="text"
                 value={form.title}
@@ -184,7 +185,7 @@ export default function ParentGrievance({ user, selectedStudent }: Props) {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Category *</label>
+                <label className="eyebrow" style={{ display: 'block', marginBottom: 6 }}>Category *</label>
                 <select
                   value={form.category}
                   onChange={e => setForm(f => ({ ...f, category: e.target.value as GrievanceCategory }))}
@@ -194,7 +195,7 @@ export default function ParentGrievance({ user, selectedStudent }: Props) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Priority *</label>
+                <label className="eyebrow" style={{ display: 'block', marginBottom: 6 }}>Priority *</label>
                 <select
                   value={form.priority}
                   onChange={e => setForm(f => ({ ...f, priority: e.target.value as GrievancePriority }))}
@@ -206,7 +207,7 @@ export default function ParentGrievance({ user, selectedStudent }: Props) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Description *</label>
+              <label className="eyebrow" style={{ display: 'block', marginBottom: 6 }}>Description *</label>
               <textarea
                 value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
@@ -217,169 +218,229 @@ export default function ParentGrievance({ user, selectedStudent }: Props) {
             </div>
 
             {selectedStudent && (
-              <div className="p-3 bg-violet-50 border border-violet-200 rounded-xl text-sm text-violet-700">
-                Filing for: <strong>{selectedStudent.name}</strong> ({selectedStudent.classId} {selectedStudent.section})
+              <div className="p-3 rounded-xl" style={{ background: 'var(--cream-2)' }}>
+                <p style={{ fontSize: 12, color: 'var(--ink-2)' }}>
+                  Filing for: <strong>{selectedStudent.name}</strong> ({selectedStudent.classId} {selectedStudent.section})
+                </p>
               </div>
             )}
 
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowForm(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-colors"
+                className="btn ghost"
+                style={{ padding: '8px 16px', fontSize: 13 }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={!form.title.trim() || !form.description.trim() || submitting}
-                className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="btn accent flex items-center gap-2"
+                style={{ padding: '8px 16px', fontSize: 13 }}
               >
                 <Send className="w-4 h-4" />
                 {submitting ? 'Submitting...' : 'Submit Grievance'}
               </button>
             </div>
           </div>
-        </Card>
+        </div>
       )}
 
-      <div className="flex flex-col lg:flex-row gap-6">
+      {/* List + Detail layout */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {/* List */}
-        <div className="lg:w-2/5 space-y-3">
-          {loading ? (
-            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-500" /></div>
-          ) : grievances.length === 0 ? (
-            <Card className="text-center py-10">
-              <MessageSquare className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-              <p className="text-slate-400 text-sm">No grievances filed yet</p>
-              <button
-                onClick={() => setShowForm(true)}
-                className="mt-3 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl transition-colors"
-              >
-                File a Grievance
-              </button>
-            </Card>
-          ) : (
-            grievances.map(g => {
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--ink)', borderTopColor: 'transparent' }} />
+          </div>
+        ) : grievances.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: '40px 24px' }}>
+            <MessageCircle className="w-8 h-8 mx-auto" style={{ color: 'var(--ink-4)', marginBottom: 8 }} />
+            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-3)' }}>No grievances filed yet</p>
+            <button
+              onClick={() => setShowForm(true)}
+              className="btn accent"
+              style={{ marginTop: 12, fontSize: 13, padding: '8px 16px' }}
+            >
+              File a Grievance
+            </button>
+          </div>
+        ) : (
+          <div className="stack" style={{ '--stack-gap': '8px' } as React.CSSProperties}>
+            {grievances.map(g => {
               const sc = statusConfig[g.status] || statusConfig.open;
               const Icon = sc.icon;
               const isSelected = selectedGrievance?.id === g.id;
-              const unreadCount = publicNotes(g).filter(n => n.authorRole !== 'parent').length;
               return (
                 <button
                   key={g.id}
                   onClick={() => setSelectedGrievance(isSelected ? null : g)}
-                  className={cn(
-                    'w-full text-left p-4 rounded-2xl border transition-all',
-                    isSelected ? 'border-violet-400 bg-violet-50 shadow-sm' : 'border-slate-100 bg-white hover:border-violet-200 hover:bg-slate-50',
-                  )}
+                  className="w-full text-left card"
+                  style={{
+                    padding: '12px 16px',
+                    background: isSelected ? 'var(--ink)' : 'var(--paper)',
+                    color: isSelected ? 'var(--cream)' : 'var(--ink)',
+                    transition: 'all 0.15s',
+                  }}
                 >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <p className="text-sm font-bold text-slate-900 leading-tight">{g.title}</p>
-                    <span className={cn('flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0', sc.color)}>
+                  <div className="flex items-start justify-between gap-2" style={{ marginBottom: 6 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>{g.title}</p>
+                    <span
+                      className="flex items-center gap-1 shrink-0"
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: 99,
+                        background: isSelected ? 'rgba(255,255,255,0.15)' : sc.bg,
+                        color: isSelected ? 'var(--cream)' : sc.color,
+                      }}
+                    >
                       <Icon className="w-3 h-3" />
                       {sc.label}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 line-clamp-2 mb-2">{g.description}</p>
+                  <p
+                    style={{
+                      fontSize: 11,
+                      color: isSelected ? 'var(--cream-2)' : 'var(--ink-3)',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      marginBottom: 6,
+                    } as React.CSSProperties}
+                  >
+                    {g.description}
+                  </p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-slate-400 capitalize">{g.category.replace('_', ' ')}</span>
-                    <span className="text-[10px] text-slate-300">·</span>
-                    <span className="text-[10px] text-slate-400">{new Date(g.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
+                    <span style={{ fontSize: 10, color: isSelected ? 'var(--cream-2)' : 'var(--ink-4)', textTransform: 'capitalize' }}>
+                      {g.category.replace('_', ' ')}
+                    </span>
+                    <span style={{ color: isSelected ? 'var(--cream-2)' : 'var(--ink-4)', fontSize: 10 }}>·</span>
+                    <span style={{ fontSize: 10, color: isSelected ? 'var(--cream-2)' : 'var(--ink-4)' }}>
+                      {new Date(g.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                    </span>
                     {publicNotes(g).length > 0 && (
-                      <span className="ml-auto px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold">
+                      <span
+                        style={{
+                          marginLeft: 'auto',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: 99,
+                          background: isSelected ? 'rgba(255,255,255,0.2)' : 'var(--cream-2)',
+                          color: isSelected ? 'var(--cream)' : 'var(--ink-2)',
+                        }}
+                      >
                         {publicNotes(g).length} note{publicNotes(g).length !== 1 ? 's' : ''}
                       </span>
                     )}
                   </div>
                 </button>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+        )}
 
-        {/* Detail */}
-        <div className="lg:w-3/5">
-          {selectedGrievance ? (
-            <Card>
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">{selectedGrievance.title}</h2>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={cn('flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold', statusConfig[selectedGrievance.status]?.color)}>
-                      {statusConfig[selectedGrievance.status]?.label}
-                    </span>
-                    <span className="text-xs text-slate-400 capitalize">{selectedGrievance.category.replace('_', ' ')}</span>
-                    <span className="text-xs text-slate-400">{new Date(selectedGrievance.createdAt).toLocaleDateString('en-IN')}</span>
-                  </div>
-                </div>
-                <button onClick={() => setSelectedGrievance(null)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-xl mb-4">
-                <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Your Complaint</p>
-                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{selectedGrievance.description}</p>
-              </div>
-
-              {/* Thread - only public notes */}
-              <div className="mb-4">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Communication Thread</p>
-                <div className="space-y-3 max-h-60 overflow-y-auto">
-                  {publicNotes(selectedGrievance).length === 0 ? (
-                    <p className="text-slate-400 text-xs text-center py-4">No replies yet. The grievance team will respond shortly.</p>
-                  ) : (
-                    publicNotes(selectedGrievance).map(note => (
-                      <div
-                        key={note.id}
-                        className={cn(
-                          'p-3 rounded-xl text-sm max-w-[85%]',
-                          note.authorRole === 'parent'
-                            ? 'ml-auto bg-violet-100 border border-violet-200'
-                            : 'bg-blue-50 border border-blue-200',
-                        )}
-                      >
-                        <p className="text-xs font-bold text-slate-600 mb-1">
-                          {note.authorRole === 'parent' ? 'You' : note.authorName}
-                        </p>
-                        <p className="text-slate-700 leading-relaxed">{note.content}</p>
-                        <p className="text-[10px] text-slate-400 mt-1 text-right">{new Date(note.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
-                      </div>
-                    ))
-                  )}
+        {/* Detail panel */}
+        {selectedGrievance && (
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div
+              className="flex items-start justify-between p-4"
+              style={{ borderBottom: '1px solid var(--line)' }}
+            >
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 700 }}>{selectedGrievance.title}</p>
+                <div className="flex items-center gap-2" style={{ marginTop: 4 }}>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: 99,
+                      background: (statusConfig[selectedGrievance.status] || statusConfig.open).bg,
+                      color: (statusConfig[selectedGrievance.status] || statusConfig.open).color,
+                    }}
+                  >
+                    {(statusConfig[selectedGrievance.status] || statusConfig.open).label}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--ink-3)', textTransform: 'capitalize' }}>
+                    {selectedGrievance.category.replace('_', ' ')}
+                  </span>
                 </div>
               </div>
+              <button onClick={() => setSelectedGrievance(null)} className="icon-btn">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              {/* Reply (only if not closed) */}
-              {selectedGrievance.status !== 'closed' && (
-                <div className="border-t border-slate-100 pt-4">
-                  <textarea
-                    value={replyText}
-                    onChange={e => setReplyText(e.target.value)}
-                    placeholder="Add more details or reply to the team..."
-                    rows={2}
-                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 resize-none mb-2"
-                  />
-                  <div className="flex justify-end">
-                    <button
-                      onClick={handleReply}
-                      disabled={!replyText.trim() || submittingReply}
-                      className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-50"
+            <div className="p-4" style={{ background: 'var(--cream-2)', borderBottom: '1px solid var(--line)' }}>
+              <p className="eyebrow" style={{ marginBottom: 4 }}>Your Complaint</p>
+              <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                {selectedGrievance.description}
+              </p>
+            </div>
+
+            <div className="p-4" style={{ borderBottom: '1px solid var(--line)' }}>
+              <p className="eyebrow" style={{ marginBottom: 10 }}>Communication Thread</p>
+              <div className="space-y-3" style={{ maxHeight: 240, overflowY: 'auto' }}>
+                {publicNotes(selectedGrievance).length === 0 ? (
+                  <p style={{ fontSize: 12, color: 'var(--ink-4)', textAlign: 'center', padding: '16px 0' }}>
+                    No replies yet. The grievance team will respond shortly.
+                  </p>
+                ) : (
+                  publicNotes(selectedGrievance).map(note => (
+                    <div
+                      key={note.id}
+                      style={{
+                        maxWidth: '85%',
+                        marginLeft: note.authorRole === 'parent' ? 'auto' : 0,
+                        padding: '10px 12px',
+                        borderRadius: 12,
+                        background: note.authorRole === 'parent' ? 'var(--ink)' : 'var(--cream-2)',
+                        color: note.authorRole === 'parent' ? 'var(--cream)' : 'var(--ink)',
+                      }}
                     >
-                      <Send className="w-3.5 h-3.5" />
-                      {submittingReply ? 'Sending...' : 'Send Reply'}
-                    </button>
-                  </div>
+                      <p style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, opacity: 0.7 }}>
+                        {note.authorRole === 'parent' ? 'You' : note.authorName}
+                      </p>
+                      <p style={{ fontSize: 12, lineHeight: 1.5 }}>{note.content}</p>
+                      <p style={{ fontSize: 10, opacity: 0.5, marginTop: 4, textAlign: 'right' }}>
+                        {new Date(note.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {selectedGrievance.status !== 'closed' && (
+              <div className="p-4">
+                <textarea
+                  value={replyText}
+                  onChange={e => setReplyText(e.target.value)}
+                  placeholder="Add more details or reply to the team..."
+                  rows={2}
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 resize-none"
+                  style={{ marginBottom: 8 }}
+                />
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleReply}
+                    disabled={!replyText.trim() || submittingReply}
+                    className="btn accent flex items-center gap-2"
+                    style={{ padding: '8px 16px', fontSize: 13 }}
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    {submittingReply ? 'Sending...' : 'Send Reply'}
+                  </button>
                 </div>
-              )}
-            </Card>
-          ) : (
-            <Card className="flex flex-col items-center justify-center py-16 text-center">
-              <MessageSquare className="w-10 h-10 text-slate-200 mb-3" />
-              <p className="text-slate-400 text-sm">Select a grievance to view the conversation</p>
-            </Card>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

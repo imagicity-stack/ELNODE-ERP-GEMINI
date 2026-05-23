@@ -1,15 +1,12 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { Plus, Book, Trash2, Edit2, Hash, Layers } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Subject, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
 import { usePermissions } from '../../hooks/usePermissions';
-import {
-  PageHeader, Card, Badge, Button, IconButton, Modal, ConfirmModal,
-  SearchInput, FormField, Input, Select, Table, Thead, Th, Tbody, Tr, Td, EmptyState
-} from '../../components/ui';
+import { Modal, ConfirmModal, FormField, Input, Button } from '../../components/ui';
 
 export default function SubjectManagement({ user }: { user: UserProfile }) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -19,7 +16,7 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [search, setSearch] = useState('');
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('subjects');
@@ -109,15 +106,9 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
   };
 
   const filteredSubjects = subjects.filter(s =>
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.code.toLowerCase().includes(searchTerm.toLowerCase())
+    s.name.toLowerCase().includes(search.toLowerCase()) ||
+    s.code.toLowerCase().includes(search.toLowerCase())
   );
-
-  const typeVariant = (type: string) => {
-    if (type === 'theory') return 'info';
-    if (type === 'practical') return 'success';
-    return 'purple';
-  };
 
   const openAdd = () => {
     setIsEditMode(false);
@@ -126,159 +117,74 @@ export default function SubjectManagement({ user }: { user: UserProfile }) {
     setIsModalOpen(true);
   };
 
+  const typeChipClass = (type: string) => {
+    if (type === 'theory') return 'chip solid' ;
+    if (type === 'practical') return 'chip';
+    return 'chip';
+  };
+
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Subjects</h1>
-          <p className="text-xs text-indigo-100 mt-0.5">{subjects.length} subjects defined</p>
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search name or code..."
-            className="mt-3 w-full px-4 py-2.5 rounded-xl bg-white/15 backdrop-blur border border-white/20 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20"
-          />
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">{subjects.length} subject{subjects.length !== 1 ? 's' : ''}</div>
+          <h1>Subjects</h1>
         </div>
-
-        <div className="px-4 pt-4 space-y-2.5">
-          {filteredSubjects.length === 0 ? (
-            <div className="py-12 text-center">
-              <Book className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No subjects</p>
-            </div>
-          ) : (
-            filteredSubjects.map((subject) => (
-              <div key={subject.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shrink-0">
-                  <Book className="w-5 h-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-900 truncate">{subject.name}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="font-mono text-[10px] font-bold text-indigo-600">{subject.code}</span>
-                    <Badge variant={typeVariant(subject.type || 'theory')} className="text-[9px]">{subject.type || 'theory'}</Badge>
-                  </div>
-                </div>
-                {!readOnly && (
-                  <div className="flex gap-1 shrink-0">
-                    <button onClick={() => handleEdit(subject)} className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center active:scale-90 transition-transform">
-                      <Edit2 className="w-3.5 h-3.5 text-slate-600" />
-                    </button>
-                    <button onClick={() => handleDelete(subject.id)} className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center active:scale-90 transition-transform">
-                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-
         {!readOnly && (
-          <button
-            onClick={openAdd}
-            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-          >
-            <Plus className="w-6 h-6" strokeWidth={2.5} />
+          <button className="btn accent" onClick={openAdd}>
+            <Plus size={15} /> Add Subject
           </button>
         )}
       </div>
 
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Subject Repository"
-        subtitle="Define and manage academic subjects with specific codes."
-        icon={Book}
-        iconColor="gradient-indigo"
-        actions={
-          !readOnly && (
-            <Button
-              icon={Plus}
-              onClick={() => {
-                setIsEditMode(false);
-                setEditingSubject(null);
-                setFormData({ name: '', code: '', type: 'theory' });
-                setIsModalOpen(true);
-              }}
-            >
-              Add New Subject
-            </Button>
-          )
-        }
-      />
-
-      <Card padding="sm">
-        <SearchInput
-          value={searchTerm}
-          onChange={setSearchTerm}
-          placeholder="Search by subject name or code..."
-        />
-      </Card>
-
-      <Card padding="none">
-        <Table>
-          <Thead>
-            <Tr>
-              <Th>Subject</Th>
-              <Th>Code</Th>
-              <Th>Type</Th>
-              <Th className="text-right">Actions</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {filteredSubjects.map((subject) => (
-              <Tr key={subject.id}>
-                <Td>
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl gradient-indigo flex items-center justify-center text-white shrink-0">
-                      <Book className="w-4 h-4" />
-                    </div>
-                    <span className="font-semibold text-slate-900">{subject.name}</span>
-                  </div>
-                </Td>
-                <Td>
-                  <div className="flex items-center gap-1.5">
-                    <Hash className="w-3.5 h-3.5 text-indigo-400" />
-                    <span className="font-mono text-xs font-bold text-indigo-600 uppercase tracking-wider">{subject.code}</span>
-                  </div>
-                </Td>
-                <Td>
-                  <Badge variant={typeVariant(subject.type || 'theory')}>
-                    <Layers className="w-3 h-3" />
-                    {subject.type || 'Theory'}
-                  </Badge>
-                </Td>
-                <Td className="text-right">
-                  {!readOnly && (
-                    <div className="flex items-center justify-end gap-1">
-                      <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(subject)} />
-                      <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(subject.id)} />
-                    </div>
-                  )}
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
-        {filteredSubjects.length === 0 && (
-          <EmptyState
-            icon={Book}
-            title="No subjects found"
-            description={searchTerm ? 'Try a different search term.' : 'Start by adding a new subject.'}
-            action={
-              !searchTerm && (
-                <Button icon={Plus} size="sm" onClick={() => setIsModalOpen(true)}>
-                  Add Subject
-                </Button>
-              )
-            }
+      <div className="pad stack">
+        {/* Search */}
+        <div className="card flex" style={{ gap: 10, padding: '10px 14px', alignItems: 'center' }}>
+          <Search size={16} className="muted" style={{ flexShrink: 0 }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search subjects..."
+            style={{ border: 0, outline: 'none', background: 'transparent', flex: 1, fontSize: 14, fontFamily: 'var(--body)', color: 'var(--ink)' }}
           />
+        </div>
+
+        {/* Two-up grid */}
+        {filteredSubjects.length === 0 ? (
+          <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+            <p className="muted" style={{ fontSize: 14 }}>
+              {search ? 'No subjects match your search.' : 'No subjects yet. Add one to get started.'}
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+            {filteredSubjects.map(subject => (
+              <div key={subject.id} className="card" style={{ padding: '16px 18px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', marginBottom: 4, wordBreak: 'break-word' }}>
+                    {subject.name}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span className="mono tiny" style={{ color: 'var(--accent)' }}>{subject.code}</span>
+                    <span className={subject.type === 'theory' ? 'chip solid' : 'chip'} style={{ fontSize: 11 }}>
+                      {subject.type === 'practical' ? 'Practical' : subject.type === 'both' ? 'Theory + Practical' : 'Theory'}
+                    </span>
+                  </div>
+                </div>
+                {!readOnly && (
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    <button className="icon-btn" onClick={() => handleEdit(subject)} title="Edit">
+                      <Edit2 size={14} />
+                    </button>
+                    <button className="icon-btn" onClick={() => handleDelete(subject.id)} title="Delete" style={{ color: 'var(--coral)' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         )}
-      </Card>
       </div>
 
       <ConfirmModal

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Settings2, GraduationCap, Building2, Phone, Globe, Mail, Database, AlertTriangle, RotateCw, Receipt, Calendar } from 'lucide-react';
+import { Save, RotateCw, AlertTriangle, Database } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { getSchoolSettings, saveSchoolSettings, SchoolSettings } from '../../services/settingsService';
 import { useToast } from '../../components/Toast';
-import { PageHeader, Card, Button, FormField, Input } from '../../components/ui';
+import { FormField, Input } from '../../components/ui';
 import { logActivity } from '../../services/activityService';
 import { migrateLegacyResults } from '../../services/examService';
 
@@ -74,273 +74,145 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-8 w-48 bg-slate-100 rounded" />
-        <div className="h-40 bg-slate-100 rounded-2xl" />
+      <div className="pad stack" style={{ gap: 16 }}>
+        <div style={{ height: 32, width: 192, background: 'var(--cream-2)', borderRadius: 8 }} />
+        <div style={{ height: 160, background: 'var(--cream-2)', borderRadius: 16 }} />
       </div>
     );
   }
 
   return (
-    <>
-      {/* Mobile UI */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">School Settings</h1>
-          <p className="text-xs text-indigo-200 mt-0.5">Global configuration for all portals</p>
+    <div className="pad stack" style={{ gap: 24, maxWidth: 680 }}>
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">{user.role.replace('_', ' ')}</div>
+          <h1>School Settings</h1>
         </div>
+        <button className="btn accent" onClick={handleSave} disabled={saving}>
+          <Save size={15} />
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
 
-        <div className="px-4 pt-4 pb-24 space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-              <GraduationCap className="w-4 h-4 text-indigo-600" />
-              <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Academic</p>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-600 mb-1.5">Current Academic Year</p>
-              <input
-                value={settings.academicYear}
-                onChange={set('academicYear')}
-                placeholder="2026-27"
-                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold outline-none"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">Format: YYYY-YY (e.g. 2026-27). Appears on receipts & reports.</p>
-            </div>
-          </div>
+      {/* Academic */}
+      <div className="card stack" style={{ gap: 20 }}>
+        <div className="eyebrow">Academic</div>
+        <FormField
+          label="Current Academic Year"
+          hint="Format: YYYY-YY (e.g. 2026-27). Appears on fee receipts, reports and all portals."
+        >
+          <Input
+            value={settings.academicYear}
+            onChange={set('academicYear')}
+            placeholder="2026-27"
+            className="mono"
+            style={{ maxWidth: 200 }}
+          />
+        </FormField>
+      </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-              <Building2 className="w-4 h-4 text-indigo-600" />
-              <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">School Information</p>
-            </div>
-
-            {[
-              { field: 'schoolName' as keyof SchoolSettings, label: 'School Name', placeholder: 'The Elden Heights School', icon: Building2 },
-              { field: 'address' as keyof SchoolSettings, label: 'Address', placeholder: 'Hazaribagh, Jharkhand', icon: Building2 },
-              { field: 'phone' as keyof SchoolSettings, label: 'Phone', placeholder: '9431904333', icon: Phone },
-              { field: 'website' as keyof SchoolSettings, label: 'Website', placeholder: 'eldenheights.org', icon: Globe },
-              { field: 'email' as keyof SchoolSettings, label: 'Email', placeholder: 'contact@eldenheights.org', icon: Mail },
-            ].map(({ field, label, placeholder }) => (
-              <div key={field}>
-                <p className="text-xs font-bold text-slate-600 mb-1.5">{label}</p>
-                <input
-                  value={(settings[field] as string) || ''}
-                  onChange={set(field)}
-                  placeholder={placeholder}
-                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
-                />
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-              <Receipt className="w-4 h-4 text-indigo-600" />
-              <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Receipt Settings</p>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-600 mb-1.5">Receipt Prefix</p>
-              <input
-                value={settings.receiptPrefix || ''}
-                onChange={set('receiptPrefix')}
-                placeholder="EHSREC"
-                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono outline-none"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">Letters before the number on every receipt (e.g. EHSREC → EHSREC0001).</p>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-600 mb-1.5">Start From</p>
-              <input
-                type="number"
-                min={1}
-                value={settings.receiptStartNumber ?? 1}
-                onChange={(e) => setSettings(prev => ({ ...prev, receiptStartNumber: Number(e.target.value) }))}
-                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono outline-none"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">First receipt number. Only applies before any receipt is generated.</p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-              <Calendar className="w-4 h-4 text-indigo-600" />
-              <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Fee Settings</p>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-600 mb-1.5">Default Fee Due Day</p>
-              <input
-                type="number"
-                min={1}
-                max={28}
-                value={settings.defaultFeeDueDay ?? 10}
-                onChange={(e) => setSettings(prev => ({ ...prev, defaultFeeDueDay: Number(e.target.value) }))}
-                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono outline-none"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">Day of the <b>following month</b> that new fee requests default to (1-28). Accountant can still override per-request.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 safe-area-bottom">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-sm active:scale-95 transition-transform disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving…' : 'Save Settings'}
-          </button>
+      {/* School Information */}
+      <div className="card stack" style={{ gap: 20 }}>
+        <div className="eyebrow">School Information</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <FormField label="School Name">
+            <Input value={settings.schoolName || ''} onChange={set('schoolName')} placeholder="The Elden Heights School" />
+          </FormField>
+          <FormField label="Address">
+            <Input value={settings.address || ''} onChange={set('address')} placeholder="Hazaribagh, Jharkhand · 825301" />
+          </FormField>
+          <FormField label="Phone">
+            <Input value={settings.phone || ''} onChange={set('phone')} placeholder="9431904333 / 9288483677" />
+          </FormField>
+          <FormField label="Website">
+            <Input value={settings.website || ''} onChange={set('website')} placeholder="eldenheights.org" />
+          </FormField>
+          <FormField label="Email">
+            <Input value={settings.email || ''} onChange={set('email')} placeholder="contact@eldenheights.org" />
+          </FormField>
         </div>
       </div>
 
-      {/* Desktop UI */}
-      <div className="hidden md:block p-6 space-y-6 max-w-2xl">
-        <PageHeader
-          title="School Settings"
-          subtitle="Configure global settings that apply across all portals and documents"
-          icon={Settings2}
-        />
-
-        <Card className="p-6 space-y-6">
-          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-            <GraduationCap className="w-4 h-4 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Academic</h3>
-          </div>
-
-          <FormField
-            label="Current Academic Year"
-            hint="Format: YYYY-YY  (e.g. 2026-27). This appears on fee receipts, reports and all portals."
-          >
+      {/* Receipt Settings */}
+      <div className="card stack" style={{ gap: 20 }}>
+        <div className="eyebrow">Receipt Settings</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <FormField label="Receipt Prefix" hint="Letters before the number on every receipt (e.g. EHSREC → EHSREC0001)">
             <Input
-              value={settings.academicYear}
-              onChange={set('academicYear')}
-              placeholder="2026-27"
-              className="max-w-xs font-mono"
+              value={settings.receiptPrefix || ''}
+              onChange={set('receiptPrefix')}
+              placeholder="EHSREC"
+              className="mono"
             />
           </FormField>
-        </Card>
-
-        <Card className="p-6 space-y-6">
-          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-            <Building2 className="w-4 h-4 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">School Information</h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="School Name">
-              <Input value={settings.schoolName || ''} onChange={set('schoolName')} placeholder="The Elden Heights School" />
-            </FormField>
-            <FormField label="Address">
-              <Input value={settings.address || ''} onChange={set('address')} placeholder="Hazaribagh, Jharkhand · 825301" />
-            </FormField>
-            <FormField label="Phone">
-              <Input value={settings.phone || ''} onChange={set('phone')} placeholder="9431904333 / 9288483677" />
-            </FormField>
-            <FormField label="Website">
-              <Input value={settings.website || ''} onChange={set('website')} placeholder="eldenheights.org" />
-            </FormField>
-            <FormField label="Email">
-              <Input value={settings.email || ''} onChange={set('email')} placeholder="contact@eldenheights.org" />
-            </FormField>
-          </div>
-        </Card>
-
-        <Card className="p-6 space-y-6">
-          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-            <Receipt className="w-4 h-4 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Receipt Settings</h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Receipt Prefix" hint="Letters before the number on every receipt (e.g. EHSREC → EHSREC0001)">
-              <Input
-                value={settings.receiptPrefix || ''}
-                onChange={set('receiptPrefix')}
-                placeholder="EHSREC"
-                className="font-mono"
-              />
-            </FormField>
-            <FormField label="Start From" hint="First receipt number. Only applies before any receipt is generated.">
-              <Input
-                type="number"
-                min={1}
-                value={settings.receiptStartNumber ?? 1}
-                onChange={(e) => setSettings(prev => ({ ...prev, receiptStartNumber: Number(e.target.value) }))}
-                className="font-mono max-w-xs"
-              />
-            </FormField>
-          </div>
-        </Card>
-
-        <Card className="p-6 space-y-6">
-          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-            <Calendar className="w-4 h-4 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Fee Settings</h3>
-          </div>
-
-          <FormField
-            label="Default Fee Due Day"
-            hint="Day of the following month that new fee requests default to. Range 1-28. The accountant can still override the due date per request."
-          >
+          <FormField label="Start From" hint="First receipt number. Only applies before any receipt is generated.">
             <Input
               type="number"
               min={1}
-              max={28}
-              value={settings.defaultFeeDueDay ?? 10}
-              onChange={(e) => setSettings(prev => ({ ...prev, defaultFeeDueDay: Number(e.target.value) }))}
-              className="font-mono max-w-xs"
+              value={settings.receiptStartNumber ?? 1}
+              onChange={(e) => setSettings(prev => ({ ...prev, receiptStartNumber: Number(e.target.value) }))}
+              className="mono"
+              style={{ maxWidth: 160 }}
             />
           </FormField>
-        </Card>
-
-        <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={saving} className="flex items-center gap-2">
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving…' : 'Save Settings'}
-          </Button>
         </div>
-
-        {isSuperAdmin && (
-          <Card className="p-6 space-y-4 border-amber-200 bg-amber-50/30">
-            <div className="flex items-center gap-2 pb-2 border-b border-amber-100">
-              <Database className="w-4 h-4 text-amber-600" />
-              <h3 className="text-sm font-bold text-amber-800 uppercase tracking-wide">Maintenance</h3>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-900">Migrate Legacy Exam Results</p>
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    A pre-fix version of the marks-entry page wrote to a <code className="px-1 bg-slate-100 rounded text-[10px]">results</code> collection
-                    instead of <code className="px-1 bg-slate-100 rounded text-[10px]">examResults</code>. This tool copies any
-                    orphaned rows over. Safe to run repeatedly — existing records are preserved.
-                  </p>
-                </div>
-              </div>
-
-              {migrationReport && (
-                <div className="ml-7 mt-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">
-                  <strong>Migration complete:</strong> {migrationReport.copied} record(s) copied, {migrationReport.skipped} skipped (already present or invalid).
-                </div>
-              )}
-
-              <div className="ml-7">
-                <Button
-                  onClick={handleMigrateResults}
-                  disabled={migrating}
-                  className="bg-amber-600 hover:bg-amber-700 text-white"
-                >
-                  <RotateCw className={`w-4 h-4 mr-2 ${migrating ? 'animate-spin' : ''}`} />
-                  {migrating ? 'Migrating...' : 'Run Migration'}
-                </Button>
-              </div>
-            </div>
-          </Card>
-        )}
       </div>
-    </>
+
+      {/* Fee Settings */}
+      <div className="card stack" style={{ gap: 20 }}>
+        <div className="eyebrow">Fee Settings</div>
+        <FormField
+          label="Default Fee Due Day"
+          hint="Day of the following month that new fee requests default to. Range 1–28. Accountant can still override per request."
+        >
+          <Input
+            type="number"
+            min={1}
+            max={28}
+            value={settings.defaultFeeDueDay ?? 10}
+            onChange={(e) => setSettings(prev => ({ ...prev, defaultFeeDueDay: Number(e.target.value) }))}
+            className="mono"
+            style={{ maxWidth: 120 }}
+          />
+        </FormField>
+      </div>
+
+      {/* Migration — super_admin only */}
+      {isSuperAdmin && (
+        <div className="card stack" style={{ gap: 16, borderColor: 'var(--coral)', background: 'rgba(239,68,68,.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Database size={15} style={{ color: 'var(--coral)' }} />
+            <div className="eyebrow" style={{ color: 'var(--coral)' }}>Maintenance</div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <AlertTriangle size={16} style={{ color: 'var(--coral)', flexShrink: 0, marginTop: 2 }} />
+            <div className="stack" style={{ gap: 4, flex: 1 }}>
+              <p style={{ fontWeight: 700, fontSize: 14 }}>Migrate Legacy Exam Results</p>
+              <p className="muted tiny">
+                A pre-fix version of the marks-entry page wrote to a <code style={{ background: 'var(--cream-2)', padding: '1px 4px', borderRadius: 4 }}>results</code> collection
+                instead of <code style={{ background: 'var(--cream-2)', padding: '1px 4px', borderRadius: 4 }}>examResults</code>. This tool copies any orphaned rows over. Safe to run repeatedly — existing records are preserved.
+              </p>
+            </div>
+          </div>
+
+          {migrationReport && (
+            <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.3)', fontSize: 13, color: 'var(--leaf)' }}>
+              <strong>Migration complete:</strong> {migrationReport.copied} record(s) copied, {migrationReport.skipped} skipped.
+            </div>
+          )}
+
+          <button
+            className="btn ghost"
+            onClick={handleMigrateResults}
+            disabled={migrating}
+            style={{ alignSelf: 'flex-start', borderColor: 'var(--coral)', color: 'var(--coral)' }}
+          >
+            <RotateCw size={14} style={migrating ? { animation: 'spin 1s linear infinite' } : {}} />
+            {migrating ? 'Migrating...' : 'Run Migration'}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
