@@ -3,40 +3,18 @@ import {
   History as HistoryIcon,
   Search,
   Download,
-  Clock,
-  User,
   Globe,
   Wifi,
   ChevronLeft,
   ChevronRight,
-  Filter,
   X,
-  RefreshCw,
   Activity,
   Users,
   Layers,
   Calendar,
-  ChevronDown,
-  ChevronUp,
   MonitorSmartphone,
   Sparkles,
 } from 'lucide-react';
-import {
-  PageHeader,
-  Card,
-  Button,
-  Input,
-  Select,
-  Table,
-  Thead,
-  Th,
-  Tbody,
-  Tr,
-  Td,
-  Badge,
-  EmptyState,
-  IconButton,
-} from '../../components/ui';
 import { ActivityLog, ActivitySection, UserProfile } from '../../types';
 import { subscribeActivityLogs } from '../../services/activityService';
 import { saveText } from '../../lib/download';
@@ -61,48 +39,32 @@ const SECTIONS: ActivitySection[] = [
 
 const ROLES = ['super_admin', 'accountant', 'parent', 'teacher', 'student', 'principal', 'grievance_officer'];
 
-const SECTION_COLORS: Record<string, string> = {
-  'Super Admin': 'bg-rose-100 text-rose-700',
-  'Accounts': 'bg-emerald-100 text-emerald-700',
-  'Academic': 'bg-blue-100 text-blue-700',
-  'Students': 'bg-amber-100 text-amber-700',
-  'Teachers': 'bg-indigo-100 text-indigo-700',
-  'Exam': 'bg-purple-100 text-purple-700',
-  'Staff': 'bg-cyan-100 text-cyan-700',
-  'Parents': 'bg-pink-100 text-pink-700',
-  'Principal': 'bg-orange-100 text-orange-700',
-};
-
-const getSectionBadgeVariant = (section: string) => {
-  switch (section) {
-    case 'Super Admin': return 'danger';
-    case 'Accounts': return 'success';
-    case 'Academic': return 'primary';
-    case 'Students': return 'warning';
-    case 'Teachers': return 'info';
-    default: return 'secondary';
-  }
+const SECTION_COLORS: Record<string, { bg: string; color: string }> = {
+  'Super Admin': { bg: '#fee2e2', color: '#b91c1c' },
+  'Accounts':   { bg: '#dcfce7', color: '#15803d' },
+  'Academic':   { bg: '#dbeafe', color: '#1d4ed8' },
+  'Students':   { bg: '#fef9c3', color: '#854d0e' },
+  'Teachers':   { bg: '#e0e7ff', color: '#4338ca' },
+  'Exam':       { bg: '#f3e8ff', color: '#7e22ce' },
+  'Staff':      { bg: '#cffafe', color: '#0e7490' },
+  'Parents':    { bg: '#fce7f3', color: '#9d174d' },
+  'Principal':  { bg: '#ffedd5', color: '#9a3412' },
 };
 
 export default function ActivityTracker({ user }: { user: UserProfile }) {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [liveCount, setLiveCount] = useState(0);
   const [subError, setSubError] = useState<string | null>(null);
 
-  // Filters
   const [search, setSearch] = useState('');
   const [selectedSection, setSelectedSection] = useState<string>('all');
   const [selectedRole, setSelectedRole] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
 
-  // Pagination
   const [page, setPage] = useState(1);
   const itemsPerPage = 25;
 
-  // Expanded row for details
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -110,21 +72,13 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
     setSubError(null);
     const unsub = subscribeActivityLogs({
       limitCount: 1000,
-      onData: (docs) => {
-        setLogs(docs);
-        setLiveCount(prev => prev + 1);
-        setLoading(false);
-        setSubError(null);
-      },
+      onData: (docs) => { setLogs(docs); setLoading(false); setSubError(null); },
       onError: (err) => {
         setLoading(false);
         const code = err?.code || '';
         const msg = err?.message || String(err);
         if (code === 'permission-denied' || /Missing or insufficient permissions/i.test(msg)) {
-          setSubError(
-            'Firestore denied read access to activityLogs. The new security rules have not been deployed yet. ' +
-            'Run: firebase deploy --only firestore:rules'
-          );
+          setSubError('Firestore denied read access to activityLogs. The new security rules have not been deployed yet. Run: firebase deploy --only firestore:rules');
         } else {
           setSubError(`Could not load activity logs: ${msg}`);
         }
@@ -133,49 +87,25 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
     return unsub;
   }, []);
 
-  // Reset page when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [search, selectedSection, selectedRole, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [search, selectedSection, selectedRole, dateFrom, dateTo]);
 
-  const filteredLogs = useMemo(() => {
-    return logs.filter(log => {
-      if (selectedSection !== 'all' && log.section !== selectedSection) return false;
-      if (selectedRole !== 'all' && log.userRole !== selectedRole) return false;
-
-      if (dateFrom) {
-        const d = toDate(log.timestamp);
-        if (!d || isBefore(d, startOfDay(new Date(dateFrom)))) return false;
-      }
-      if (dateTo) {
-        const d = toDate(log.timestamp);
-        if (!d || isAfter(d, endOfDay(new Date(dateTo)))) return false;
-      }
-
-      if (search) {
-        const q = search.toLowerCase();
-        return (
-          (log.userName || '').toLowerCase().includes(q) ||
-          (log.action || '').toLowerCase().includes(q) ||
-          (log.details || '').toLowerCase().includes(q) ||
-          (log.aiDescription || '').toLowerCase().includes(q) ||
-          (log.ip || '').toLowerCase().includes(q) ||
-          (log.location || '').toLowerCase().includes(q)
-        );
-      }
-      return true;
-    });
-  }, [logs, search, selectedSection, selectedRole, dateFrom, dateTo]);
+  const filteredLogs = useMemo(() => logs.filter(log => {
+    if (selectedSection !== 'all' && log.section !== selectedSection) return false;
+    if (selectedRole !== 'all' && log.userRole !== selectedRole) return false;
+    if (dateFrom) { const d = toDate(log.timestamp); if (!d || isBefore(d, startOfDay(new Date(dateFrom)))) return false; }
+    if (dateTo) { const d = toDate(log.timestamp); if (!d || isAfter(d, endOfDay(new Date(dateTo)))) return false; }
+    if (search) {
+      const q = search.toLowerCase();
+      return (log.userName || '').toLowerCase().includes(q) || (log.action || '').toLowerCase().includes(q) || (log.details || '').toLowerCase().includes(q) || (log.aiDescription || '').toLowerCase().includes(q) || (log.ip || '').toLowerCase().includes(q) || (log.location || '').toLowerCase().includes(q);
+    }
+    return true;
+  }), [logs, search, selectedSection, selectedRole, dateFrom, dateTo]);
 
   const paginatedLogs = filteredLogs.slice((page - 1) * itemsPerPage, page * itemsPerPage);
   const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
 
-  // Stats
   const stats = useMemo(() => {
-    const todayLogs = logs.filter(l => {
-      const d = toDate(l.timestamp);
-      return d ? isToday(d) : false;
-    });
+    const todayLogs = logs.filter(l => { const d = toDate(l.timestamp); return d ? isToday(d) : false; });
     const uniqueUsers = new Set(logs.map(l => l.userId)).size;
     const sectionsUsed = new Set(logs.map(l => l.section)).size;
     const uniqueIPs = new Set(logs.filter(l => l.ip).map(l => l.ip)).size;
@@ -186,477 +116,284 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
     const headers = ['Timestamp', 'User', 'Role', 'Section', 'Action', 'Details', 'IP', 'Location', 'ISP'];
     const rows = filteredLogs.map(log => [
       safeFormat(log.timestamp, 'dd/MM/yyyy HH:mm:ss'),
-      log.userName,
-      log.userRole,
-      log.section,
-      log.action,
+      log.userName, log.userRole, log.section, log.action,
       `"${(log.details || '').replace(/"/g, '""')}"`,
-      log.ip || '',
-      log.location || '',
-      log.isp || '',
+      log.ip || '', log.location || '', log.isp || '',
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     await saveText(csv, `activity_log_${format(new Date(), 'yyyy-MM-dd_HHmm')}.csv`);
   };
 
   const clearFilters = () => {
-    setSearch('');
-    setSelectedSection('all');
-    setSelectedRole('all');
-    setDateFrom('');
-    setDateTo('');
+    setSearch(''); setSelectedSection('all'); setSelectedRole('all'); setDateFrom(''); setDateTo('');
   };
 
   const hasActiveFilters = search || selectedSection !== 'all' || selectedRole !== 'all' || dateFrom || dateTo;
 
   return (
     <>
-      {/* ─── Mobile UI ──────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Activity Tracker</h1>
-          <p className="text-xs text-indigo-200 mt-0.5">{filteredLogs.length} log{filteredLogs.length !== 1 ? 's' : ''} · live</p>
-
-          {/* Mobile quick stats */}
-          <div className="grid grid-cols-2 gap-2 mt-4">
-            {[
-              { label: 'Total Logs', value: stats.total },
-              { label: "Today's Activity", value: stats.today },
-              { label: 'Unique Users', value: stats.uniqueUsers },
-              { label: 'Unique IPs', value: stats.uniqueIPs },
-            ].map(s => (
-              <div key={s.label} className="bg-white/10 rounded-2xl p-3">
-                <p className="text-[10px] text-indigo-200 font-semibold uppercase">{s.label}</p>
-                <p className="text-xl font-black text-white">{s.value}</p>
-              </div>
-            ))}
-          </div>
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">{filteredLogs.length} entries</div>
+          <h1>Activity</h1>
         </div>
-
-        {/* Section chips */}
-        <div className="px-4 pt-3 pb-2 overflow-x-auto flex gap-2 [scrollbar-width:none] bg-white border-b border-slate-100">
-          {['all', ...SECTIONS].map(s => (
-            <button
-              key={s}
-              onClick={() => setSelectedSection(s)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all active:scale-95 ${
-                selectedSection === s ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'
-              }`}
-            >
-              {s === 'all' ? 'All' : s}
-            </button>
-          ))}
-        </div>
-
-        <div className="px-4 pt-3 pb-3 bg-white border-b border-slate-100 flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-            <input
-              placeholder="Search logs..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full h-9 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
-            />
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: 'var(--leaf)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--leaf)', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+            Live
+          </span>
           <button
+            className="icon-btn"
             onClick={exportCSV}
             disabled={filteredLogs.length === 0}
-            className="px-3 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold active:scale-95 disabled:opacity-50"
+            title="Export CSV"
           >
-            <Download className="w-4 h-4" />
+            <Download size={15} />
           </button>
-        </div>
-
-        <div className="px-4 pt-3 pb-24 space-y-2">
-          {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600" />
-            </div>
-          ) : paginatedLogs.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-sm text-slate-400 font-medium">No activity logs found.</p>
-            </div>
-          ) : (
-            paginatedLogs.map(log => (
-              <div key={log.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
-                    <User className="w-4 h-4 text-indigo-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-sm font-bold text-slate-900">{log.userName}</span>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${SECTION_COLORS[log.section] || 'bg-slate-100 text-slate-600'}`}>
-                        {log.section}
-                      </span>
-                    </div>
-                    <p className="text-xs font-bold text-slate-700 mb-0.5">{log.action}</p>
-                    {log.aiDescription ? (
-                      <div className="flex items-start gap-1 mb-1">
-                        <Sparkles className="w-3 h-3 text-violet-500 mt-0.5 shrink-0" />
-                        <p className="text-[11px] text-slate-700 leading-snug">{log.aiDescription}</p>
-                      </div>
-                    ) : (
-                      <p className="text-[10px] text-slate-500 line-clamp-2">{log.details}</p>
-                    )}
-                    {log.ip && (
-                      <div className="flex items-center gap-1 mt-1">
-                        <Globe className="w-3 h-3 text-slate-300" />
-                        <span className="text-[10px] text-slate-400 font-mono">{log.ip}</span>
-                        {log.location && <span className="text-[10px] text-slate-400">· {log.location}</span>}
-                      </div>
-                    )}
-                    <p className="text-[10px] text-slate-400 mt-1 font-mono">
-                      {safeFormat(log.timestamp, 'EEE, dd MMM yyyy · HH:mm:ss')}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between py-2">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="p-2 bg-white border border-slate-200 rounded-xl text-slate-600 disabled:opacity-40"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="text-xs font-bold text-slate-600">{page} / {totalPages}</span>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="p-2 bg-white border border-slate-200 rounded-xl text-slate-600 disabled:opacity-40"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* ─── Desktop UI ─────────────────────────────────────────────── */}
-      <div className="hidden md:block space-y-6">
-        <PageHeader
-          title="Activity Tracker"
-          subtitle="Real-time audit log of all system activities across every portal."
-          icon={HistoryIcon}
-          iconColor="gradient-indigo"
-          actions={
-            <div className="flex gap-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl">
-                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                <span className="text-xs font-bold text-emerald-700">Live</span>
-              </div>
-              <Button icon={Download} onClick={exportCSV} disabled={filteredLogs.length === 0}>
-                Export CSV
-              </Button>
-            </div>
-          }
-        />
-
+      <div className="pad stack" style={{ paddingBottom: 32 }}>
+        {/* Error banner */}
         {subError && (
-          <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3">
-            <X className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 12, padding: 14, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <X size={16} style={{ color: '#dc2626', flexShrink: 0, marginTop: 1 }} />
             <div>
-              <p className="text-sm font-bold text-rose-700">Activity log unavailable</p>
-              <p className="text-xs text-rose-600 mt-1 font-mono">{subError}</p>
+              <p style={{ fontWeight: 700, color: '#b91c1c', fontSize: 13 }}>Activity log unavailable</p>
+              <p style={{ fontSize: 11, color: '#dc2626', fontFamily: 'var(--mono)', marginTop: 3 }}>{subError}</p>
             </div>
           </div>
         )}
 
-        {/* Stats cards */}
-        <div className="grid grid-cols-5 gap-4">
+        {/* Stats row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
           {[
-            { label: 'Total Logs', value: stats.total, icon: Activity, color: 'text-indigo-600 bg-indigo-50' },
-            { label: "Today's Activity", value: stats.today, icon: Calendar, color: 'text-emerald-600 bg-emerald-50' },
-            { label: 'Unique Users', value: stats.uniqueUsers, icon: Users, color: 'text-blue-600 bg-blue-50' },
-            { label: 'Sections Active', value: stats.sectionsUsed, icon: Layers, color: 'text-purple-600 bg-purple-50' },
-            { label: 'Unique IPs', value: stats.uniqueIPs, icon: Globe, color: 'text-amber-600 bg-amber-50' },
+            { label: 'Total Logs', value: stats.total, icon: Activity },
+            { label: "Today's Activity", value: stats.today, icon: Calendar },
+            { label: 'Unique Users', value: stats.uniqueUsers, icon: Users },
+            { label: 'Unique IPs', value: stats.uniqueIPs, icon: Globe },
           ].map(s => (
-            <Card key={s.label} className="p-4 flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${s.color}`}>
-                <s.icon className="w-5 h-5" />
-              </div>
+            <div key={s.label} className="card flex" style={{ gap: 10, alignItems: 'center', padding: 14 }}>
+              <s.icon size={18} style={{ color: 'var(--ink-3)', flexShrink: 0 }} />
               <div>
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">{s.label}</p>
-                <p className="text-2xl font-black text-slate-900">{s.value}</p>
+                <div className="eyebrow" style={{ marginBottom: 2 }}>{s.label}</div>
+                <div className="t-num" style={{ fontSize: 22 }}>{s.value}</div>
               </div>
-            </Card>
+            </div>
           ))}
         </div>
 
-        {/* Filters */}
-        <Card className="p-4 space-y-3">
-          <div className="flex gap-3 items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder="Search by user, action, details, IP or location..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <button
-              onClick={() => setShowFilters(f => !f)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-all ${
-                showFilters || hasActiveFilters
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Filter className="w-4 h-4" />
-              Filters
-              {hasActiveFilters && (
-                <span className="w-5 h-5 bg-indigo-600 text-white text-[10px] font-black rounded-full flex items-center justify-center">
-                  {[search, selectedSection !== 'all', selectedRole !== 'all', dateFrom, dateTo].filter(Boolean).length}
-                </span>
-              )}
-              {showFilters ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        {/* Search */}
+        <div className="card flex" style={{ gap: 10, padding: '10px 14px', alignItems: 'center' }}>
+          <Search size={16} className="muted" style={{ flexShrink: 0 }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by user, action, details, IP or location…"
+            style={{ border: 0, outline: 'none', background: 'transparent', flex: 1, fontSize: 14, fontFamily: 'var(--body)', color: 'var(--ink)' }}
+          />
+          {hasActiveFilters && (
+            <button onClick={clearFilters} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--coral)', fontWeight: 600 }}>
+              <X size={12} /> Clear
             </button>
-            {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 transition-colors"
-              >
-                <X className="w-3.5 h-3.5" />
-                Clear
-              </button>
-            )}
-          </div>
-
-          {showFilters && (
-            <div className="grid grid-cols-4 gap-3 pt-1 border-t border-slate-100">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Section</label>
-                <Select value={selectedSection} onChange={e => setSelectedSection(e.target.value)}>
-                  <option value="all">All Sections</option>
-                  {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                </Select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Role</label>
-                <Select value={selectedRole} onChange={e => setSelectedRole(e.target.value)}>
-                  <option value="all">All Roles</option>
-                  {ROLES.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
-                </Select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">From Date</label>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={e => setDateFrom(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 bg-white"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">To Date</label>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={e => setDateTo(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 bg-white"
-                />
-              </div>
-            </div>
           )}
-
-          {/* Section chips */}
-          <div className="flex gap-2 flex-wrap pt-1">
-            {['all', ...SECTIONS].map(s => (
-              <button
-                key={s}
-                onClick={() => setSelectedSection(s)}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                  selectedSection === s
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {s === 'all' ? 'All Sections' : s}
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        {/* Table */}
-        <div className={loading ? 'opacity-60 pointer-events-none transition-opacity' : ''}>
-          <Card padding="none">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Timestamp</Th>
-                  <Th>User</Th>
-                  <Th>Section</Th>
-                  <Th>Action</Th>
-                  <Th>Details</Th>
-                  <Th>IP / Location</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {paginatedLogs.map(log => (
-                  <>
-                    <Tr
-                      key={log.id}
-                      className="hover:bg-slate-50/50 cursor-pointer"
-                      onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
-                    >
-                      <Td className="whitespace-nowrap">
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
-                            {safeFormat(log.timestamp, 'EEEE')}
-                          </span>
-                          <span className="text-sm font-bold text-slate-900">
-                            {safeFormat(log.timestamp, 'dd MMM yyyy')}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            {safeFormat(log.timestamp, 'HH:mm:ss')}
-                          </span>
-                        </div>
-                      </Td>
-                      <Td>
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-                            <User className="w-4 h-4 text-slate-500" />
-                          </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-bold text-slate-900 truncate">{log.userName}</span>
-                            <span className="text-xs text-slate-400 capitalize">{(log.userRole || '').replace('_', ' ')}</span>
-                          </div>
-                        </div>
-                      </Td>
-                      <Td>
-                        <Badge variant={getSectionBadgeVariant(log.section) as any}>
-                          {log.section}
-                        </Badge>
-                      </Td>
-                      <Td>
-                        <span className="text-sm font-semibold text-slate-700">{log.action}</span>
-                      </Td>
-                      <Td className="max-w-md">
-                        {log.aiDescription ? (
-                          <div className="flex items-start gap-1.5">
-                            <Sparkles className="w-3 h-3 text-violet-500 mt-0.5 shrink-0" />
-                            <div className="min-w-0">
-                              <p className="text-xs text-slate-700 leading-snug line-clamp-2" title={log.aiDescription}>
-                                {log.aiDescription}
-                              </p>
-                              <p className="text-[10px] text-slate-400 italic line-clamp-1 mt-0.5" title={log.details}>
-                                {log.details}
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-500 line-clamp-2" title={log.details}>
-                            {log.details}
-                          </span>
-                        )}
-                      </Td>
-                      <Td>
-                        {log.ip ? (
-                          <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-1">
-                              <Globe className="w-3 h-3 text-slate-400 shrink-0" />
-                              <span className="text-xs font-mono text-slate-600">{log.ip}</span>
-                            </div>
-                            {log.location && (
-                              <span className="text-[10px] text-slate-400 pl-4">{log.location}</span>
-                            )}
-                            {log.isp && (
-                              <div className="flex items-center gap-1 pl-0">
-                                <Wifi className="w-3 h-3 text-slate-300 shrink-0" />
-                                <span className="text-[10px] text-slate-400 truncate max-w-[140px]" title={log.isp}>{log.isp}</span>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
-                        )}
-                      </Td>
-                    </Tr>
-                    {expandedId === log.id && (
-                      <tr key={`${log.id}-exp`} className="bg-indigo-50/40">
-                        <td colSpan={6} className="px-6 py-4">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              {log.aiDescription && (
-                                <div className="mb-3 p-3 bg-violet-50 border border-violet-200 rounded-lg">
-                                  <p className="text-[10px] font-bold text-violet-700 uppercase mb-1 flex items-center gap-1">
-                                    <Sparkles className="w-3 h-3" /> AI-Generated Description
-                                  </p>
-                                  <p className="text-sm text-violet-900 leading-relaxed">{log.aiDescription}</p>
-                                </div>
-                              )}
-                              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Raw Details</p>
-                              <p className="text-sm text-slate-700 leading-relaxed">{log.details}</p>
-                              {log.metadata && (
-                                <div className="mt-2">
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Metadata</p>
-                                  <pre className="text-[10px] text-slate-600 bg-white border border-slate-200 rounded-lg p-2 overflow-x-auto max-h-32">
-                                    {JSON.stringify(log.metadata, null, 2)}
-                                  </pre>
-                                </div>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">User Agent</p>
-                              {log.userAgent ? (
-                                <div className="flex items-start gap-2">
-                                  <MonitorSmartphone className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-                                  <p className="text-[10px] text-slate-500 break-all leading-relaxed">{log.userAgent}</p>
-                                </div>
-                              ) : (
-                                <p className="text-xs text-slate-300">Not available</p>
-                              )}
-                              <div className="mt-3 grid grid-cols-2 gap-2">
-                                <div>
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">User ID</p>
-                                  <p className="text-[10px] font-mono text-slate-500 break-all">{log.userId}</p>
-                                </div>
-                                <div>
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Exact Time</p>
-                                  <p className="text-[10px] font-mono text-slate-500">{safeFormat(log.timestamp, 'dd MMM yyyy, HH:mm:ss')}</p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </Tbody>
-            </Table>
-
-            {filteredLogs.length === 0 && !loading && (
-              <EmptyState
-                title="No activities found"
-                description="Adjust your search or filters to see more results."
-                icon={HistoryIcon}
-              />
-            )}
-
-            {totalPages > 1 && (
-              <div className="p-4 border-t border-slate-100 flex items-center justify-between">
-                <p className="text-xs text-slate-500">
-                  Showing {(page - 1) * itemsPerPage + 1}–{Math.min(page * itemsPerPage, filteredLogs.length)} of {filteredLogs.length} logs
-                </p>
-                <div className="flex gap-2 items-center">
-                  <IconButton icon={ChevronLeft} onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} size="sm" />
-                  <span className="flex items-center px-3 text-xs font-bold text-slate-700 bg-slate-50 rounded-lg">
-                    {page} / {totalPages}
-                  </span>
-                  <IconButton icon={ChevronRight} onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} size="sm" />
-                </div>
-              </div>
-            )}
-          </Card>
         </div>
+
+        {/* Section filter chips */}
+        <div className="hscroll" style={{ padding: 0 }}>
+          {['all', ...SECTIONS].map(s => (
+            <button
+              key={s}
+              onClick={() => setSelectedSection(s)}
+              className={selectedSection === s ? 'chip solid' : 'chip'}
+            >
+              {s === 'all' ? 'All Sections' : s}
+            </button>
+          ))}
+        </div>
+
+        {/* Role filter chips */}
+        <div className="hscroll" style={{ padding: 0 }}>
+          {['all', ...ROLES].map(r => (
+            <button
+              key={r}
+              onClick={() => setSelectedRole(r)}
+              className={selectedRole === r ? 'chip solid' : 'chip'}
+            >
+              {r === 'all' ? 'All Roles' : r.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
+
+        {/* Date range filters */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 6 }}>From date</div>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 10, padding: '9px 12px', fontSize: 13, fontFamily: 'var(--body)', color: 'var(--ink)', background: 'var(--paper)', outline: 'none' }}
+            />
+          </div>
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 6 }}>To date</div>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 10, padding: '9px 12px', fontSize: 13, fontFamily: 'var(--body)', color: 'var(--ink)', background: 'var(--paper)', outline: 'none' }}
+            />
+          </div>
+        </div>
+
+        {/* Log entries */}
+        {loading ? (
+          <div className="card" style={{ textAlign: 'center', padding: 48 }}>
+            <p className="muted">Loading…</p>
+          </div>
+        ) : paginatedLogs.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 48 }}>
+            <HistoryIcon size={36} style={{ margin: '0 auto 12px', color: 'var(--ink-3)' }} />
+            <p style={{ fontWeight: 700, marginBottom: 4 }}>No activities found</p>
+            <p className="muted tiny">Adjust your search or filters to see more results.</p>
+          </div>
+        ) : (
+          <div className="stack">
+            {paginatedLogs.map(log => {
+              const sc = SECTION_COLORS[log.section] || { bg: 'var(--cream-2)', color: 'var(--ink-2)' };
+              const isExpanded = expandedId === log.id;
+              return (
+                <div key={log.id} className="card" style={{ padding: 14, cursor: 'pointer' }}
+                  onClick={() => setExpandedId(isExpanded ? null : log.id)}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    {/* User initial circle */}
+                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--ink)', color: 'var(--cream)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0, fontFamily: 'var(--display)' }}>
+                      {(log.userName || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>{log.action}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 999, background: sc.bg, color: sc.color }}>
+                          {log.section}
+                        </span>
+                      </div>
+                      {log.aiDescription ? (
+                        <div style={{ display: 'flex', gap: 5, alignItems: 'flex-start', marginBottom: 3 }}>
+                          <Sparkles size={11} style={{ color: '#7c3aed', flexShrink: 0, marginTop: 1 }} />
+                          <p style={{ fontSize: 12, color: 'var(--ink-2)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>{log.aiDescription}</p>
+                        </div>
+                      ) : (
+                        <p className="muted" style={{ fontSize: 12, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', marginBottom: 3 }}>{log.details}</p>
+                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span className="muted" style={{ fontSize: 11 }}>{log.userName} · <span style={{ textTransform: 'capitalize' }}>{(log.userRole || '').replace('_', ' ')}</span></span>
+                        <span className="mono tiny muted">{safeFormat(log.timestamp, 'dd MMM, HH:mm')}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-2)' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          {log.aiDescription && (
+                            <div style={{ marginBottom: 10, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: 10 }}>
+                              <div className="eyebrow" style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4, color: '#7c3aed' }}>
+                                <Sparkles size={10} /> AI Description
+                              </div>
+                              <p style={{ fontSize: 12, color: '#4c1d95', lineHeight: 1.5 }}>{log.aiDescription}</p>
+                            </div>
+                          )}
+                          <div className="eyebrow" style={{ marginBottom: 4 }}>Raw Details</div>
+                          <p style={{ fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5 }}>{log.details}</p>
+                          {log.metadata && (
+                            <div style={{ marginTop: 8 }}>
+                              <div className="eyebrow" style={{ marginBottom: 4 }}>Metadata</div>
+                              <pre style={{ fontSize: 10, color: 'var(--ink-2)', background: 'var(--cream-2)', border: '1px solid var(--line)', borderRadius: 8, padding: 8, overflow: 'auto', maxHeight: 120 }}>
+                                {JSON.stringify(log.metadata, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          {log.ip && (
+                            <div style={{ marginBottom: 8 }}>
+                              <div className="eyebrow" style={{ marginBottom: 4 }}>IP / Location</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
+                                <Globe size={12} style={{ color: 'var(--ink-3)' }} />
+                                <span className="mono" style={{ fontSize: 11 }}>{log.ip}</span>
+                              </div>
+                              {log.location && <p className="muted tiny" style={{ marginTop: 2 }}>{log.location}</p>}
+                              {log.isp && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
+                                  <Wifi size={11} style={{ color: 'var(--ink-3)' }} />
+                                  <span className="muted tiny">{log.isp}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {log.userAgent && (
+                            <div style={{ marginBottom: 8 }}>
+                              <div className="eyebrow" style={{ marginBottom: 4 }}>User Agent</div>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                                <MonitorSmartphone size={12} style={{ color: 'var(--ink-3)', flexShrink: 0, marginTop: 1 }} />
+                                <p className="muted" style={{ fontSize: 10, wordBreak: 'break-all', lineHeight: 1.5 }}>{log.userAgent}</p>
+                              </div>
+                            </div>
+                          )}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <div>
+                              <div className="eyebrow" style={{ marginBottom: 3 }}>User ID</div>
+                              <p className="mono muted" style={{ fontSize: 10, wordBreak: 'break-all' }}>{log.userId}</p>
+                            </div>
+                            <div>
+                              <div className="eyebrow" style={{ marginBottom: 3 }}>Exact Time</div>
+                              <p className="mono muted" style={{ fontSize: 10 }}>{safeFormat(log.timestamp, 'dd MMM yyyy, HH:mm:ss')}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8 }}>
+            <button
+              className="icon-btn"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>{page} / {totalPages}</span>
+            <button
+              className="icon-btn"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+
+        {totalPages > 1 && page < totalPages && (
+          <button
+            className="btn ghost"
+            style={{ fontSize: 13 }}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+          >
+            Load More
+          </button>
+        )}
       </div>
     </>
   );
