@@ -1,45 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Settings,
-  Plus,
-  Trash2,
-  Save,
-  ShieldAlert,
-  Activity,
-  History,
-  AlertCircle,
-  AlertTriangle,
-  Info,
-} from 'lucide-react';
+import { Plus, Trash2, Save, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { FineConfig, FineSlab, UserProfile } from '../../types';
 import { useToast } from '../../components/Toast';
-import {
-  Card,
-  Button,
-  Input,
-  FormField,
-  Badge,
-  PageHeader
-} from '../../components/ui';
+import { Button, Input, FormField } from '../../components/ui';
 import { logActivity } from '../../services/activityService';
 
 const defaultSlabs: FineSlab[] = [
   { startDay: 1, endDay: 10, fixedPenalty: 100, percentagePenalty: 1, isHigherOf: true },
   { startDay: 11, endDay: 20, fixedPenalty: 250, percentagePenalty: 2, isHigherOf: true },
   { startDay: 21, endDay: 30, fixedPenalty: 500, percentagePenalty: 4, isHigherOf: true },
-  { startDay: 31, fixedPenalty: 1000, percentagePenalty: 6, isHigherOf: true, escalationRate: 0 }
+  { startDay: 31, fixedPenalty: 1000, percentagePenalty: 6, isHigherOf: true, escalationRate: 0 },
 ];
-
-// ─── Validation ───────────────────────────────────────────────────────────────
-// Rules:
-//   - First slab's Start Day must be exactly 1 (the day AFTER the due date)
-//   - Each slab's End Day must be > Start Day
-//   - Each subsequent slab must start exactly at previous.endDay + 1
-//     (no gaps, no overlaps, no slabs after an open-ended slab)
-//   - Penalty amounts must be >= 0
-// No grace-period concept — fines start day 1.
 
 interface SlabErrors {
   startDay?: string;
@@ -57,28 +30,22 @@ function validateConfig(config: FineConfig): { global: string[]; slabs: SlabErro
   }
 
   config.slabs.forEach((slab, i) => {
-    // Penalties must be non-negative
     if (slab.fixedPenalty < 0 || slab.percentagePenalty < 0) {
       slabErrors[i].penalty = 'Penalty amounts cannot be negative.';
     }
-
-    // End Day must be greater than Start Day
     if (slab.endDay !== undefined && slab.endDay <= slab.startDay) {
       slabErrors[i].endDay = 'End day must be greater than start day.';
     }
-
     if (i === 0) {
-      // First slab must start at exactly day 1 (the day after the due date)
       if (slab.startDay !== 1) {
         slabErrors[i].startDay = 'First slab must start on day 1 (the day after the due date).';
       }
     } else {
-      // Subsequent slabs: must be contiguous with the previous slab
       const prev = config.slabs[i - 1];
       if (prev.endDay === undefined) {
-        slabErrors[i].order = `Cannot add a slab after slab ${i} because slab ${i} has no End Day (it covers everything onwards). Either remove this slab or set an End Day on slab ${i}.`;
+        slabErrors[i].order = `Cannot add a slab after slab ${i} because slab ${i} has no End Day.`;
       } else if (slab.startDay !== prev.endDay + 1) {
-        slabErrors[i].order = `Start day must be ${prev.endDay + 1} (one day after slab ${i}'s end day of ${prev.endDay}). No gaps or overlaps allowed.`;
+        slabErrors[i].order = `Start day must be ${prev.endDay + 1} (one day after slab ${i}'s end day of ${prev.endDay}).`;
       }
     }
   });
@@ -102,7 +69,6 @@ export default function FineSettings({ user }: { user: UserProfile }) {
       try {
         const docRef = doc(db, 'fine-config', 'global');
         const docSnap = await getDoc(docRef);
-
         if (docSnap.exists()) {
           setConfig(docSnap.data() as FineConfig);
         } else {
@@ -112,7 +78,7 @@ export default function FineSettings({ user }: { user: UserProfile }) {
             gracePeriodDays: 0,
             slabs: defaultSlabs,
             updatedBy: user?.uid || '',
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
           };
           setConfig(initialConfig);
         }
@@ -123,7 +89,6 @@ export default function FineSettings({ user }: { user: UserProfile }) {
         setLoading(false);
       }
     };
-
     fetchConfig();
   }, [user]);
 
@@ -140,10 +105,9 @@ export default function FineSettings({ user }: { user: UserProfile }) {
     try {
       const updatedConfig = {
         ...config,
-        // Grace period removed from the UI — always saved as 0 so fines start on day 1
         gracePeriodDays: 0,
         updatedBy: user.uid,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       };
       await setDoc(doc(db, 'fine-config', 'global'), updatedConfig);
       logActivity(user, 'Updated Fine Settings', 'Super Admin', 'Changed late payment penalty rules.');
@@ -160,30 +124,16 @@ export default function FineSettings({ user }: { user: UserProfile }) {
   const addSlab = () => {
     if (!config) return;
     const lastSlab = config.slabs[config.slabs.length - 1];
-    // First slab → day 1. Otherwise → previous slab's endDay + 1
-    // (if previous is open-ended, we still suggest startDay + 1 so the user
-    // sees something sensible; validation will flag the open-ended-then-new issue)
     const newStart = !lastSlab
       ? 1
       : (lastSlab.endDay !== undefined ? lastSlab.endDay + 1 : lastSlab.startDay + 1);
-
-    const newSlab: FineSlab = {
-      startDay: newStart,
-      fixedPenalty: 0,
-      percentagePenalty: 0,
-      isHigherOf: true
-    };
-
-    setConfig({
-      ...config,
-      slabs: [...config.slabs, newSlab]
-    });
+    const newSlab: FineSlab = { startDay: newStart, fixedPenalty: 0, percentagePenalty: 0, isHigherOf: true };
+    setConfig({ ...config, slabs: [...config.slabs, newSlab] });
   };
 
   const removeSlab = (index: number) => {
     if (!config) return;
-    const newSlabs = config.slabs.filter((_, i) => i !== index);
-    setConfig({ ...config, slabs: newSlabs });
+    setConfig({ ...config, slabs: config.slabs.filter((_, i) => i !== index) });
   };
 
   const updateSlab = (index: number, updates: Partial<FineSlab>) => {
@@ -196,387 +146,219 @@ export default function FineSettings({ user }: { user: UserProfile }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
       </div>
     );
   }
 
   return (
-    <>
-      {/* Mobile UI */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className="bg-gradient-to-br from-rose-600 to-red-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-rose-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Fine & Penalty</h1>
-          <p className="text-xs text-rose-200 mt-0.5">{config?.slabs.length || 0} penalty slabs configured</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{config?.slabs.length || 0}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Slabs</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{config?.isEnabled ? 'ON' : 'OFF'}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Status</p>
-            </div>
-          </div>
+    <div className="pad stack">
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <h1>Fine Settings</h1>
         </div>
-
-        <div className="px-4 pt-4 pb-24 space-y-4">
-          {/* Global settings card */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-4">
-            <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Global Settings</p>
-            <div className="flex items-center justify-between p-3 bg-indigo-50 rounded-xl border border-indigo-100">
-              <div>
-                <p className="text-sm font-bold text-slate-900">System Status</p>
-                <p className="text-[10px] text-slate-500">Toggle penalty calculations</p>
-              </div>
-              <div
-                onClick={() => setConfig(prev => prev ? { ...prev, isEnabled: !prev.isEnabled } : null)}
-                className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${config?.isEnabled ? 'bg-indigo-600' : 'bg-slate-300'}`}
-              >
-                <div className={`w-4 h-4 bg-white rounded-full transition-transform ${config?.isEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
-              </div>
-            </div>
-          </div>
-
-          {/* Global errors */}
-          {validation.global.map((e, i) => (
-            <div key={i} className="p-3 bg-rose-50 rounded-xl border border-rose-200 flex gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-rose-700 font-semibold">{e}</p>
-            </div>
-          ))}
-
-          {/* Slabs */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Penalty Slabs</p>
-            <button
-              onClick={addSlab}
-              className="flex items-center gap-1 text-xs font-bold text-indigo-600 active:scale-95 transition-transform"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Slab
-            </button>
-          </div>
-
-          {/* Timeline legend */}
-          <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100 flex gap-2">
-            <Info className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-            <p className="text-[10px] text-indigo-700 leading-relaxed">
-              <b>Day 1</b> = the day AFTER the due date (e.g. due 10th → day 1 = 11th).
-              The first slab must start at day 1, and every next slab must start the day after the previous one's End Day — no gaps, no overlaps.
-            </p>
-          </div>
-
-          {config?.slabs.map((slab, index) => {
-            const err = validation.slabs[index] || {};
-            const hasError = !!(err.startDay || err.endDay || err.penalty || err.order);
-            return (
-              <div key={index} className={`bg-white border rounded-2xl p-4 shadow-sm ${hasError ? 'border-rose-300 bg-rose-50/30' : 'border-slate-100'}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${hasError ? 'bg-rose-100 text-rose-700' : 'bg-rose-50 text-rose-700'}`}>Slab {index + 1}</span>
-                    {hasError && <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />}
-                  </div>
-                  <button onClick={() => removeSlab(index)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Start Day</p>
-                    <input
-                      type="number"
-                      min={1}
-                      value={slab.startDay}
-                      onChange={(e) => updateSlab(index, { startDay: Number(e.target.value) })}
-                      className={`w-full h-9 px-2 bg-slate-50 border rounded-lg text-sm outline-none ${err.startDay ? 'border-rose-400 bg-rose-50' : 'border-slate-200'}`}
-                    />
-                    {err.startDay && <p className="text-[10px] text-rose-600 mt-0.5 font-medium">{err.startDay}</p>}
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">End Day</p>
-                    <input
-                      type="number"
-                      min={slab.startDay + 1}
-                      value={slab.endDay || ''}
-                      onChange={(e) => updateSlab(index, { endDay: e.target.value ? Number(e.target.value) : undefined })}
-                      placeholder="∞ open-ended"
-                      className={`w-full h-9 px-2 bg-slate-50 border rounded-lg text-sm outline-none ${err.endDay ? 'border-rose-400 bg-rose-50' : 'border-slate-200'}`}
-                    />
-                    {err.endDay && <p className="text-[10px] text-rose-600 mt-0.5 font-medium">{err.endDay}</p>}
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Fixed ₹</p>
-                    <input
-                      type="number"
-                      min={0}
-                      value={slab.fixedPenalty}
-                      onChange={(e) => updateSlab(index, { fixedPenalty: Number(e.target.value) })}
-                      className={`w-full h-9 px-2 bg-slate-50 border rounded-lg text-sm outline-none ${err.penalty ? 'border-rose-400 bg-rose-50' : 'border-slate-200'}`}
-                    />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">% of Dues</p>
-                    <input
-                      type="number"
-                      min={0}
-                      value={slab.percentagePenalty}
-                      onChange={(e) => updateSlab(index, { percentagePenalty: Number(e.target.value) })}
-                      className={`w-full h-9 px-2 bg-slate-50 border rounded-lg text-sm outline-none ${err.penalty ? 'border-rose-400 bg-rose-50' : 'border-slate-200'}`}
-                    />
-                    {err.penalty && <p className="text-[10px] text-rose-600 mt-0.5 font-medium">{err.penalty}</p>}
-                  </div>
-                </div>
-                {err.order && (
-                  <p className="mt-2 text-[10px] text-rose-600 font-medium flex items-start gap-1">
-                    <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />{err.order}
-                  </p>
-                )}
-                <div className="mt-2">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Logic</p>
-                  <select
-                    value={slab.isHigherOf ? 'higher' : 'sum'}
-                    onChange={(e) => updateSlab(index, { isHigherOf: e.target.value === 'higher' })}
-                    className="w-full h-9 px-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none"
-                  >
-                    <option value="higher">Whichever is Higher</option>
-                    <option value="sum">Sum of Both</option>
-                  </select>
-                </div>
-              </div>
-            );
-          })}
-
-          <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 flex gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-            <p className="text-[10px] text-amber-700 leading-relaxed">Changes reflect instantly on all overdue invoices.</p>
-          </div>
-        </div>
-
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 safe-area-bottom">
+        <div>
           <button
+            className="btn accent"
             onClick={handleSave}
             disabled={saving || isInvalid}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600 text-white rounded-2xl font-bold text-sm active:scale-95 transition-transform disabled:opacity-50"
+            style={{ opacity: saving || isInvalid ? 0.6 : 1 }}
           >
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving…' : isInvalid ? 'Fix Errors to Save' : 'Save Configuration'}
+            <Save size={14} style={{ marginRight: 6 }} />
+            {saving ? 'Saving…' : isInvalid ? 'Fix Errors First' : 'Save'}
           </button>
         </div>
       </div>
 
-      {/* Desktop UI */}
-      <div className="hidden md:block space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-        <PageHeader
-          title="Fine & Penalty Management"
-          subtitle="Configure automatic late payment fines and penalty structures"
-          icon={ShieldAlert}
-          iconColor="bg-rose-500"
-        />
+      {/* Global Settings card */}
+      <div className="card" style={{ padding: 24 }}>
+        <div className="section-head" style={{ marginBottom: 16 }}>Global Settings</div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-rose-50 rounded-xl">
-                    <Activity className="w-5 h-5 text-rose-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900">Penalty Slabs</h3>
-                    <p className="text-xs text-slate-500">Define how fines increase over time</p>
-                  </div>
-                </div>
-                <Button variant="secondary" size="sm" onClick={addSlab} icon={Plus}>
-                  Add Slab
-                </Button>
-              </div>
-
-              {/* Timeline explainer */}
-              <div className="mb-6 p-3 bg-indigo-50 rounded-xl border border-indigo-100 flex gap-3">
-                <Info className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-indigo-700">
-                  <b>Day 1</b> = the day AFTER the due date (e.g. due 10th → day 1 = 11th).
-                  The first slab must start at day 1, and every next slab must start exactly the day after the previous slab's End Day —
-                  no gaps, no overlaps. Leave the last slab's End Day blank to make it open-ended.
-                </p>
-              </div>
-
-              {/* Global validation errors */}
-              {validation.global.map((e, i) => (
-                <div key={i} className="mb-4 p-3 bg-rose-50 rounded-xl border border-rose-200 flex gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <p className="text-sm text-rose-700 font-semibold">{e}</p>
-                </div>
-              ))}
-
-              <div className="space-y-4">
-                {config?.slabs.map((slab, index) => {
-                  const err = validation.slabs[index] || {};
-                  const hasError = !!(err.startDay || err.endDay || err.penalty || err.order);
-                  return (
-                    <div key={index} className={`p-4 rounded-2xl border transition-colors ${hasError ? 'bg-rose-50/40 border-rose-300' : 'bg-slate-50 border-slate-100'}`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${hasError ? 'bg-rose-100 text-rose-700' : 'bg-rose-50 text-rose-700'}`}>
-                            Slab {index + 1}
-                          </span>
-                          {hasError && (
-                            <span className="flex items-center gap-1 text-xs text-rose-600 font-semibold">
-                              <AlertTriangle className="w-3.5 h-3.5" /> Fix errors below
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => removeSlab(index)}
-                          className="p-2 text-rose-500 hover:bg-rose-100 rounded-xl transition-colors"
-                          title="Remove Slab"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      <div className="flex flex-wrap lg:flex-nowrap gap-4 items-start">
-                        <div className="flex-1 min-w-[120px]">
-                          <FormField label="Start Day" hint={err.startDay}>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={slab.startDay}
-                              onChange={(e) => updateSlab(index, { startDay: Number(e.target.value) })}
-                              className={err.startDay ? 'border-rose-400 bg-rose-50 focus:ring-rose-300' : ''}
-                            />
-                          </FormField>
-                        </div>
-                        <div className="flex-1 min-w-[120px]">
-                          <FormField label="End Day" hint={err.endDay || 'Leave blank = open-ended'}>
-                            <Input
-                              type="number"
-                              min={slab.startDay + 1}
-                              value={slab.endDay || ''}
-                              onChange={(e) => updateSlab(index, { endDay: e.target.value ? Number(e.target.value) : undefined })}
-                              placeholder="∞"
-                              className={err.endDay ? 'border-rose-400 bg-rose-50 focus:ring-rose-300' : ''}
-                            />
-                          </FormField>
-                        </div>
-                        <div className="flex-1 min-w-[120px]">
-                          <FormField label="Fixed Penalty (₹)" hint={err.penalty}>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={slab.fixedPenalty}
-                              onChange={(e) => updateSlab(index, { fixedPenalty: Number(e.target.value) })}
-                              className={err.penalty ? 'border-rose-400 bg-rose-50 focus:ring-rose-300' : ''}
-                            />
-                          </FormField>
-                        </div>
-                        <div className="flex-1 min-w-[120px]">
-                          <FormField label="% of Dues">
-                            <Input
-                              type="number"
-                              min={0}
-                              value={slab.percentagePenalty}
-                              onChange={(e) => updateSlab(index, { percentagePenalty: Number(e.target.value) })}
-                              className={err.penalty ? 'border-rose-400 bg-rose-50 focus:ring-rose-300' : ''}
-                            />
-                          </FormField>
-                        </div>
-                        <div className="flex-1 min-w-[150px]">
-                          <FormField label="Logic">
-                            <select
-                              className="w-full h-11 px-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all outline-none text-sm"
-                              value={slab.isHigherOf ? 'higher' : 'sum'}
-                              onChange={(e) => updateSlab(index, { isHigherOf: e.target.value === 'higher' })}
-                            >
-                              <option value="higher">Whichever is Higher</option>
-                              <option value="sum">Sum of Both</option>
-                            </select>
-                          </FormField>
-                        </div>
-                      </div>
-
-                      {err.order && (
-                        <p className="mt-2 text-xs text-rose-600 font-semibold flex items-start gap-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />{err.order}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
+        {/* Enable / disable toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--cream-2)', borderRadius: 10, border: '1px solid var(--line)', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>Penalty System</div>
+            <div className="tiny muted" style={{ marginTop: 2 }}>Enable or disable all fine calculations</div>
           </div>
-
-          <div className="space-y-6">
-            <Card className="p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-indigo-50 rounded-xl">
-                  <Settings className="w-5 h-5 text-indigo-600" />
-                </div>
-                <h3 className="font-bold text-slate-900">Global Settings</h3>
-              </div>
-
-              <div className="space-y-6">
-                <div className="flex items-center justify-between p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
-                  <div>
-                    <p className="text-sm font-medium text-indigo-900">System Status</p>
-                    <p className="text-[10px] text-indigo-600">Toggle penalty calculations</p>
-                  </div>
-                  <div
-                    onClick={() => setConfig(prev => prev ? { ...prev, isEnabled: !prev.isEnabled } : null)}
-                    className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors duration-300 ${config?.isEnabled ? 'bg-indigo-600' : 'bg-slate-300'}`}
-                  >
-                    <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 ${config?.isEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </div>
-                </div>
-
-                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-3">
-                  <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
-                  <p className="text-[10px] text-amber-700 leading-relaxed italic">
-                    Changes reflect instantly on all overdue invoices across Teacher, Parent, and Account portals.
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-slate-50 rounded-xl">
-                  <History className="w-5 h-5 text-slate-600" />
-                </div>
-                <h3 className="font-bold text-slate-900">Information</h3>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-500">Last Updated</span>
-                  <Badge variant="default" className="text-[10px]">
-                    {config?.updatedAt ? new Date(config.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A'}
-                  </Badge>
-                </div>
-                {isInvalid && (
-                  <div className="p-3 bg-rose-50 rounded-xl border border-rose-200">
-                    <p className="text-xs text-rose-700 font-semibold">Fix the errors above before saving.</p>
-                  </div>
-                )}
-                <div className="pt-4 mt-4 border-t border-slate-100">
-                  <Button
-                    className="w-full"
-                    variant="primary"
-                    onClick={handleSave}
-                    loading={saving}
-                    disabled={isInvalid}
-                    icon={Save}
-                  >
-                    {isInvalid ? 'Fix Errors to Save' : 'Save Configuration'}
-                  </Button>
-                </div>
-              </div>
-            </Card>
+          <div
+            onClick={() => setConfig(prev => prev ? { ...prev, isEnabled: !prev.isEnabled } : null)}
+            style={{
+              width: 44,
+              height: 24,
+              borderRadius: 12,
+              padding: 2,
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              background: config?.isEnabled ? 'var(--accent)' : 'var(--line)',
+              flexShrink: 0,
+            }}
+          >
+            <div style={{
+              width: 20,
+              height: 20,
+              borderRadius: '50%',
+              background: '#fff',
+              transition: 'transform 0.2s',
+              transform: config?.isEnabled ? 'translateX(20px)' : 'translateX(0)',
+            }} />
           </div>
         </div>
+
+        {/* Info note */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 14px', background: '#eef2ff', borderRadius: 10, border: '1px solid #c7d2fe', marginBottom: 8 }}>
+          <Info size={15} style={{ color: '#6366f1', flexShrink: 0, marginTop: 1 }} />
+          <p style={{ fontSize: 12, color: '#4338ca', lineHeight: 1.5 }}>
+            <strong>Day 1</strong> = the day AFTER the due date. The first slab must start at day 1, and every next slab must start exactly the day after the previous slab's End Day — no gaps, no overlaps. Leave the last slab's End Day blank to make it open-ended.
+          </p>
+        </div>
       </div>
-    </>
+
+      {/* Penalty Slabs card */}
+      <div className="card" style={{ padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div className="section-head">Penalty Slabs</div>
+          <button className="btn ghost" onClick={addSlab} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <Plus size={14} />
+            Add Slab
+          </button>
+        </div>
+
+        {/* Global validation errors */}
+        {validation.global.map((e, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '10px 12px', background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 8, marginBottom: 12 }}>
+            <AlertTriangle size={14} style={{ color: '#e11d48', flexShrink: 0, marginTop: 1 }} />
+            <p style={{ fontSize: 12, color: '#be123c', fontWeight: 600 }}>{e}</p>
+          </div>
+        ))}
+
+        <div className="stack">
+          {config?.slabs.map((slab, index) => {
+            const err = validation.slabs[index] || {};
+            const hasError = !!(err.startDay || err.endDay || err.penalty || err.order);
+            return (
+              <div
+                key={index}
+                style={{
+                  padding: 16,
+                  borderRadius: 10,
+                  border: `1px solid ${hasError ? '#fca5a5' : 'var(--line)'}`,
+                  background: hasError ? '#fff7f7' : 'var(--cream)',
+                }}
+              >
+                {/* Slab header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: hasError ? '#fee2e2' : '#fef3c7', color: hasError ? '#dc2626' : '#92400e' }}>
+                      Slab {index + 1}
+                    </span>
+                    {hasError && (
+                      <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <AlertTriangle size={12} /> Fix errors
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => removeSlab(index)}
+                    className="icon-btn"
+                    title="Remove slab"
+                    style={{ color: 'var(--coral)' }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+
+                {/* Fields */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 12 }}>
+                  <div>
+                    <FormField label="Start Day" hint={err.startDay}>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={slab.startDay}
+                        onChange={(e) => updateSlab(index, { startDay: Number(e.target.value) })}
+                        className={err.startDay ? 'border-rose-400 bg-rose-50 focus:ring-rose-300' : ''}
+                      />
+                    </FormField>
+                  </div>
+                  <div>
+                    <FormField label="End Day" hint={err.endDay || 'Leave blank = open-ended'}>
+                      <Input
+                        type="number"
+                        min={slab.startDay + 1}
+                        value={slab.endDay || ''}
+                        onChange={(e) => updateSlab(index, { endDay: e.target.value ? Number(e.target.value) : undefined })}
+                        placeholder="∞"
+                        className={err.endDay ? 'border-rose-400 bg-rose-50 focus:ring-rose-300' : ''}
+                      />
+                    </FormField>
+                  </div>
+                  <div>
+                    <FormField label="Fixed Penalty (₹)" hint={err.penalty}>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={slab.fixedPenalty}
+                        onChange={(e) => updateSlab(index, { fixedPenalty: Number(e.target.value) })}
+                        className={err.penalty ? 'border-rose-400 bg-rose-50 focus:ring-rose-300' : ''}
+                      />
+                    </FormField>
+                  </div>
+                  <div>
+                    <FormField label="% of Dues">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={slab.percentagePenalty}
+                        onChange={(e) => updateSlab(index, { percentagePenalty: Number(e.target.value) })}
+                        className={err.penalty ? 'border-rose-400 bg-rose-50 focus:ring-rose-300' : ''}
+                      />
+                    </FormField>
+                  </div>
+                  <div>
+                    <FormField label="Logic">
+                      <select
+                        className="w-full h-11 px-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all outline-none text-sm"
+                        value={slab.isHigherOf ? 'higher' : 'sum'}
+                        onChange={(e) => updateSlab(index, { isHigherOf: e.target.value === 'higher' })}
+                      >
+                        <option value="higher">Whichever is Higher</option>
+                        <option value="sum">Sum of Both</option>
+                      </select>
+                    </FormField>
+                  </div>
+                </div>
+
+                {err.order && (
+                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                    <AlertTriangle size={12} style={{ color: '#dc2626', flexShrink: 0, marginTop: 1 }} />
+                    <p style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>{err.order}</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Warning note */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 14px', background: '#fffbeb', borderRadius: 10, border: '1px solid #fde68a', marginTop: 16 }}>
+          <AlertCircle size={15} style={{ color: '#d97706', flexShrink: 0, marginTop: 1 }} />
+          <p style={{ fontSize: 12, color: '#92400e' }}>Changes reflect instantly on all overdue invoices.</p>
+        </div>
+
+        {/* Save All */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+          <button
+            className="btn accent"
+            onClick={handleSave}
+            disabled={saving || isInvalid}
+            style={{ opacity: saving || isInvalid ? 0.6 : 1 }}
+          >
+            <Save size={14} style={{ marginRight: 6 }} />
+            {saving ? 'Saving…' : isInvalid ? 'Fix Errors to Save' : 'Save All'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

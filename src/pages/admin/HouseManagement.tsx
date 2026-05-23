@@ -1,14 +1,11 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { Plus, Home, Trash2, Edit2, User } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2 } from 'lucide-react';
 import { House, Teacher, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
 import { usePermissions } from '../../hooks/usePermissions';
-import {
-  PageHeader, Card, Button, IconButton, Modal, ConfirmModal,
-  SearchInput, FormField, Input, Select, Table, Thead, Th, Tbody, Tr, Td, EmptyState, Avatar
-} from '../../components/ui';
+import { Modal, ConfirmModal, FormField, Input, Select, Button } from '../../components/ui';
 
 export default function HouseManagement({ user }: { user: UserProfile }) {
   const [houses, setHouses] = useState<House[]>([]);
@@ -19,7 +16,7 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingHouse, setEditingHouse] = useState<House | null>(null);
   const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [search, setSearch] = useState('');
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('houses');
@@ -33,12 +30,9 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
   const fetchData = async () => {
     try {
       const houseSnapshot = await getDocs(collection(db, 'houses'));
-      const houseList = houseSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as House));
-      setHouses(houseList);
-
+      setHouses(houseSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as House)));
       const teacherSnapshot = await getDocs(collection(db, 'teachers'));
-      const teacherList = teacherSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Teacher));
-      setTeachers(teacherList);
+      setTeachers(teacherSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Teacher)));
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'houses/teachers');
     }
@@ -56,13 +50,7 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
         await updateDoc(doc(db, 'houses', editingHouse.id), formData);
       } else {
         await addDoc(collection(db, 'houses'), formData);
-        logActivity(
-          user,
-          'House Created',
-          'Academic',
-          `Created house "${formData.name}"`,
-          { name: formData.name, color: formData.color }
-        );
+        logActivity(user, 'House Created', 'Academic', `Created house "${formData.name}"`, { name: formData.name, color: formData.color });
       }
       setIsModalOpen(false);
       setIsEditMode(false);
@@ -79,11 +67,7 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
   const handleEdit = (house: House) => {
     setEditingHouse(house);
     setIsEditMode(true);
-    setFormData({
-      name: house.name,
-      color: house.color,
-      teacherInchargeId: house.teacherInchargeId || '',
-    });
+    setFormData({ name: house.name, color: house.color, teacherInchargeId: house.teacherInchargeId || '' });
     setIsModalOpen(true);
   };
 
@@ -97,13 +81,7 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
     try {
       const deleted = houses.find(h => h.id === deletingId);
       await deleteDoc(doc(db, 'houses', deletingId));
-      logActivity(
-        user,
-        'House Deleted',
-        'Academic',
-        `Deleted house "${deleted?.name || deletingId}"`,
-        { houseId: deletingId, name: deleted?.name }
-      );
+      logActivity(user, 'House Deleted', 'Academic', `Deleted house "${deleted?.name || deletingId}"`, { houseId: deletingId, name: deleted?.name });
       fetchData();
       setIsDeleteModalOpen(false);
       setDeletingId(null);
@@ -113,201 +91,103 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
   };
 
   const filteredHouses = houses.filter(h =>
-    h.name.toLowerCase().includes(searchTerm.toLowerCase())
+    h.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const openAdd = () => {
+    setIsEditMode(false);
+    setEditingHouse(null);
+    setFormData({ name: '', color: '#4f46e5', teacherInchargeId: '' });
+    setIsModalOpen(true);
+  };
 
   return (
     <>
-      {/* Mobile UI */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className="bg-gradient-to-br from-violet-600 to-purple-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-violet-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Houses</h1>
-          <p className="text-xs text-violet-200 mt-0.5">{houses.length} house{houses.length !== 1 ? 's' : ''} configured</p>
+      <div className="pad stack">
+        {/* Topbar */}
+        <div className="topbar">
+          <div>
+            <div className="eyebrow">{houses.length} {houses.length === 1 ? 'house' : 'houses'}</div>
+            <h1>Houses</h1>
+          </div>
+          <div>
+            {!readOnly && (
+              <button className="btn accent" onClick={openAdd}>
+                <Plus size={15} style={{ marginRight: 6 }} />
+                Add House
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="px-4 pt-3 pb-2 bg-white border-b border-slate-100 space-y-2">
+        {/* Search */}
+        <div className="card flex" style={{ gap: 10, padding: '10px 14px', alignItems: 'center' }}>
+          <Search size={16} className="muted" style={{ flexShrink: 0 }} />
           <input
-            type="text"
-            placeholder="Search houses..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search houses…"
+            style={{ border: 0, outline: 'none', background: 'transparent', flex: 1, fontSize: 14, fontFamily: 'var(--body)', color: 'var(--ink)' }}
           />
         </div>
 
-        <div className="px-4 pt-3 pb-24 space-y-3">
-          {filteredHouses.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-sm text-slate-400 font-medium">{searchTerm ? 'No results found.' : 'No houses created yet.'}</p>
-            </div>
-          ) : (
-            filteredHouses.map((house) => {
+        {/* Grid */}
+        {filteredHouses.length === 0 ? (
+          <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+            <p className="muted">{search ? 'No results found.' : 'No houses created yet.'}</p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+            {filteredHouses.map(house => {
               const incharge = teachers.find(t => t.id === house.teacherInchargeId);
               return (
-                <div key={house.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
-                      style={{ backgroundColor: house.color }}
-                    >
-                      <Home className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-slate-900">{house.name}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <div className="w-3 h-3 rounded-full border border-slate-200" style={{ backgroundColor: house.color }} />
-                        <span className="font-mono text-[10px] text-slate-400">{house.color}</span>
+                <div key={house.id} className="card" style={{ padding: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                    {/* Swatch + name */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 8,
+                          background: house.color,
+                          flexShrink: 0,
+                          border: '1px solid rgba(0,0,0,0.08)',
+                        }}
+                      />
+                      <div>
+                        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.2 }}>{house.name}</div>
+                        <div className="mono tiny muted" style={{ marginTop: 2 }}>{house.color}</div>
                       </div>
-                      {incharge && (
-                        <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                          <User className="w-3 h-3" /> {incharge.name}
-                        </p>
-                      )}
                     </div>
+                    {/* Actions */}
                     {!readOnly && (
-                      <div className="flex flex-col gap-1">
-                        <button
-                          onClick={() => handleEdit(house)}
-                          className="p-2 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
+                      <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
+                        <button className="icon-btn" onClick={() => handleEdit(house)} title="Edit">
+                          <Edit2 size={14} />
                         </button>
-                        <button
-                          onClick={() => handleDelete(house.id)}
-                          className="p-2 text-rose-400 hover:bg-rose-50 rounded-xl transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
+                        <button className="icon-btn" onClick={() => handleDelete(house.id)} title="Delete" style={{ color: 'var(--coral)' }}>
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     )}
                   </div>
+
+                  {/* Teacher incharge */}
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+                    <div className="eyebrow" style={{ marginBottom: 4 }}>Teacher Incharge</div>
+                    <div style={{ fontSize: 13, color: incharge ? 'var(--ink)' : undefined }}>
+                      {incharge ? incharge.name : <span className="muted" style={{ fontStyle: 'italic' }}>Not assigned</span>}
+                    </div>
+                  </div>
                 </div>
               );
-            })
-          )}
-        </div>
-
-        {!readOnly && (
-          <button
-            onClick={() => {
-              setIsEditMode(false);
-              setEditingHouse(null);
-              setFormData({ name: '', color: '#4f46e5', teacherInchargeId: '' });
-              setIsModalOpen(true);
-            }}
-            className="fixed bottom-5 right-5 w-14 h-14 bg-violet-600 text-white rounded-full shadow-xl flex items-center justify-center active:scale-95 transition-transform z-30"
-          >
-            <Plus className="w-6 h-6" />
-          </button>
+            })}
+          </div>
         )}
       </div>
 
-      {/* Desktop UI */}
-      <div className="hidden md:block space-y-8">
-        <PageHeader
-          title="House Management"
-          subtitle="Organize students into houses and assign teacher incharges."
-          icon={Home}
-          iconColor="gradient-violet"
-          actions={
-            !readOnly && (
-              <Button
-                icon={Plus}
-                onClick={() => {
-                  setIsEditMode(false);
-                  setEditingHouse(null);
-                  setFormData({ name: '', color: '#4f46e5', teacherInchargeId: '' });
-                  setIsModalOpen(true);
-                }}
-              >
-                Create New House
-              </Button>
-            )
-          }
-        />
-
-        <Card padding="sm">
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search houses..."
-          />
-        </Card>
-
-        <Card padding="none">
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>House</Th>
-                <Th>Color</Th>
-                <Th>Teacher Incharge</Th>
-                <Th className="text-right">Actions</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {filteredHouses.map((house) => {
-                const incharge = teachers.find(t => t.id === house.teacherInchargeId);
-                return (
-                  <Tr key={house.id}>
-                    <Td>
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm"
-                          style={{ backgroundColor: house.color }}
-                        >
-                          <Home className="w-4 h-4" />
-                        </div>
-                        <span className="font-semibold text-slate-900">{house.name}</span>
-                      </div>
-                    </Td>
-                    <Td>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 rounded-full border border-slate-200 shrink-0" style={{ backgroundColor: house.color }} />
-                        <span className="font-mono text-xs text-slate-500">{house.color}</span>
-                      </div>
-                    </Td>
-                    <Td>
-                      {incharge ? (
-                        <div className="flex items-center gap-2">
-                          <Avatar name={incharge.name} size="sm" />
-                          <span className="text-sm text-slate-700">{incharge.name}</span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-slate-400 italic">Not Assigned</span>
-                      )}
-                    </Td>
-                    <Td className="text-right">
-                      {!readOnly && (
-                        <div className="flex items-center justify-end gap-1">
-                          <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(house)} />
-                          <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(house.id)} />
-                        </div>
-                      )}
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </Tbody>
-          </Table>
-          {filteredHouses.length === 0 && (
-            <EmptyState
-              icon={Home}
-              title="No houses found"
-              description={searchTerm ? 'Try a different search term.' : 'Create your first house to get started.'}
-              action={
-                !searchTerm && (
-                  <Button icon={Plus} size="sm" onClick={() => setIsModalOpen(true)}>
-                    Create House
-                  </Button>
-                )
-              }
-            />
-          )}
-        </Card>
-      </div>
-
-      {/* Shared Modals */}
+      {/* Delete confirm */}
       <ConfirmModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
@@ -316,6 +196,7 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
         message="This action cannot be undone. All data associated with this house will be removed."
       />
 
+      {/* Add / Edit modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setIsEditMode(false); setEditingHouse(null); }}
