@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import PortalLayout from '../../components/PortalLayout';
+import GrievanceShell from '../../components/GrievanceShell';
 import { UserProfile } from '../../types';
 import GrievanceDashboard from './GrievanceDashboard';
 import GrievanceTracker from './GrievanceTracker';
@@ -11,7 +11,7 @@ export default function GrievancePortal({ user }: { user: UserProfile }) {
                    user.role === 'principal' ? '/principal' : '/superadmin';
 
   return (
-    <PortalLayout user={user}>
+    <GrievanceShell user={user}>
       <Routes>
         <Route path="/" element={<GrievanceDashboard user={user} />} />
         <Route path="/tracker" element={<GrievanceTracker user={user} />} />
@@ -20,6 +20,6 @@ export default function GrievancePortal({ user }: { user: UserProfile }) {
         <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="*" element={<Navigate to={basePath} />} />
       </Routes>
-    </PortalLayout>
+    </GrievanceShell>
   );
 }

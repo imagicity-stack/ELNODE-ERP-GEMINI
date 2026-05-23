@@ -1,8 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import PortalLayout from '../../components/PortalLayout';
-import { auth, db } from '../../firebase';
-import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import TeacherShell from '../../components/TeacherShell';
 import { UserProfile } from '../../types';
 import TeacherDashboard from './TeacherDashboard';
 import MyClasses from './MyClasses';
@@ -19,7 +16,7 @@ import TeacherLeaves from './TeacherLeaves';
 
 export default function TeacherPortal({ user }: { user: UserProfile }) {
   return (
-    <PortalLayout user={user}>
+    <TeacherShell user={user}>
       <Routes>
         <Route path="/" element={<TeacherDashboard user={user} />} />
         <Route path="/classes" element={<MyClasses user={user} />} />
@@ -35,6 +32,6 @@ export default function TeacherPortal({ user }: { user: UserProfile }) {
         <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="*" element={<Navigate to="/teacher" />} />
       </Routes>
-    </PortalLayout>
+    </TeacherShell>
   );
 }

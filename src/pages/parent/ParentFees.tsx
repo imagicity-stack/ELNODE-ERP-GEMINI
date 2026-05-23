@@ -10,12 +10,13 @@ import { fmtDate } from '../../lib/utils';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import {
-  PageHeader,
-  Card,
-  Badge,
-  Button,
-  IconButton,
   Alert,
+  Spinner,
+  Modal,
+  FormField,
+  Input,
+  Textarea,
+  Button,
   Table,
   Thead,
   Th,
@@ -23,12 +24,8 @@ import {
   Tr,
   Td,
   EmptyState,
-  StatCard,
-  Spinner,
-  Modal,
-  FormField,
-  Input,
-  Textarea,
+  IconButton,
+  Badge,
 } from '../../components/ui';
 
 interface ParentFeesProps {
@@ -92,7 +89,6 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
         const struct = structSnap.docs[0].data() as FeeStructure;
         setAvailableHeads(struct.heads || []);
       } else {
-        // Fallback to global heads if no class structure
         try {
           const ghSnap = await getDocs(collection(db, 'feeHeads'));
           setAvailableHeads(ghSnap.docs.map(d => d.data() as FeeHead));
@@ -131,7 +127,6 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
       });
       logActivity(user, 'Partial Payment Request', 'Parents',
         `Requested ₹${amount.toLocaleString()} partial — committed by ${partialReqData.committedDate}`);
-      // WhatsApp confirmation to parent
       try {
         const phone = selectedStudent?.parentDetails?.phone;
         if (phone) {
@@ -318,7 +313,6 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
 
     setAdvanceProcessing(true);
     try {
-      // Create Razorpay order
       const orderRes = await fetch('/api/razorpay/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -406,497 +400,262 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
   const currentFineForRequest = currentRequest && fineConfig ? calculateFine(currentRequest, fineConfig) : 0;
 
   return (
-    <>
-      {/* Mobile UI */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className={`${outstandingAmount > 0 ? 'bg-gradient-to-br from-rose-600 to-red-700' : 'bg-gradient-to-br from-violet-600 to-purple-700'} px-4 pt-5 pb-6 text-white`}>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">Parent Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Fee Management</h1>
-          <p className="text-xs text-white/70 mt-0.5">{selectedStudent.name}</p>
-          <div className="mt-3">
-            {outstandingAmount > 0 ? (
-              <>
-                <p className="text-sm text-white/70">Total Outstanding</p>
-                <p className="text-3xl font-black mt-0.5">₹{outstandingAmount.toLocaleString('en-IN')}</p>
-              </>
-            ) : (
-              <div className="flex items-center gap-2 mt-2">
-                <CheckCircle2 className="w-5 h-5 text-violet-200" />
-                <p className="text-base font-bold text-violet-100">All dues cleared!</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="px-4 pt-4 pb-24 space-y-4">
-          {loading ? (
-            <div className="flex justify-center py-12"><Spinner /></div>
-          ) : (
-            <>
-              {/* Current Fee Request */}
-              {currentRequest ? (
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                  <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50">
-                    <div className="flex items-center gap-2">
-                      <Receipt className="w-4 h-4 text-violet-600" />
-                      <span className="font-bold text-slate-900 text-sm">Current Fee Request</span>
-                    </div>
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{currentRequest.month}</span>
-                  </div>
-                  <div className="divide-y divide-slate-50">
-                    {currentRequest.heads.map((head, i) => (
-                      <div key={i} className="p-4 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">{head.name}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">Base ₹{head.amount} · Disc ₹{head.discount}</p>
-                        </div>
-                        <p className="font-bold text-slate-900">₹{(head.finalAmount || 0).toLocaleString()}</p>
-                      </div>
-                    ))}
-                    <div className="p-4 bg-slate-50 space-y-2">
-                      {currentFineForRequest > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-rose-500 font-medium flex items-center gap-1"><Scale className="w-3.5 h-3.5" /> Late Fine</span>
-                          <span className="font-bold text-rose-600">+ ₹{currentFineForRequest.toLocaleString()}</span>
-                        </div>
-                      )}
-                      {(currentRequest.waivedAmount || 0) > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-emerald-600 font-medium flex items-center gap-1"><ShieldOff className="w-3.5 h-3.5" /> Waiver</span>
-                          <span className="font-bold text-emerald-600">- ₹{currentRequest.waivedAmount!.toLocaleString()}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between pt-2 border-t border-slate-200">
-                        <span className="font-bold text-slate-900">Net Balance Due</span>
-                        <span className="text-lg font-black text-rose-600">
-                          ₹{(currentRequest.totalAmount + currentFineForRequest - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0)).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-4 space-y-2">
-                    <button
-                      onClick={() => handlePayNow(currentRequest)}
-                      className="w-full py-3.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl text-sm font-bold active:scale-95 transition-transform shadow-lg flex items-center justify-center gap-2"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      Pay Now — ₹{(currentRequest.totalAmount + currentFineForRequest - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0)).toLocaleString()}
-                    </button>
-                    {currentRequest.status !== 'paid' && !currentRequest.partialPaymentRequest && (
-                      <button
-                        onClick={() => {
-                          const remaining = currentRequest.totalAmount - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0);
-                          setPartialReqModal({ isOpen: true, requestId: currentRequest.id, maxAmount: remaining });
-                          setPartialReqData({ amount: '', reason: '', committedDate: '' });
-                        }}
-                        className="w-full py-2.5 border border-violet-200 bg-violet-50 text-violet-700 rounded-xl text-xs font-bold active:scale-95 transition-transform flex items-center justify-center gap-1.5"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        Request Partial Payment
-                      </button>
-                    )}
-                    {currentRequest.partialPaymentRequest?.status === 'pending' && (
-                      <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl">
-                        <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        <p className="text-[11px] text-amber-700 font-medium">
-                          Partial request of ₹{currentRequest.partialPaymentRequest.requestedAmount.toLocaleString()} pending — accountant will process it.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-emerald-50 rounded-2xl p-5 flex items-center gap-4 border border-emerald-100">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-emerald-900">All Dues Cleared!</p>
-                    <p className="text-xs text-emerald-700 mt-0.5">No pending fee requests for {selectedStudent.name}.</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Advance Payments */}
-              <div>
-                <div className="flex items-center justify-between px-1 mb-3">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Advance Payments</p>
-                  <span className="text-[10px] font-bold text-violet-600">{advancePayments.length} record(s)</span>
-                </div>
-                {advancePayments.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-slate-100 p-4">
-                    <p className="text-xs text-slate-500 font-medium">No advance payments made yet.</p>
-                    {availableHeads.length > 0 && (
-                      <>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-3 mb-2">Heads available to pay in advance</p>
-                        <div className="space-y-1">
-                          {availableHeads.map(h => (
-                            <div key={h.name} className="flex items-center justify-between text-xs py-1">
-                              <span className="text-slate-700">{h.name}</span>
-                              <span className="font-bold text-emerald-600">₹{h.amount.toLocaleString('en-IN')}/mo</span>
-                            </div>
-                          ))}
-                        </div>
-                        <button
-                          onClick={openAdvanceModal}
-                          className="mt-3 w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-bold active:scale-95 transition-transform flex items-center justify-center gap-1.5"
-                        >
-                          <CreditCard className="w-3.5 h-3.5" /> Pay in Advance Online
-                        </button>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {advancePayments.map(adv => (
-                      <div key={adv.id} className="bg-white rounded-2xl border border-violet-100 shadow-sm p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Wallet className="w-4 h-4 text-violet-600" />
-                            <span className="text-xs font-bold text-slate-900">{adv.receiptNumber}</span>
-                          </div>
-                          <span className="text-sm font-black text-violet-700">₹{adv.totalAmount.toLocaleString('en-IN')}</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          {fmtDate(adv.date)} · {adv.paymentMethod.replace('_', ' ')}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {(adv.monthlyBreakdown || []).map(e => (
-                            <span
-                              key={e.month}
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                e.consumed
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : 'bg-violet-100 text-violet-700'
-                              }`}
-                            >
-                              {e.month.split(' ')[0].slice(0, 3)} {e.month.split(' ')[1]?.slice(-2)}
-                              {e.consumed && ' ✓'}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                    {availableHeads.length > 0 && (
-                      <button
-                        onClick={openAdvanceModal}
-                        className="w-full py-2.5 rounded-xl border border-dashed border-violet-300 text-violet-700 text-xs font-bold active:scale-95 transition-transform flex items-center justify-center gap-1.5"
-                      >
-                        <CreditCard className="w-3.5 h-3.5" /> Pay More in Advance
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Payment History */}
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Payment History</p>
-                {payments.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-slate-100 p-6 text-center">
-                    <p className="text-sm text-slate-400 font-medium">No payment records yet.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {payments.map((tx) => (
-                      <div key={tx.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
-                          <Receipt className="w-5 h-5 text-violet-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-900">₹{(tx.amount || 0).toLocaleString()}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">{tx.receiptNumber} · {fmtDate(tx.date)}</p>
-                          <p className="text-xs text-slate-400 capitalize">{tx.method.replace('_', ' ')}</p>
-                        </div>
-                        <button
-                          onClick={() => handleDownloadReceipt(tx)}
-                          className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:text-violet-600 active:scale-95 transition-all shrink-0"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+    <div className="pad stack" style={{ '--stack-gap': '20px' } as React.CSSProperties}>
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <p className="eyebrow">{selectedStudent.name}</p>
+          <h1 className="display" style={{ fontSize: 22 }}>Fees</h1>
         </div>
       </div>
 
-      {/* Desktop UI */}
-      <div className="hidden md:block space-y-8">
-        <PageHeader
-          title="Fee Management"
-          subtitle={`Monitor and pay fees for ${selectedStudent.name}`}
-          icon={CreditCard}
-          iconColor="gradient-violet"
-          actions={
-            outstandingAmount > 0 ? (
-              <div className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm">
-                <AlertCircle className="w-4 h-4" />
-                ₹{(outstandingAmount || 0).toLocaleString()} Outstanding
+      {loading ? (
+        <div className="flex justify-center py-12"><Spinner /></div>
+      ) : (
+        <>
+          {/* Hero outstanding card */}
+          <div
+            className="card"
+            style={{
+              background: outstandingAmount > 0 ? 'var(--ink)' : 'var(--paper)',
+              color: outstandingAmount > 0 ? 'var(--cream)' : 'var(--ink)',
+            }}
+          >
+            <p className="eyebrow" style={{ color: outstandingAmount > 0 ? 'var(--cream-2)' : 'var(--ink-3)' }}>
+              Total Outstanding
+            </p>
+            <p className="t-num display" style={{ fontSize: 36, lineHeight: 1.1, marginTop: 4 }}>
+              ₹{(outstandingAmount || 0).toLocaleString('en-IN')}
+            </p>
+            {outstandingAmount === 0 && (
+              <div className="flex items-center gap-2" style={{ marginTop: 8 }}>
+                <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--leaf)' }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--leaf)' }}>All dues cleared!</span>
               </div>
-            ) : undefined
-          }
-        />
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Fee Summary */}
-          <div className="lg:col-span-2 space-y-6">
-            {currentRequest ? (
-              <Card padding="none">
-                <div className="p-6 border-b bg-slate-50/50 flex items-center justify-between">
-                  <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                    <Receipt className="w-5 h-5 text-violet-600" />
-                    Current Fee Request
-                  </h3>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                    {currentRequest.month}
-                  </span>
-                </div>
-                <div className="divide-y divide-slate-50">
-                  {currentRequest.heads.map((head, i) => (
-                    <div key={i} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-all">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
-                          <IndianRupee className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-slate-900">{head.name}</h4>
-                          <p className="text-xs text-slate-500">
-                            Base: ₹{head.amount} | Discount: ₹{head.discount}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-slate-900">₹{(head.finalAmount || 0).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="p-6 bg-slate-50 flex items-center justify-between">
-                    <div className="space-y-1">
-                      <span className="font-bold text-slate-900 block">Net Payable Amount</span>
-                      <div className="flex flex-wrap gap-2">
-                        {currentFineForRequest > 0 && (
-                          <Badge variant="error" className="text-[10px] flex items-center gap-1">
-                            <Scale className="w-2.5 h-2.5" />
-                            Late Fine: ₹{currentFineForRequest.toLocaleString()}
-                          </Badge>
-                        )}
-                        {currentRequest.waivedAmount > 0 && (
-                          <Badge variant="success" className="text-[10px] flex items-center gap-1">
-                            <ShieldOff className="w-2.5 h-2.5" />
-                            Waived: ₹{currentRequest.waivedAmount.toLocaleString()}
-                          </Badge>
-                        )}
-                        {currentRequest.paidAmount > 0 && (
-                          <span className="text-xs text-emerald-600 font-bold">Already Paid: ₹{currentRequest.paidAmount.toLocaleString()}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-2xl font-black text-violet-600">
-                        ₹{(currentRequest.totalAmount + currentFineForRequest - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0)).toLocaleString()}
-                      </span>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Remaining Balance</p>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ) : (
-              <Card>
-                <div className="flex flex-col items-center py-8">
-                  <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 mx-auto mb-4">
-                    <CheckCircle2 className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900">All Dues Cleared!</h3>
-                  <p className="text-slate-500 mt-1">No pending fee requests for {selectedStudent.name}.</p>
-                </div>
-              </Card>
             )}
-
-            {/* Advance Payments — desktop */}
-            <Card padding="none">
-              <div className="p-6 border-b bg-slate-50/50 flex items-center justify-between">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <Wallet className="w-5 h-5 text-violet-600" />
-                  Advance Payments
-                </h3>
-                <span className="text-xs font-bold text-violet-600">{advancePayments.length} record(s)</span>
-              </div>
-              <div className="p-6">
-                {advancePayments.length === 0 ? (
-                  <div>
-                    <p className="text-sm text-slate-500 mb-4">No advance payments made yet.</p>
-                    {availableHeads.length > 0 && (
-                      <>
-                        <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Fee Heads Available for Advance Payment</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          {availableHeads.map(h => (
-                            <div key={h.name} className="flex items-center justify-between px-4 py-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                              <span className="text-sm text-slate-700 font-medium">{h.name}</span>
-                              <span className="text-sm font-bold text-emerald-600">₹{h.amount.toLocaleString('en-IN')}<span className="text-[10px] text-slate-400 font-medium ml-1">/month</span></span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-4 flex items-center gap-3">
-                          <Button variant="primary" icon={CreditCard} onClick={openAdvanceModal}>
-                            Pay in Advance Online
-                          </Button>
-                          <p className="text-xs text-slate-400">or contact the accounts office to pay by cash.</p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {advancePayments.map(adv => {
-                      const monthsCovered = (adv.monthlyBreakdown || []).length;
-                      const monthsConsumed = (adv.monthlyBreakdown || []).filter(e => e.consumed).length;
-                      return (
-                        <div key={adv.id} className="p-4 rounded-xl border border-violet-100 bg-violet-50/30">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-bold text-slate-900">Receipt {adv.receiptNumber}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">
-                                {fmtDate(adv.date)} · {adv.paymentMethod.replace('_', ' ')}
-                                {adv.voucherNumber && ` · Voucher ${adv.voucherNumber}`}
-                              </p>
-                              <div className="mt-3 flex flex-wrap gap-1.5">
-                                {(adv.monthlyBreakdown || []).map(e => (
-                                  <span
-                                    key={e.month}
-                                    className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
-                                      e.consumed
-                                        ? 'bg-emerald-100 text-emerald-700'
-                                        : 'bg-violet-100 text-violet-700'
-                                    }`}
-                                    title={e.consumed ? `Applied to fee request on ${fmtDate(e.consumedAt || '')}` : 'Not yet applied'}
-                                  >
-                                    <CalendarDays className="w-3 h-3 inline mr-1 -mt-0.5" />
-                                    {e.month}{e.consumed && ' ✓'}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className="text-xl font-black text-violet-700">₹{adv.totalAmount.toLocaleString('en-IN')}</p>
-                              <p className="text-[10px] text-slate-400 mt-1">{monthsConsumed}/{monthsCovered} consumed</p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {availableHeads.length > 0 && (
-                      <Button variant="secondary" icon={CreditCard} onClick={openAdvanceModal}>
-                        Pay More in Advance
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Card>
-
-            {/* Payment History */}
-            <Card padding="none">
-              <div className="p-6 border-b bg-slate-50/50">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-violet-600" />
-                  Payment History
-                </h3>
-              </div>
-              {payments.length > 0 ? (
-                <Table>
-                  <Thead>
-                    <tr>
-                      <Th>Receipt No.</Th>
-                      <Th>Date</Th>
-                      <Th>Amount</Th>
-                      <Th>Method</Th>
-                      <Th>Trans. ID</Th>
-                      <Th className="text-right">Receipt</Th>
-                    </tr>
-                  </Thead>
-                  <Tbody>
-                    {payments.map((tx) => (
-                      <Tr key={tx.id}>
-                        <Td className="font-bold text-slate-900">{tx.receiptNumber}</Td>
-                        <Td>{fmtDate(tx.date)}</Td>
-                        <Td className="font-bold text-emerald-600">₹{(tx.amount || 0).toLocaleString()}</Td>
-                        <Td className="capitalize">{tx.method.replace('_', ' ')}</Td>
-                        <Td>
-                          <span className="text-[10px] font-mono text-slate-500 truncate block max-w-[100px]" title={tx.transactionId || tx.referenceNumber}>
-                            {tx.transactionId || tx.referenceNumber || '-'}
-                          </span>
-                        </Td>
-                        <Td className="text-right">
-                          <IconButton icon={Download} onClick={() => handleDownloadReceipt(tx)} variant="ghost" />
-                        </Td>
-                      </Tr>
-                    ))}
-                  </Tbody>
-                </Table>
-              ) : (
-                <EmptyState title="No payment history found." />
-              )}
-            </Card>
           </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-violet-600 to-purple-700 p-6 rounded-2xl text-white shadow-xl shadow-violet-600/20">
-              <div className="flex items-center justify-between mb-8">
-                <Wallet className="w-8 h-8 opacity-50" />
-                <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Payment Portal</span>
+          {/* Current fee request breakdown */}
+          {currentRequest ? (
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ borderBottom: '1px solid var(--line)', background: 'var(--cream-2)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-4 h-4" style={{ color: 'var(--ink-3)' }} />
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>Current Fee Request</span>
+                </div>
+                <span className="eyebrow">{currentRequest.month}</span>
               </div>
-              <p className="text-sm opacity-80">Total Outstanding</p>
-              <h2 className="text-4xl font-black mt-1">₹{(outstandingAmount || 0).toLocaleString()}</h2>
-              <div className="mt-8 pt-6 border-t border-white/10">
-                {currentRequest ? (
-                  <>
-                    <p className="text-xs opacity-70 leading-relaxed mb-6">
-                      Fee for {currentRequest.month} is due by {new Date(currentRequest.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}.
+
+              <div style={{ borderBottom: '1px solid var(--line)' }}>
+                {currentRequest.heads.map((head, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between px-4 py-3"
+                    style={{ borderBottom: i < currentRequest.heads.length - 1 ? '1px solid var(--line)' : 'none' }}
+                  >
+                    <div>
+                      <p style={{ fontSize: 13, fontWeight: 700 }}>{head.name}</p>
+                      <p className="tiny muted">Base ₹{head.amount} · Disc ₹{head.discount}</p>
+                    </div>
+                    <p className="t-num" style={{ fontWeight: 800 }}>₹{(head.finalAmount || 0).toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="px-4 py-3" style={{ background: 'var(--cream-2)' }}>
+                {currentFineForRequest > 0 && (
+                  <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                    <span className="flex items-center gap-1.5" style={{ fontSize: 12, color: 'var(--coral)' }}>
+                      <Scale className="w-3.5 h-3.5" /> Late Fine
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--coral)' }}>
+                      + ₹{currentFineForRequest.toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {(currentRequest.waivedAmount || 0) > 0 && (
+                  <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+                    <span className="flex items-center gap-1.5" style={{ fontSize: 12, color: 'var(--leaf)' }}>
+                      <ShieldOff className="w-3.5 h-3.5" /> Waiver
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--leaf)' }}>
+                      - ₹{currentRequest.waivedAmount!.toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between" style={{ borderTop: '1px solid var(--line)', paddingTop: 8, marginTop: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>Balance Due</span>
+                  <span className="t-num" style={{ fontSize: 20, fontWeight: 900, color: 'var(--coral)' }}>
+                    ₹{(currentRequest.totalAmount + currentFineForRequest - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0)).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="px-4 py-3 stack" style={{ '--stack-gap': '8px' } as React.CSSProperties}>
+                <button
+                  onClick={() => handlePayNow(currentRequest)}
+                  className="btn accent w-full flex items-center justify-center gap-2"
+                  style={{ padding: '12px 0', fontSize: 14 }}
+                >
+                  <CreditCard className="w-4 h-4" />
+                  Pay Now — ₹{(currentRequest.totalAmount + currentFineForRequest - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0)).toLocaleString()}
+                </button>
+                {currentRequest.status !== 'paid' && !currentRequest.partialPaymentRequest && (
+                  <button
+                    onClick={() => {
+                      const remaining = currentRequest.totalAmount - (currentRequest.waivedAmount || 0) - (currentRequest.paidAmount || 0);
+                      setPartialReqModal({ isOpen: true, requestId: currentRequest.id, maxAmount: remaining });
+                      setPartialReqData({ amount: '', reason: '', committedDate: '' });
+                    }}
+                    className="btn ghost w-full flex items-center justify-center gap-1.5"
+                    style={{ padding: '10px 0', fontSize: 13 }}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Request Partial Payment
+                  </button>
+                )}
+                {currentRequest.partialPaymentRequest?.status === 'pending' && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: '#fef3c7', border: '1px solid #fde68a' }}>
+                    <Clock className="w-3.5 h-3.5 shrink-0" style={{ color: '#d97706' }} />
+                    <p style={{ fontSize: 11, color: '#92400e', fontWeight: 500 }}>
+                      Partial request of ₹{currentRequest.partialPaymentRequest.requestedAmount.toLocaleString()} pending.
                     </p>
-                    <button
-                      onClick={() => handlePayNow(currentRequest)}
-                      className="w-full py-3 bg-white text-violet-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all shadow-lg flex items-center justify-center gap-2"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      Pay Now
-                    </button>
-                  </>
-                ) : (
-                  <p className="text-xs opacity-70 leading-relaxed">
-                    All dues are cleared for {selectedStudent.name}.
-                  </p>
+                  </div>
                 )}
               </div>
             </div>
+          ) : (
+            <div className="card flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#d1fae5' }}>
+                <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--leaf)' }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 700 }}>All Dues Cleared!</p>
+                <p className="tiny muted">No pending fee requests for {selectedStudent.name}.</p>
+              </div>
+            </div>
+          )}
 
-            <Card>
-              <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-amber-500" />
-                Important Note
-              </h3>
-              <ul className="space-y-4 text-xs text-slate-600">
-                <li className="flex items-start gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-violet-600 mt-1.5"></div>
-                  Fees must be paid by the due date to avoid automated late charges.
-                </li>
-                <li className="flex items-start gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-violet-600 mt-1.5"></div>
-                  Late penalties are applied dynamically based on the current school fine policy.
-                </li>
-                <li className="flex items-start gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-violet-600 mt-1.5"></div>
-                  Keep your receipts safe for future reference.
-                </li>
-              </ul>
-            </Card>
+          {/* Advance Payments */}
+          <div>
+            <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+              <p className="eyebrow">Advance Payments</p>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)' }}>
+                {advancePayments.length} record(s)
+              </span>
+            </div>
+
+            {advancePayments.length === 0 ? (
+              <div className="card">
+                <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>No advance payments made yet.</p>
+                {availableHeads.length > 0 && (
+                  <>
+                    <div className="stack" style={{ '--stack-gap': '6px', marginTop: 12 } as React.CSSProperties}>
+                      {availableHeads.map(h => (
+                        <div key={h.name} className="flex items-center justify-between">
+                          <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>{h.name}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--leaf)' }}>
+                            ₹{h.amount.toLocaleString('en-IN')}/mo
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={openAdvanceModal}
+                      className="btn accent flex items-center gap-1.5"
+                      style={{ marginTop: 12, fontSize: 13, padding: '8px 16px' }}
+                    >
+                      <CreditCard className="w-3.5 h-3.5" /> Pay in Advance Online
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="stack" style={{ '--stack-gap': '8px' } as React.CSSProperties}>
+                {advancePayments.map(adv => (
+                  <div key={adv.id} className="card" style={{ padding: '12px 16px' }}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Wallet className="w-4 h-4" style={{ color: 'var(--ink-3)' }} />
+                        <span style={{ fontSize: 12, fontWeight: 700 }}>{adv.receiptNumber}</span>
+                      </div>
+                      <span className="t-num" style={{ fontSize: 16, fontWeight: 900 }}>
+                        ₹{adv.totalAmount.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <p className="tiny muted" style={{ marginTop: 4 }}>
+                      {fmtDate(adv.date)} · {adv.paymentMethod.replace('_', ' ')}
+                    </p>
+                    <div className="flex flex-wrap gap-1" style={{ marginTop: 8 }}>
+                      {(adv.monthlyBreakdown || []).map(e => (
+                        <span
+                          key={e.month}
+                          className="chip"
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 99,
+                            background: e.consumed ? '#d1fae5' : 'var(--cream-2)',
+                            color: e.consumed ? '#065f46' : 'var(--ink-2)',
+                          }}
+                        >
+                          {e.month.split(' ')[0].slice(0, 3)} {e.month.split(' ')[1]?.slice(-2)}
+                          {e.consumed && ' ✓'}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {availableHeads.length > 0 && (
+                  <button
+                    onClick={openAdvanceModal}
+                    className="btn ghost flex items-center justify-center gap-1.5 w-full"
+                    style={{ padding: '10px 0', fontSize: 13 }}
+                  >
+                    <CreditCard className="w-3.5 h-3.5" /> Pay More in Advance
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      </div>
+
+          {/* Payment History */}
+          <div>
+            <p className="eyebrow" style={{ marginBottom: 10 }}>Payment History</p>
+            {payments.length === 0 ? (
+              <div className="card" style={{ textAlign: 'center', padding: '24px' }}>
+                <p className="muted" style={{ fontSize: 13 }}>No payment records yet.</p>
+              </div>
+            ) : (
+              <div className="stack" style={{ '--stack-gap': '8px' } as React.CSSProperties}>
+                {payments.map((tx) => (
+                  <div key={tx.id} className="card flex items-center gap-3" style={{ padding: '12px 16px' }}>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'var(--cream-2)' }}>
+                      <Receipt className="w-4 h-4" style={{ color: 'var(--ink-3)' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p style={{ fontSize: 14, fontWeight: 700 }}>₹{(tx.amount || 0).toLocaleString()}</p>
+                      <p className="tiny muted">{tx.receiptNumber} · {fmtDate(tx.date)}</p>
+                      <p className="tiny muted capitalize">{tx.method.replace('_', ' ')}</p>
+                    </div>
+                    <button
+                      onClick={() => handleDownloadReceipt(tx)}
+                      className="icon-btn"
+                      aria-label="Download receipt"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Pay in Advance Online Modal */}
       <Modal
@@ -937,7 +696,6 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
             Pre-pay your child's fees for upcoming months. Once paid, the school will not generate a fee request for the covered heads in those months — and no late penalty applies.
           </Alert>
 
-          {/* Month selector */}
           <FormField label="Pick the months you want to pre-pay" required>
             <div className="grid grid-cols-3 md:grid-cols-4 gap-2 mt-1">
               {getUpcomingMonths().map(m => {
@@ -970,7 +728,6 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
             </div>
           </FormField>
 
-          {/* Heads selector */}
           <FormField label="Pick the fee heads to include" required hint="Synced from the school's fee structure for your child's class">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
               {availableHeads.map(h => {
@@ -1066,6 +823,6 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
           </div>
         </form>
       </Modal>
-    </>
+    </div>
   );
 }

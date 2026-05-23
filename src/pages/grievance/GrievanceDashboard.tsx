@@ -1,28 +1,35 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { UserProfile, Grievance } from '../../types';
-import { PageHeader, Card, StatCard } from '../../components/ui';
 import {
   MessageSquare, AlertCircle, CheckCircle2, Clock,
-  TrendingUp, Users, Wallet, ArrowUpRight,
+  TrendingUp, Wallet, Users, ArrowUpRight,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { cn } from '../../lib/utils';
 
-const statusColor: Record<string, string> = {
-  open: 'bg-red-100 text-red-700',
-  in_progress: 'bg-amber-100 text-amber-700',
-  awaiting_response: 'bg-blue-100 text-blue-700',
-  resolved: 'bg-emerald-100 text-emerald-700',
-  closed: 'bg-slate-100 text-slate-600',
+const statusDot: Record<string, string> = {
+  open: 'var(--coral)',
+  in_progress: '#f59e0b',
+  awaiting_response: '#3b82f6',
+  resolved: 'var(--leaf)',
+  closed: 'var(--ink-3)',
 };
 
-const priorityColor: Record<string, string> = {
-  low: 'bg-slate-100 text-slate-600',
-  medium: 'bg-amber-100 text-amber-700',
-  high: 'bg-orange-100 text-orange-700',
-  urgent: 'bg-red-100 text-red-700',
+const statusLabel: Record<string, string> = {
+  open: 'Open',
+  in_progress: 'In Progress',
+  awaiting_response: 'Awaiting',
+  resolved: 'Resolved',
+  closed: 'Closed',
+};
+
+const statusChipStyle: Record<string, React.CSSProperties> = {
+  open: { background: '#fee2e2', color: '#b91c1c' },
+  in_progress: { background: '#fef3c7', color: '#92400e' },
+  awaiting_response: { background: '#dbeafe', color: '#1e40af' },
+  resolved: { background: '#d1fae5', color: '#065f46' },
+  closed: { background: 'var(--cream-2)', color: 'var(--ink-3)' },
 };
 
 export default function GrievanceDashboard({ user }: { user: UserProfile }) {
@@ -66,127 +73,221 @@ export default function GrievanceDashboard({ user }: { user: UserProfile }) {
     return Math.round(totalHours / resolvedWithTime.length);
   })();
 
+  const pending = open + inProgress;
   const recent = grievances.slice(0, 6);
+
+  const trackerPath = user.role === 'grievance_officer' ? '/grievance/tracker'
+    : user.role === 'principal' ? '/principal/tracker'
+    : '/superadmin/tracker';
+
+  if (loading) {
+    return (
+      <div>
+        <div className="topbar">
+          <div>
+            <div className="eyebrow">Loading…</div>
+            <h1>Grievance</h1>
+          </div>
+        </div>
+        <div className="pad" style={{ paddingTop: 40, textAlign: 'center' }}>
+          <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid var(--line)', borderTopColor: 'var(--accent)', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <PageHeader
-        title="Grievance Dashboard"
-        subtitle={isPrincipal ? 'Escalated grievances requiring your attention' : 'Overview of all grievances and parent relations'}
-        icon={MessageSquare}
-        iconColor="bg-teal-500"
-      />
-
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal-500" />
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <StatCard label="Open" value={open} icon={AlertCircle} gradient="from-red-500 to-rose-600" index={0} />
-            <StatCard label="In Progress" value={inProgress} icon={Clock} gradient="from-amber-500 to-orange-500" index={1} />
-            <StatCard label="Resolved" value={resolved} icon={CheckCircle2} gradient="from-emerald-500 to-teal-600" index={2} />
-            <StatCard
-              label={avgResolutionHours !== null ? `Avg ${avgResolutionHours}h resolution` : 'Avg Resolution'}
-              value={urgent > 0 ? `${urgent} Urgent` : '—'}
-              icon={TrendingUp}
-              gradient={urgent > 0 ? 'from-red-600 to-rose-700' : 'from-slate-400 to-slate-500'}
-              index={3}
-            />
+      {/* ── Topbar ── */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">
+            {pending > 0 ? `${pending} pending` : 'All clear'}
+            {isPrincipal ? ' · Escalated view' : ''}
           </div>
+          <h1>Grievance</h1>
+        </div>
+        <div>
+          <Link to={trackerPath} className="btn accent" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <ArrowUpRight size={15} />
+            View All
+          </Link>
+        </div>
+      </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Recent Grievances */}
-            <div className="lg:col-span-2">
-              <Card>
-                <div className="flex items-center justify-between mb-5">
-                  <h2 className="font-bold text-slate-900">Recent Grievances</h2>
-                  <Link
-                    to={user.role === 'grievance_officer' ? '/grievance/tracker' :
-                        user.role === 'principal' ? '/principal/tracker' : '/superadmin/tracker'}
-                    className="flex items-center gap-1 text-sm text-teal-600 hover:text-teal-700 font-semibold"
-                  >
-                    View all <ArrowUpRight className="w-4 h-4" />
-                  </Link>
-                </div>
-                {recent.length === 0 ? (
-                  <p className="text-slate-400 text-sm text-center py-8">No grievances found</p>
-                ) : (
-                  <div className="space-y-3">
-                    {recent.map(g => (
-                      <div key={g.id} className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 truncate">{g.title}</p>
-                          <p className="text-xs text-slate-500 mt-0.5">{g.parentName} · {g.studentName} · {g.classSection}</p>
-                        </div>
-                        <div className="flex flex-col gap-1 items-end shrink-0">
-                          <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide', statusColor[g.status] || 'bg-slate-100 text-slate-600')}>
-                            {g.status.replace('_', ' ')}
-                          </span>
-                          <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide', priorityColor[g.priority] || 'bg-slate-100 text-slate-600')}>
-                            {g.priority}
-                          </span>
+      <div className="pad">
+        {/* ── Stats row ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+          {/* Total */}
+          <div className="card" style={{ textAlign: 'center', padding: '16px 12px' }}>
+            <div className="eyebrow">Total</div>
+            <div className="t-num" style={{ fontSize: 32, margin: '4px 0' }}>{grievances.length}</div>
+            <div className="muted" style={{ fontSize: 11 }}>all time</div>
+          </div>
+          {/* Open */}
+          <div className="card" style={{ textAlign: 'center', padding: '16px 12px', borderColor: open > 0 ? 'var(--coral)' : 'var(--line)' }}>
+            <div className="eyebrow" style={{ color: open > 0 ? 'var(--coral)' : undefined }}>Open</div>
+            <div className="t-num" style={{ fontSize: 32, margin: '4px 0', color: open > 0 ? 'var(--coral)' : undefined }}>{open}</div>
+            {urgent > 0 && <div style={{ fontSize: 11, color: 'var(--coral)', fontWeight: 700 }}>{urgent} urgent</div>}
+          </div>
+          {/* Resolved */}
+          <div className="card" style={{ textAlign: 'center', padding: '16px 12px', borderColor: resolved > 0 ? 'var(--leaf)' : 'var(--line)' }}>
+            <div className="eyebrow" style={{ color: 'var(--leaf)' }}>Resolved</div>
+            <div className="t-num" style={{ fontSize: 32, margin: '4px 0', color: 'var(--leaf)' }}>{resolved}</div>
+            {avgResolutionHours !== null && <div className="muted" style={{ fontSize: 11 }}>avg {avgResolutionHours}h</div>}
+          </div>
+        </div>
+
+        {/* ── Recent grievances ── */}
+        <div className="section-head">
+          <h2>Recent Grievances</h2>
+        </div>
+
+        {recent.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <MessageSquare size={32} style={{ color: 'var(--line)', margin: '0 auto 8px' }} />
+            <p className="muted" style={{ fontSize: 14 }}>No grievances found</p>
+          </div>
+        ) : (
+          <div className="stack" style={{ marginBottom: 20 }}>
+            {recent.map(g => (
+              <div key={g.id} className="card" style={{ padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  {/* Status dot */}
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%', marginTop: 6, flexShrink: 0,
+                    background: statusDot[g.status] || 'var(--ink-3)',
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontWeight: 700, fontSize: 14, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {g.studentName}
+                        </p>
+                        <div className="eyebrow" style={{ marginTop: 2 }}>
+                          {g.category.replace('_', ' ')} · {g.parentName}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </div>
-
-            {/* Quick Stats */}
-            <div className="space-y-4">
-              <Card>
-                <h2 className="font-bold text-slate-900 mb-4">By Category</h2>
-                {(['academic', 'fee', 'facility', 'staff_conduct', 'transport', 'other'] as const).map(cat => {
-                  const count = grievances.filter(g => g.category === cat).length;
-                  const pct = grievances.length > 0 ? Math.round((count / grievances.length) * 100) : 0;
-                  return (
-                    <div key={cat} className="mb-3">
-                      <div className="flex justify-between text-xs text-slate-600 mb-1">
-                        <span className="capitalize font-medium">{cat.replace('_', ' ')}</span>
-                        <span>{count}</span>
-                      </div>
-                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-teal-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700,
+                          textTransform: 'uppercase', letterSpacing: '0.05em',
+                          ...statusChipStyle[g.status],
+                        }}>
+                          {statusLabel[g.status] || g.status}
+                        </span>
+                        <span className="mono tiny" style={{ fontSize: 11 }}>
+                          {new Date(g.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
-              </Card>
-
-              <Card>
-                <h2 className="font-bold text-slate-900 mb-4">Quick Links</h2>
-                <div className="space-y-2">
-                  {isOfficer && (
-                    <>
-                      <Link to="/grievance/tracker" className="flex items-center gap-3 p-3 rounded-xl bg-teal-50 hover:bg-teal-100 transition-colors">
-                        <MessageSquare className="w-4 h-4 text-teal-600" />
-                        <span className="text-sm font-semibold text-teal-700">Manage Grievances</span>
-                      </Link>
-                      <Link to="/grievance/fee-followup" className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 transition-colors">
-                        <Wallet className="w-4 h-4 text-amber-600" />
-                        <span className="text-sm font-semibold text-amber-700">Fee Follow-up</span>
-                      </Link>
-                      <Link to="/grievance/broadcast" className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 transition-colors">
-                        <Users className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm font-semibold text-blue-700">WhatsApp Broadcast</span>
-                      </Link>
-                    </>
-                  )}
-                  {isPrincipal && (
-                    <Link to="/principal/tracker" className="flex items-center gap-3 p-3 rounded-xl bg-rose-50 hover:bg-rose-100 transition-colors">
-                      <AlertCircle className="w-4 h-4 text-rose-600" />
-                      <span className="text-sm font-semibold text-rose-700">Escalated Grievances</span>
-                    </Link>
-                  )}
+                    {g.isEscalated && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--coral)', marginTop: 4, display: 'inline-block' }}>
+                        ESCALATED
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </Card>
-            </div>
+              </div>
+            ))}
           </div>
-        </>
-      )}
+        )}
+
+        {/* ── Quick action tiles ── */}
+        <div className="section-head">
+          <h2>Quick Actions</h2>
+        </div>
+        <div className="hscroll" style={{ marginBottom: 8 }}>
+          {isOfficer && (
+            <>
+              <Link
+                to="/grievance/tracker"
+                style={{
+                  display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                  padding: '14px 18px', borderRadius: 14,
+                  background: '#f0fdf4', border: '1px solid #bbf7d0', textDecoration: 'none',
+                  minWidth: 100, flexShrink: 0,
+                }}
+              >
+                <MessageSquare size={20} style={{ color: 'var(--leaf)' }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#065f46', textAlign: 'center' }}>Manage Grievances</span>
+              </Link>
+              <Link
+                to="/grievance/fee-followup"
+                style={{
+                  display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                  padding: '14px 18px', borderRadius: 14,
+                  background: '#fffbeb', border: '1px solid #fde68a', textDecoration: 'none',
+                  minWidth: 100, flexShrink: 0,
+                }}
+              >
+                <Wallet size={20} style={{ color: '#d97706' }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#92400e', textAlign: 'center' }}>Fee Follow-up</span>
+              </Link>
+              <Link
+                to="/grievance/broadcast"
+                style={{
+                  display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                  padding: '14px 18px', borderRadius: 14,
+                  background: '#eff6ff', border: '1px solid #bfdbfe', textDecoration: 'none',
+                  minWidth: 100, flexShrink: 0,
+                }}
+              >
+                <Users size={20} style={{ color: '#2563eb' }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#1e40af', textAlign: 'center' }}>WA Broadcast</span>
+              </Link>
+            </>
+          )}
+          {isPrincipal && (
+            <Link
+              to="/principal/tracker"
+              style={{
+                display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                padding: '14px 18px', borderRadius: 14,
+                background: '#fff1f2', border: '1px solid #fecdd3', textDecoration: 'none',
+                minWidth: 100, flexShrink: 0,
+              }}
+            >
+              <AlertCircle size={20} style={{ color: 'var(--coral)' }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#9f1239', textAlign: 'center' }}>Escalated</span>
+            </Link>
+          )}
+          <Link
+            to={trackerPath}
+            style={{
+              display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+              padding: '14px 18px', borderRadius: 14,
+              background: 'var(--cream-2)', border: '1px solid var(--line)', textDecoration: 'none',
+              minWidth: 100, flexShrink: 0,
+            }}
+          >
+            <TrendingUp size={20} style={{ color: 'var(--ink-3)' }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', textAlign: 'center' }}>All Tracker</span>
+          </Link>
+        </div>
+
+        {/* ── By category ── */}
+        <div className="section-head" style={{ marginTop: 20 }}>
+          <h2>By Category</h2>
+        </div>
+        <div className="card">
+          {(['academic', 'fee', 'facility', 'staff_conduct', 'transport', 'other'] as const).map(cat => {
+            const count = grievances.filter(g => g.category === cat).length;
+            const pct = grievances.length > 0 ? Math.round((count / grievances.length) * 100) : 0;
+            return (
+              <div key={cat} style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>{cat.replace('_', ' ')}</span>
+                  <span className="muted" style={{ fontSize: 12 }}>{count}</span>
+                </div>
+                <div className="bar">
+                  <i style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

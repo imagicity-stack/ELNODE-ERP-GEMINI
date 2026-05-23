@@ -14,7 +14,7 @@ import {
   ChevronRight,
   Eye,
   Trash2,
-  Upload
+  Upload,
 } from 'lucide-react';
 import {
   collection,
@@ -34,21 +34,18 @@ import {
   Student,
   LeaveType,
   LeaveReasonCategory,
-  LeaveStatus
+  LeaveStatus,
 } from '../../types';
 import {
-  Card,
   Button,
   Input,
   Badge,
-  PageHeader,
   Modal,
   FormField,
-  Textarea
+  Textarea,
 } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { format, differenceInDays } from 'date-fns';
-import { motion, AnimatePresence } from 'motion/react';
 import { logActivity } from '../../services/activityService';
 
 const leaveTypes: { value: LeaveType; label: string; icon: any }[] = [
@@ -60,8 +57,45 @@ const leaveTypes: { value: LeaveType; label: string; icon: any }[] = [
 ];
 
 const reasonCategories: LeaveReasonCategory[] = [
-  'Medical', 'Family Function', 'Travel', 'Emergency', 'Religious Reason', 'Personal Reason', 'Exam-related', 'Other'
+  'Medical', 'Family Function', 'Travel', 'Emergency', 'Religious Reason', 'Personal Reason', 'Exam-related', 'Other',
 ];
+
+const statusChip = (status: LeaveStatus) => {
+  switch (status) {
+    case 'approved':
+      return { bg: '#d1fae5', color: '#065f46', label: 'Approved' };
+    case 'rejected':
+      return { bg: '#fee2e2', color: '#991b1b', label: 'Rejected' };
+    case 'document_required':
+      return { bg: '#dbeafe', color: '#1e40af', label: 'Docs Needed' };
+    case 'regularized':
+      return { bg: '#ede9fe', color: '#5b21b6', label: 'Regularized' };
+    case 'cancelled':
+      return { bg: 'var(--cream-2)', color: 'var(--ink-3)', label: 'Cancelled' };
+    default:
+      return { bg: '#fef3c7', color: '#92400e', label: 'Pending' };
+  }
+};
+
+const getStatusBadge = (status: LeaveStatus) => {
+  switch (status) {
+    case 'submitted':
+    case 'pending':
+      return <Badge variant="warning" className="flex items-center gap-1"><Clock className="w-3 h-3" /> Submitted</Badge>;
+    case 'approved':
+      return <Badge variant="success" className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Approved</Badge>;
+    case 'rejected':
+      return <Badge variant="error" className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Rejected</Badge>;
+    case 'document_required':
+      return <Badge variant="info" className="flex items-center gap-1"><FileText className="w-3 h-3" /> Docs Needed</Badge>;
+    case 'regularized':
+      return <Badge className="flex items-center gap-1 bg-violet-100 text-violet-700"><CheckCircle2 className="w-3 h-3" /> Regularized</Badge>;
+    case 'cancelled':
+      return <Badge variant="default" className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Cancelled</Badge>;
+    default:
+      return <Badge variant="default">{status}</Badge>;
+  }
+};
 
 export default function ParentLeaves({ user, selectedStudent }: { user: UserProfile; selectedStudent: Student | null }) {
   const [leaves, setLeaves] = useState<StudentLeaveRequest[]>([]);
@@ -136,7 +170,6 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
       return;
     }
 
-    // Planned leave must be applied at least 2 days in advance
     if (formData.leaveType === 'planned') {
       const minDate = new Date();
       minDate.setDate(minDate.getDate() + 2);
@@ -146,7 +179,6 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
       }
     }
 
-    // Per-type max duration
     const maxDays: Record<LeaveType, number> = {
       half_day: 1,
       emergency: 3,
@@ -159,7 +191,6 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
       return;
     }
 
-    // Overlap check against existing active leaves
     const hasOverlap = leaves.some(l => {
       if (['cancelled', 'rejected'].includes(l.status)) return false;
       return formData.startDate <= l.endDate && formData.endDate >= l.startDate;
@@ -193,7 +224,7 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
         status: 'submitted',
         submittedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        attendanceConnectionStatus: 'pending'
+        attendanceConnectionStatus: 'pending',
       };
 
       await addDoc(collection(db, 'studentLeaves'), leaveRequest);
@@ -203,11 +234,7 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
         'Leave Request Submitted',
         'Parents',
         `Applied for ${days} days leave for ${selectedStudent.name}`,
-        {
-          studentId: selectedStudent.id,
-          days,
-          startDate: formData.startDate
-        }
+        { studentId: selectedStudent.id, days, startDate: formData.startDate }
       );
 
       showToast('Leave request submitted successfully', 'success');
@@ -272,270 +299,166 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
     }
   };
 
-  const getStatusBadge = (status: LeaveStatus) => {
-    switch (status) {
-      case 'submitted':
-      case 'pending':
-        return <Badge variant="warning" className="flex items-center gap-1"><Clock className="w-3 h-3" /> Submitted</Badge>;
-      case 'approved':
-        return <Badge variant="success" className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Approved</Badge>;
-      case 'rejected':
-        return <Badge variant="error" className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Rejected</Badge>;
-      case 'document_required':
-        return <Badge variant="info" className="flex items-center gap-1"><FileText className="w-3 h-3" /> Docs Needed</Badge>;
-      case 'regularized':
-        return <Badge className="flex items-center gap-1 bg-violet-100 text-violet-700"><CheckCircle2 className="w-3 h-3" /> Regularized</Badge>;
-      case 'cancelled':
-        return <Badge variant="default" className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Cancelled</Badge>;
-      default:
-        return <Badge variant="default">{status}</Badge>;
-    }
-  };
-
-  const mobileStatusStyle = (status: LeaveStatus) => {
-    switch (status) {
-      case 'approved': return { bg: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500', label: 'Approved' };
-      case 'rejected': return { bg: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500', label: 'Rejected' };
-      case 'document_required': return { bg: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500', label: 'Docs Needed' };
-      case 'regularized': return { bg: 'bg-violet-100 text-violet-700', dot: 'bg-violet-500', label: 'Regularized' };
-      case 'cancelled': return { bg: 'bg-slate-100 text-slate-500', dot: 'bg-slate-400', label: 'Cancelled' };
-      default: return { bg: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500', label: 'Pending' };
-    }
-  };
-
   if (!selectedStudent) return null;
 
-  const approvedCount = leaves.filter(l => l.status === 'approved').length;
   const pendingCount = leaves.filter(l => l.status === 'submitted' || l.status === 'pending').length;
+  const approvedCount = leaves.filter(l => l.status === 'approved').length;
 
   return (
-    <>
-      {/* Mobile UI */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className="bg-gradient-to-br from-violet-600 to-purple-700 px-4 pt-5 pb-6 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-violet-200">Parent Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Leave Management</h1>
-          <p className="text-xs text-violet-200 mt-0.5">{selectedStudent.name}</p>
-          <div className="mt-3 grid grid-cols-4 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{leaves.length}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Total</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black text-emerald-300">{approvedCount}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Approved</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black text-amber-300">{pendingCount}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Pending</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{leaves.filter(l => l.isEmergency).length}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Emergency</p>
-            </div>
-          </div>
+    <div className="pad stack" style={{ '--stack-gap': '20px' } as React.CSSProperties}>
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <p className="eyebrow">{selectedStudent.name}</p>
+          <h1 className="display" style={{ fontSize: 22 }}>
+            Leaves
+            {pendingCount > 0 && (
+              <span
+                style={{
+                  display: 'inline-block',
+                  marginLeft: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  padding: '1px 8px',
+                  borderRadius: 99,
+                  verticalAlign: 'middle',
+                }}
+              >
+                {pendingCount} pending
+              </span>
+            )}
+          </h1>
         </div>
-
-        <div className="px-4 pt-4 pb-28 space-y-3">
-          {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : leaves.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
-              <ClipboardCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-bold text-slate-500">No leave records</p>
-              <p className="text-xs text-slate-400 mt-1">Tap + to apply for a leave</p>
-            </div>
-          ) : (
-            leaves.map((leave) => {
-              const style = mobileStatusStyle(leave.status);
-              return (
-                <div key={leave.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                  <button
-                    onClick={() => setViewingLeave(leave)}
-                    className="w-full p-4 flex items-center gap-3 text-left active:bg-slate-50"
-                  >
-                    <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black shrink-0 ${
-                      leave.status === 'approved' ? 'bg-emerald-50 text-emerald-600' :
-                      leave.status === 'rejected' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'
-                    }`}>
-                      <span className="text-[9px] uppercase leading-none">{format(new Date(leave.startDate), 'MMM')}</span>
-                      <span className="text-lg leading-none">{format(new Date(leave.startDate), 'dd')}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-bold text-slate-900 capitalize">{leave.leaveType.replace('_', ' ')}</p>
-                        {leave.isEmergency && <span className="text-[9px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full">Emergency</span>}
-                      </div>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {format(new Date(leave.startDate), 'do MMM')} – {format(new Date(leave.endDate), 'do MMM')} · {leave.totalDays} {leave.totalDays === 1 ? 'day' : 'days'}
-                      </p>
-                    </div>
-                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full shrink-0 ${style.bg}`}>
-                      {style.label}
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
-                  </button>
-                  {leave.status === 'submitted' && (
-                    <div className="px-4 pb-3 flex justify-end">
-                      <button
-                        onClick={() => handleCancelLeave(leave.id)}
-                        className="text-xs font-bold text-rose-500 flex items-center gap-1 active:scale-95 transition-transform"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" /> Cancel Request
-                      </button>
-                    </div>
-                  )}
-                  {leave.status === 'document_required' && (
-                    <div className="px-4 pb-3">
-                      <label className="cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold text-blue-600">
-                        <Upload className="w-3.5 h-3.5" />
-                        {uploadingDoc ? 'Uploading…' : 'Upload Document'}
-                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" disabled={uploadingDoc}
-                          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadDocument(leave.id, f); }} />
-                      </label>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* FAB */}
         <button
           onClick={() => setIsAdding(true)}
-          className="fixed bottom-5 right-5 w-14 h-14 bg-violet-600 text-white rounded-full shadow-xl flex items-center justify-center active:scale-95 transition-transform z-40"
+          className="btn accent flex items-center gap-1.5"
+          style={{ fontSize: 13, padding: '8px 14px' }}
         >
-          <Plus className="w-6 h-6" />
+          <Plus className="w-4 h-4" />
+          Apply Leave
         </button>
       </div>
 
-      {/* Desktop UI */}
-      <div className="hidden md:block space-y-6">
-        <PageHeader
-          title="Leave Management"
-          subtitle={`Track and manage leaves for ${selectedStudent?.name}`}
-          icon={ClipboardCheck}
-          actions={
-            <Button variant="primary" onClick={() => setIsAdding(true)} icon={Plus}> Apply Leave </Button>
-          }
-        />
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest px-1">Leave History</h3>
-            <div className="grid grid-cols-1 gap-3">
-              {leaves.length === 0 && !loading && (
-                <Card className="p-12 text-center">
-                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <ClipboardCheck className="w-8 h-8 text-slate-300" />
-                  </div>
-                  <h4 className="text-slate-900 font-bold">No Leave Records</h4>
-                  <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">You haven't applied for any leaves yet.</p>
-                </Card>
-              )}
-              <AnimatePresence mode="popLayout">
-                {leaves.map((leave) => (
-                  <motion.div
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    key={leave.id}
-                  >
-                    <Card className="p-0 overflow-hidden hover:shadow-lg transition-all group">
-                      <div className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-black ${
-                            leave.status === 'approved' ? 'bg-emerald-50 text-emerald-600' :
-                            leave.status === 'rejected' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'
-                          }`}>
-                            <span className="text-[10px] uppercase leading-none">{format(new Date(leave.startDate), 'MMM')}</span>
-                            <span className="text-lg leading-none">{format(new Date(leave.startDate), 'dd')}</span>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-slate-900 capitalize tracking-tight">{leave.leaveType.replace('_', ' ')}</h4>
-                              {leave.isEmergency && <Badge variant="error" className="text-[8px] px-1 py-0 h-4">Emergency</Badge>}
-                            </div>
-                            <p className="text-xs text-slate-500 font-medium">
-                              {format(new Date(leave.startDate), 'do MMM')} - {format(new Date(leave.endDate), 'do MMM')} • {leave.totalDays} {leave.totalDays === 1 ? 'Day' : 'Days'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            {getStatusBadge(leave.status)}
-                            <p className="text-[9px] text-slate-400 font-bold mt-1 uppercase">Applied {format(new Date(leave.submittedAt), 'd MMM, h:mm a')}</p>
-                          </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button variant="secondary" size="xs" onClick={() => setViewingLeave(leave)}>
-                              <Eye className="w-3 h-3" />
-                            </Button>
-                            {leave.status === 'submitted' && (
-                              <Button variant="danger" size="xs" onClick={() => handleCancelLeave(leave.id)}>
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            )}
-                            {leave.status === 'document_required' && (
-                              <label className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-[10px] font-bold rounded-lg hover:bg-blue-700">
-                                <Upload className="w-3 h-3" /> Upload
-                                <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" disabled={uploadingDoc}
-                                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadDocument(leave.id, f); }} />
-                              </label>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
+      {/* Stats row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+        {[
+          { label: 'Total', val: leaves.length, color: 'var(--ink)' },
+          { label: 'Approved', val: approvedCount, color: 'var(--leaf)' },
+          { label: 'Pending', val: pendingCount, color: '#d97706' },
+        ].map(s => (
+          <div key={s.label} className="card" style={{ textAlign: 'center', padding: '12px 8px' }}>
+            <p className="t-num" style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.val}</p>
+            <p className="eyebrow">{s.label}</p>
           </div>
-
-          <div className="space-y-6">
-            <Card className="p-5 bg-gradient-to-br from-indigo-600 to-violet-700 text-white border-none">
-              <h4 className="text-sm font-bold uppercase tracking-wider mb-2">Leave Statistics</h4>
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                <div>
-                  <p className="text-indigo-200 text-[10px] font-bold uppercase">Total Applied</p>
-                  <p className="text-2xl font-black">{leaves.length}</p>
-                </div>
-                <div>
-                  <p className="text-indigo-200 text-[10px] font-bold uppercase">Approved</p>
-                  <p className="text-2xl font-black">{approvedCount}</p>
-                </div>
-                <div>
-                  <p className="text-indigo-200 text-[10px] font-bold uppercase">Emergency</p>
-                  <p className="text-2xl font-black">{leaves.filter(l => l.isEmergency).length}</p>
-                </div>
-                <div>
-                  <p className="text-indigo-200 text-[10px] font-bold uppercase">Upcoming</p>
-                  <p className="text-2xl font-black">{leaves.filter(l => l.status === 'approved' && new Date(l.startDate) > new Date()).length}</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-5 border-amber-100 bg-amber-50/50">
-              <div className="flex items-center gap-2 mb-3">
-                <Info className="w-4 h-4 text-amber-500" />
-                <h4 className="text-xs font-bold text-amber-700 uppercase tracking-widest">Leave Rules</h4>
-              </div>
-              <ul className="text-[10px] text-amber-800 space-y-2 font-medium italic">
-                <li>• Planned leave should be applied 2 days in advance.</li>
-                <li>• Medical leave for more than 3 days requires a doctor's note.</li>
-                <li>• Emergency leave can be applied on the day of absence.</li>
-                <li>• Once approved, leave cannot be edited or cancelled.</li>
-              </ul>
-            </Card>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Shared Apply Leave Modal */}
+      {/* Leave list */}
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--ink)', borderTopColor: 'transparent' }} />
+        </div>
+      ) : leaves.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: '40px 24px' }}>
+          <ClipboardCheck className="w-10 h-10 mx-auto" style={{ color: 'var(--ink-4)', marginBottom: 8 }} />
+          <p style={{ fontSize: 14, fontWeight: 700 }}>No leave records</p>
+          <p className="tiny muted" style={{ marginTop: 4 }}>Tap "Apply Leave" to submit a new request.</p>
+        </div>
+      ) : (
+        <div className="stack" style={{ '--stack-gap': '8px' } as React.CSSProperties}>
+          {leaves.map(leave => {
+            const chip = statusChip(leave.status);
+            return (
+              <div key={leave.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                <button
+                  onClick={() => setViewingLeave(leave)}
+                  className="w-full flex items-center gap-3 text-left"
+                  style={{ padding: '12px 16px' }}
+                >
+                  <div
+                    className="flex flex-col items-center justify-center shrink-0"
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 12,
+                      background: leave.status === 'approved' ? '#d1fae5' : leave.status === 'rejected' ? '#fee2e2' : '#fef3c7',
+                      color: leave.status === 'approved' ? '#065f46' : leave.status === 'rejected' ? '#991b1b' : '#92400e',
+                      fontWeight: 900,
+                    }}
+                  >
+                    <span style={{ fontSize: 9, textTransform: 'uppercase', lineHeight: 1 }}>
+                      {format(new Date(leave.startDate), 'MMM')}
+                    </span>
+                    <span style={{ fontSize: 18, lineHeight: 1 }}>
+                      {format(new Date(leave.startDate), 'dd')}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p style={{ fontSize: 13, fontWeight: 700, textTransform: 'capitalize' }}>
+                        {leave.leaveType.replace('_', ' ')}
+                      </p>
+                      {leave.isEmergency && (
+                        <span style={{ fontSize: 9, fontWeight: 700, background: '#fee2e2', color: '#991b1b', padding: '1px 6px', borderRadius: 99 }}>
+                          Emergency
+                        </span>
+                      )}
+                    </div>
+                    <p className="tiny muted" style={{ marginTop: 2 }}>
+                      {format(new Date(leave.startDate), 'do MMM')} – {format(new Date(leave.endDate), 'do MMM')} · {leave.totalDays} {leave.totalDays === 1 ? 'day' : 'days'}
+                    </p>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: '3px 10px',
+                      borderRadius: 99,
+                      background: chip.bg,
+                      color: chip.color,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {chip.label}
+                  </span>
+                  <ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--ink-4)' }} />
+                </button>
+
+                {leave.status === 'submitted' && (
+                  <div className="flex justify-end px-4 pb-3">
+                    <button
+                      onClick={() => handleCancelLeave(leave.id)}
+                      className="flex items-center gap-1 text-xs font-bold"
+                      style={{ color: 'var(--coral)' }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Cancel Request
+                    </button>
+                  </div>
+                )}
+                {leave.status === 'document_required' && (
+                  <div className="px-4 pb-3">
+                    <label className="cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold" style={{ color: '#2563eb' }}>
+                      <Upload className="w-3.5 h-3.5" />
+                      {uploadingDoc ? 'Uploading…' : 'Upload Document'}
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        className="hidden"
+                        disabled={uploadingDoc}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadDocument(leave.id, f); }}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Apply Leave Modal */}
       <Modal
         isOpen={isAdding}
         onClose={() => setIsAdding(false)}
@@ -675,7 +598,7 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
         </form>
       </Modal>
 
-      {/* Shared View Modal */}
+      {/* View Leave Modal */}
       <Modal
         isOpen={!!viewingLeave}
         onClose={() => setViewingLeave(null)}
@@ -742,7 +665,9 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
                   />
                 </label>
                 {viewingLeave.documentUrl && (
-                  <p className="text-[10px] text-blue-600 font-medium">Previously uploaded: <a href={viewingLeave.documentUrl} target="_blank" rel="noreferrer" className="underline">{viewingLeave.documentName || 'View file'}</a></p>
+                  <p className="text-[10px] text-blue-600 font-medium">
+                    Previously uploaded: <a href={viewingLeave.documentUrl} target="_blank" rel="noreferrer" className="underline">{viewingLeave.documentName || 'View file'}</a>
+                  </p>
                 )}
               </div>
             )}
@@ -753,6 +678,6 @@ export default function ParentLeaves({ user, selectedStudent }: { user: UserProf
           </div>
         )}
       </Modal>
-    </>
+    </div>
   );
 }

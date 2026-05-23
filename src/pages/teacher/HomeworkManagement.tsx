@@ -1,32 +1,19 @@
 import { UserProfile, Teacher, Homework } from '../../types';
-import { Plus, CheckSquare, MoreVertical, TrendingUp, BookOpen, FileText, Upload, File, X } from 'lucide-react';
+import { Plus, FileText, Upload, File, X, Download, Trash2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, orderBy, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, addDoc, serverTimestamp, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import { cn } from '../../lib/utils';
 import {
-  PageHeader,
-  StatCard,
-  Card,
-  Badge,
-  Button,
-  IconButton,
   Modal,
-  SearchInput,
   FormField,
   Input,
   Select,
   Textarea,
-  Table,
-  Thead,
-  Th,
-  Tbody,
-  Tr,
-  Td,
-  EmptyState,
+  Button,
   Spinner,
 } from '../../components/ui';
 
@@ -36,12 +23,13 @@ interface HomeworkManagementProps {
 
 export default function HomeworkManagement({ user }: HomeworkManagementProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [activeFilter, setActiveFilter] = useState<string>('All');
   const [homework, setHomework] = useState<Homework[]>([]);
   const [teacherData, setTeacherData] = useState<Teacher | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [expandedSubs, setExpandedSubs] = useState<string | null>(null);
   const { showToast } = useToast();
 
   // Form state
@@ -98,12 +86,12 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
       const fileRef = ref(storage, path);
       const uploadTask = uploadBytesResumable(fileRef, file);
 
-      uploadTask.on('state_changed', 
+      uploadTask.on('state_changed',
         (snapshot) => {
           const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           setUploadProgress(progress);
-        }, 
-        (error) => reject(error), 
+        },
+        (error) => reject(error),
         async () => {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           resolve(downloadURL);
@@ -160,10 +148,10 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
         'Homework Assigned',
         'Teachers',
         `Assigned homework to Class ${formData.classId} for ${formData.subjectId}`,
-        { 
-          classId: formData.classId, 
+        {
+          classId: formData.classId,
           subjectId: formData.subjectId,
-          homeworkId: docRef.id 
+          homeworkId: docRef.id
         }
       );
 
@@ -187,230 +175,178 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
     }
   };
 
-  const filteredHomework = homework.filter(hw =>
-    hw.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    hw.classId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    hw.subjectId.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter chips: All + each unique subject
+  const subjects = ['All', ...Array.from(new Set(homework.map(hw => hw.subjectId).filter(Boolean)))];
 
-  const stats = {
-    active: homework.filter(hw => new Date(hw.dueDate) >= new Date()).length,
-    completed: homework.filter(hw => new Date(hw.dueDate) < new Date()).length,
-    totalSubmissions: homework.reduce((acc, hw) => acc + (hw.submissions?.length || 0), 0)
-  };
+  const filteredHomework = activeFilter === 'All'
+    ? homework
+    : homework.filter(hw => hw.subjectId === activeFilter);
+
+  const assignmentCount = filteredHomework.length;
 
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100">Homework</p>
-          <h1 className="text-xl font-bold mt-0.5">Assignments</h1>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{stats.active}</p>
-              <p className="text-[9px] text-white/70">Active</p>
-            </div>
-            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{stats.totalSubmissions}</p>
-              <p className="text-[9px] text-white/70">Submissions</p>
-            </div>
-            <div className="bg-white/15 rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{stats.completed}</p>
-              <p className="text-[9px] text-white/70">Completed</p>
-            </div>
+      {/* ── Topbar ─────────────────────────────────────────────────────────── */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">{assignmentCount} assignment{assignmentCount !== 1 ? 's' : ''}</div>
+          <h1>Homework</h1>
+        </div>
+        <div>
+          <button className="btn accent" onClick={() => setIsModalOpen(true)}>
+            <Plus className="w-4 h-4" />
+            Assign
+          </button>
+        </div>
+      </div>
+
+      {/* ── Subject / class filter chips ───────────────────────────────────── */}
+      <div className="hscroll" style={{ paddingBottom: '2px' }}>
+        {subjects.map(sub => (
+          <button
+            key={sub}
+            className={cn('chip', activeFilter === sub && 'solid')}
+            onClick={() => setActiveFilter(sub)}
+          >
+            {sub}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Homework cards ─────────────────────────────────────────────────── */}
+      <div className="pad">
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem 0' }}>
+            <Spinner />
           </div>
-        </div>
-
-        <div className="px-4 mt-3 mb-3">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search homework..."
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-blue-400"
-          />
-        </div>
-
-        <div className="px-4 space-y-2">
-          {loading ? (
-            <div className="py-10 flex justify-center"><Spinner /></div>
-          ) : filteredHomework.length === 0 ? (
-            <div className="py-12 text-center">
-              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No homework yet</p>
-              <p className="text-xs text-slate-500 mt-1">Tap the + button to assign</p>
-            </div>
-          ) : (
-            filteredHomework.map((hw) => {
+        ) : filteredHomework.length === 0 ? (
+          <div className="stack" style={{ alignItems: 'center', padding: '3rem 0', gap: '0.5rem' }}>
+            <FileText className="w-10 h-10 muted" />
+            <p className="muted" style={{ fontWeight: 600 }}>No homework assignments</p>
+            <p className="tiny muted">Click <strong>Assign</strong> to add one</p>
+          </div>
+        ) : (
+          <div className="stack">
+            {filteredHomework.map((hw) => {
               const isActive = new Date(hw.dueDate) >= new Date();
+              const subExpanded = expandedSubs === hw.id;
               return (
-                <div key={hw.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-                  <div className="flex items-start gap-3 mb-2">
-                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm shrink-0">
-                      {hw.subjectId.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-900 line-clamp-2">{hw.content}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">
-                        {hw.classId} · {hw.subjectId}
+                <div key={hw.id} className="card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {/* Card header row */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                    {/* Subject chip */}
+                    <span className="chip solid" style={{ flexShrink: 0, fontSize: '0.7rem' }}>
+                      {hw.subjectId}
+                    </span>
+
+                    {/* Content */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontWeight: 700, fontSize: '0.95rem', lineHeight: 1.3 }}>{hw.content}</p>
+                      <p className="tiny muted" style={{ marginTop: '0.15rem' }}>
+                        Class {hw.classId}
                       </p>
                     </div>
-                    <Badge variant={isActive ? 'info' : 'success'} className="text-[9px] shrink-0">
-                      {isActive ? 'Active' : 'Done'}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                    <span className="text-[10px] text-slate-500">
-                      Due {new Date(hw.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                    </span>
-                    <span className="text-[10px] font-bold text-blue-700">
-                      {hw.submissions?.length || 0} submitted
-                    </span>
-                  </div>
-                  {hw.attachmentUrl && (
-                    <a
-                      href={hw.attachmentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 bg-indigo-50 w-fit px-2 py-1 rounded-md"
+
+                    {/* Status indicator */}
+                    <span
+                      className={cn('chip', isActive ? '' : 'solid')}
+                      style={{
+                        flexShrink: 0,
+                        fontSize: '0.65rem',
+                        background: isActive ? 'var(--cream-2)' : 'var(--leaf)',
+                        color: isActive ? 'var(--ink)' : '#fff',
+                      }}
                     >
-                      <FileText className="w-3 h-3" />
-                      Attachment
-                    </a>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
+                      {isActive ? 'Active' : 'Done'}
+                    </span>
+                  </div>
 
-        {/* FAB */}
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-        >
-          <Plus className="w-6 h-6" strokeWidth={2.5} />
-        </button>
-      </div>
+                  {/* Footer row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    {/* Due date */}
+                    <span className="mono tiny" style={{ color: 'var(--accent)' }}>
+                      Due {new Date(hw.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
 
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Homework Management"
-        subtitle="Assign and track homework for your classes."
-        icon={FileText}
-        iconColor="gradient-blue"
-        actions={
-          <Button icon={Plus} onClick={() => setIsModalOpen(true)}>
-            Assign Homework
-          </Button>
-        }
-      />
+                    {/* Submissions count */}
+                    <button
+                      className="tiny"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 0,
+                        color: 'var(--accent)',
+                        fontWeight: 600,
+                        textDecoration: 'underline',
+                      }}
+                      onClick={() => setExpandedSubs(subExpanded ? null : hw.id)}
+                    >
+                      {hw.submissions?.length || 0} submitted
+                    </button>
 
-      {/* Homework Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <StatCard
-          label="Active Homework"
-          value={stats.active}
-          icon={BookOpen}
-          gradient="gradient-blue"
-          index={0}
-        />
-        <StatCard
-          label="Total Submissions"
-          value={stats.totalSubmissions}
-          icon={CheckSquare}
-          gradient="gradient-emerald"
-          index={1}
-        />
-        <StatCard
-          label="Completed Tasks"
-          value={stats.completed}
-          icon={TrendingUp}
-          gradient="gradient-violet"
-          index={2}
-        />
-      </div>
+                    {/* Spacer */}
+                    <span style={{ flex: 1 }} />
 
-      {/* Homework List */}
-      <Card padding="none">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search by content, class or subject..."
-            className="max-w-md"
-          />
-        </div>
-        <Table>
-          <Thead>
-            <tr>
-              <Th>Homework Content</Th>
-              <Th>Class &amp; Subject</Th>
-              <Th>Due Date</Th>
-              <Th>Submissions</Th>
-              <Th>Status</Th>
-              <Th className="text-right">Actions</Th>
-            </tr>
-          </Thead>
-          <Tbody>
-            {filteredHomework.map((hw) => (
-              <Tr key={hw.id}>
-                <Td>
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
-                        {hw.subjectId.charAt(0)}
-                      </div>
-                      <span className="font-bold text-slate-900 line-clamp-1">{hw.content}</span>
-                    </div>
+                    {/* Attachment download */}
                     {hw.attachmentUrl && (
-                      <a 
-                        href={hw.attachmentUrl} 
-                        target="_blank" 
+                      <a
+                        href={hw.attachmentUrl}
+                        target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 w-fit px-2 py-0.5 rounded-md mt-1 transition-colors"
+                        className="icon-btn"
+                        title="Download attachment"
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
-                        <FileText className="w-3 h-3" />
-                        <span>View Attachment</span>
+                        <Download className="w-4 h-4" />
                       </a>
                     )}
                   </div>
-                </Td>
-                <Td className="text-slate-600">{hw.classId} &bull; {hw.subjectId}</Td>
-                <Td className="text-slate-600">{new Date(hw.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Td>
-                <Td className="font-bold text-slate-900">{hw.submissions?.length || 0}</Td>
-                <Td>
-                  <Badge variant={new Date(hw.dueDate) >= new Date() ? 'info' : 'success'}>
-                    {new Date(hw.dueDate) >= new Date() ? 'Active' : 'Completed'}
-                  </Badge>
-                </Td>
-                <Td className="text-right">
-                  <IconButton icon={MoreVertical} variant="ghost" />
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
-        {filteredHomework.length === 0 && (
-          loading
-            ? <Spinner />
-            : <EmptyState
-                icon={FileText}
-                title="No homework assignments"
-                description="No homework assignments found. Assign one to get started."
-                action={
-                  <Button icon={Plus} size="sm" onClick={() => setIsModalOpen(true)}>
-                    Assign Homework
-                  </Button>
-                }
-              />
+
+                  {/* Submissions expand panel */}
+                  {subExpanded && (
+                    <div
+                      style={{
+                        borderTop: '1px solid var(--line)',
+                        paddingTop: '0.75rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.4rem',
+                      }}
+                    >
+                      <p className="tiny" style={{ fontWeight: 700, marginBottom: '0.25rem' }}>
+                        Submissions ({hw.submissions?.length || 0})
+                      </p>
+                      {hw.submissions?.length ? (
+                        hw.submissions.map((sub: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="card"
+                            style={{
+                              padding: '0.5rem 0.75rem',
+                              background: 'var(--cream-2)',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.15rem',
+                            }}
+                          >
+                            <p style={{ fontWeight: 600, fontSize: '0.8rem' }}>{sub.studentName || `Student ${idx + 1}`}</p>
+                            {sub.text && <p className="tiny muted">{sub.text}</p>}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="tiny muted">No submissions yet.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
-      </Card>
       </div>
 
-      {/* Assign Homework Modal — shared by mobile + desktop */}
+      {/* ── Assign Homework Modal ───────────────────────────────────────────── */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -497,11 +433,11 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
                 </div>
                 {((uploadProgress > 0 && uploadProgress < 100) || (submitting && attachment)) && (
                   <div className="w-full bg-slate-200 rounded-full h-1.5 mt-2 overflow-hidden">
-                    <div 
+                    <div
                       className={cn(
                         "h-full transition-all duration-300",
                         uploadProgress === 100 ? "bg-emerald-500" : "bg-blue-500"
-                      )} 
+                      )}
                       style={{ width: `${uploadProgress}%` }}
                     ></div>
                   </div>

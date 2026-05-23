@@ -1,20 +1,14 @@
 import { UserProfile, Expense, FeePayment, Salary } from '../../types';
-import { Download, FileText, PieChart, TrendingUp, Calendar, Filter, Loader2, Sparkles } from 'lucide-react';
+import { Download, FileText, PieChart, TrendingUp, Loader2, Sparkles } from 'lucide-react';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { savePdf } from '../../lib/download';
 import { useToast } from '../../components/Toast';
 import { fmtMonthYear } from '../../lib/utils';
-import {
-  PageHeader,
-  Card,
-  Button,
-  FormField,
-  Select,
-} from '../../components/ui';
+import { cn } from '../../lib/utils';
 
 interface FinancialReportsProps {
   user: UserProfile;
@@ -43,12 +37,20 @@ function getMonthRange(range: string): { from: string; to: string } {
     const to = new Date(now.getFullYear(), q * 3 + 3, 0);
     return { from: fmt(from), to: fmt(to) };
   }
-  // This Year
   return {
     from: `${now.getFullYear()}-01-01`,
     to: `${now.getFullYear()}-12-31`,
   };
 }
+
+const RANGES = ['This Month', 'Last Month', 'This Quarter', 'This Year'];
+
+const REPORT_TYPES = [
+  { value: 'fee_collection' as ReportType, label: 'Fee Collection' },
+  { value: 'expense_statement' as ReportType, label: 'Expenses' },
+  { value: 'payroll_summary' as ReportType, label: 'Salary' },
+  { value: 'profit_loss' as ReportType, label: 'P&L' },
+];
 
 export default function FinancialReports({ user }: FinancialReportsProps) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -85,7 +87,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
     const filtered = payments.filter((p) => inRange(p.date, range));
     const total = filtered.reduce((s, p) => s + (p.amount || 0), 0);
 
-    const { doc, contentY, pageWidth } = await createPdf(
+    const { doc, contentY } = await createPdf(
       'Fee Collection Report',
       `Period: ${range.from} to ${range.to}`,
     );
@@ -205,7 +207,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
     const totalCosts = totalExpenses + totalSalaries;
     const netProfit = totalIncome - totalCosts;
 
-    const { doc, contentY, pageWidth } = await createPdf(
+    const { doc, contentY } = await createPdf(
       'Profit & Loss Statement',
       `Period: ${range.from} to ${range.to}`,
     );
@@ -257,200 +259,155 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
     }
   };
 
-  const reports: { type: ReportType; title: string; desc: string; icon: any; gradient: string }[] = [
-    {
-      type: 'fee_collection',
-      title: 'Fee Collection Report',
-      desc: 'Detailed breakdown of all fee payments received by students.',
-      icon: TrendingUp,
-      gradient: 'bg-amber-50 text-amber-600',
-    },
-    {
-      type: 'expense_statement',
-      title: 'Expense Statement',
-      desc: 'Complete record of school expenditures and bills.',
-      icon: FileText,
-      gradient: 'bg-red-50 text-red-600',
-    },
-    {
-      type: 'payroll_summary',
-      title: 'Payroll Summary',
-      desc: 'Monthly salary disbursements and deductions for all staff.',
-      icon: PieChart,
-      gradient: 'bg-emerald-50 text-emerald-600',
-    },
-    {
-      type: 'profit_loss',
-      title: 'Profit & Loss',
-      desc: 'Overall financial health: income vs expenditure analysis.',
-      icon: TrendingUp,
-      gradient: 'bg-violet-50 text-violet-600',
-    },
-  ];
-
   const range = getMonthRange(dateRange);
   const totalIncome = payments.filter((p) => inRange(p.date, range)).reduce((s, p) => s + (p.amount || 0), 0);
   const totalExpenseAmt = expenses.filter((e) => inRange(e.date, range)).reduce((s, e) => s + (e.amount || 0), 0);
   const monthPrefix = range.from.slice(0, 7);
   const totalSalariesAmt = salaries.filter((s) => s.month?.startsWith(monthPrefix)).reduce((s, e) => s + (e.netAmount || 0), 0);
   const netProfit = totalIncome - (totalExpenseAmt + totalSalariesAmt);
-  const ranges = ['This Month', 'Last Month', 'This Quarter', 'This Year'];
+
+  const reports: { type: ReportType; title: string; desc: string; icon: any }[] = [
+    {
+      type: 'fee_collection',
+      title: 'Fee Collection Report',
+      desc: 'Detailed breakdown of all fee payments received by students.',
+      icon: TrendingUp,
+    },
+    {
+      type: 'expense_statement',
+      title: 'Expense Statement',
+      desc: 'Complete record of school expenditures and bills.',
+      icon: FileText,
+    },
+    {
+      type: 'payroll_summary',
+      title: 'Payroll Summary',
+      desc: 'Monthly salary disbursements and deductions for all staff.',
+      icon: PieChart,
+    },
+    {
+      type: 'profit_loss',
+      title: 'Profit & Loss',
+      desc: 'Overall financial health: income vs expenditure analysis.',
+      icon: TrendingUp,
+    },
+  ];
 
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Financial Reports</h1>
-          <p className="text-[11px] text-emerald-100/90 mt-1">{dateRange} snapshot</p>
-
-          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Net {netProfit >= 0 ? 'Profit' : 'Loss'}</p>
-            <p className="text-3xl font-black mt-1">₹{Math.abs(netProfit).toLocaleString('en-IN')}</p>
-            <p className="text-[11px] text-emerald-100/90 mt-1">
-              Income ₹{((totalIncome/1000)|0).toLocaleString()}k − Costs ₹{(((totalExpenseAmt+totalSalariesAmt)/1000)|0).toLocaleString()}k
-            </p>
+      <div className="pad stack" style={{ gap: 'var(--space-5)' }}>
+        {/* Topbar */}
+        <div className="topbar">
+          <div>
+            <div className="eyebrow">{dateRange}</div>
+            <h1>Reports</h1>
           </div>
-
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">₹{((totalIncome/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">Income</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">₹{((totalExpenseAmt/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">Expense</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">₹{((totalSalariesAmt/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">Salary</p>
-            </div>
+          <div>
+            <button
+              className="btn ghost"
+              onClick={() => handleGenerate('profit_loss')}
+              disabled={!!generating}
+            >
+              {generating === 'profit_loss' ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <Download style={{ width: 14, height: 14 }} />}
+              Export PDF
+            </button>
           </div>
         </div>
 
-        <div className="px-4 pt-4 pb-2">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Date Range</p>
-          <div className="overflow-x-auto flex gap-2 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {ranges.map(r => (
-              <button
-                key={r}
-                onClick={() => setDateRange(r)}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap active:scale-95 transition-transform ${dateRange === r ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
+        {/* Date range chips */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {RANGES.map(r => (
+            <button
+              key={r}
+              onClick={() => setDateRange(r)}
+              className={cn('chip', dateRange === r ? 'solid' : '')}
+              style={{ cursor: 'pointer' }}
+            >
+              {r}
+            </button>
+          ))}
         </div>
 
-        <div className="px-4 pt-2 space-y-3">
-          {reports.map((report) => {
+        {/* Summary stat cards 2x2 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+          {[
+            { label: 'Total Collected', value: totalIncome, color: 'var(--leaf)', positive: true },
+            { label: 'Total Expenses', value: totalExpenseAmt, color: 'var(--coral)', positive: false },
+            { label: 'Salary Paid', value: totalSalariesAmt, color: 'var(--accent)', positive: false },
+            { label: 'Net Balance', value: netProfit, color: netProfit >= 0 ? 'var(--leaf)' : 'var(--coral)', positive: netProfit >= 0 },
+          ].map(stat => (
+            <div key={stat.label} className="card">
+              <p className="eyebrow" style={{ marginBottom: 4 }}>{stat.label}</p>
+              <p className="t-num" style={{ fontSize: 22, fontWeight: 800, color: stat.color }}>
+                ₹{Math.abs(stat.value).toLocaleString('en-IN')}
+              </p>
+              {stat.label === 'Net Balance' && (
+                <p className="tiny muted" style={{ marginTop: 4 }}>{netProfit >= 0 ? 'Surplus' : 'Deficit'}</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Report type chips + download */}
+        <div className="section-head">Generate Reports</div>
+        <div className="stack" style={{ gap: 'var(--space-3)' }}>
+          {reports.map(report => {
             const Icon = report.icon;
             const isLoading = generating === report.type;
             return (
-              <button
-                key={report.type}
-                onClick={() => handleGenerate(report.type)}
-                disabled={!!generating}
-                className="w-full bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex items-center gap-3 active:scale-[0.98] transition-transform disabled:opacity-60 text-left"
-              >
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${report.gradient}`}>
-                  <Icon className="w-5 h-5" />
+              <div key={report.type} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)', marginBottom: 2 }}>{report.title}</p>
+                  <p className="tiny muted">{report.desc}</p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-900">{report.title}</p>
-                  <p className="text-[11px] text-slate-500 leading-snug">{report.desc}</p>
-                </div>
-                <div className="shrink-0">
-                  {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
-                  ) : (
-                    <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                      <Download className="w-4 h-4" />
-                    </div>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Financial Reports"
-        subtitle="Generate and download school financial statements"
-        icon={FileText}
-        iconColor="gradient-amber"
-      />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
-          {reports.map((report) => {
-            const Icon = report.icon;
-            const isLoading = generating === report.type;
-            return (
-              <Card key={report.type} hover>
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${report.gradient}`}>
-                  <Icon className="w-6 h-6" />
-                </div>
-                <h3 className="font-bold text-slate-900 mb-2">{report.title}</h3>
-                <p className="text-xs text-slate-500 leading-relaxed mb-6">{report.desc}</p>
                 <button
                   onClick={() => handleGenerate(report.type)}
                   disabled={!!generating}
-                  className="flex items-center gap-2 text-xs font-bold text-amber-600 uppercase tracking-widest hover:text-amber-700 transition-colors disabled:opacity-50"
+                  className="btn ghost"
+                  style={{ flexShrink: 0, fontSize: 12 }}
                 >
                   {isLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" />
                   ) : (
-                    <Download className="w-4 h-4" />
+                    <Download style={{ width: 14, height: 14 }} />
                   )}
-                  {isLoading ? 'Generating…' : 'Generate Report'}
+                  {isLoading ? 'Generating…' : 'Download'}
                 </button>
-              </Card>
+              </div>
             );
           })}
         </div>
 
-        <div className="space-y-6">
-          <Card>
-            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-              <Filter className="w-5 h-5 text-amber-600" />
-              Report Settings
-            </h3>
-            <div className="space-y-6">
-              <FormField label="Date Range">
-                <Select value={dateRange} onChange={(e) => setDateRange(e.target.value)}>
-                  <option>This Month</option>
-                  <option>Last Month</option>
-                  <option>This Quarter</option>
-                  <option>This Year</option>
-                </Select>
-              </FormField>
-              <div className="pt-4 border-t border-slate-100 space-y-3">
-                {reports.map((r) => {
-                  const isLoading = generating === r.type;
-                  return (
-                    <Button
-                      key={r.type}
-                      variant="secondary"
-                      className="w-full justify-center"
-                      icon={isLoading ? Loader2 : Download}
-                      onClick={() => handleGenerate(r.type)}
-                      disabled={!!generating}
-                    >
-                      {isLoading ? 'Generating…' : r.title}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-          </Card>
+        {/* Desktop table — hidden on mobile */}
+        <div className="hidden lg:block">
+          <div className="section-head">Fee Payments — {dateRange}</div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)', background: 'var(--cream-2)' }}>
+                  {['Receipt', 'Date', 'Method', 'Amount'].map(h => (
+                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--ink-3)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {payments.filter(p => inRange(p.date, range)).slice(0, 20).map(p => (
+                  <tr key={p.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                    <td style={{ padding: '10px 14px' }} className="mono">{p.receiptNumber || '-'}</td>
+                    <td style={{ padding: '10px 14px' }} className="mono">{p.date}</td>
+                    <td style={{ padding: '10px 14px', textTransform: 'capitalize' }}>{(p.method || '').replace(/_/g, ' ')}</td>
+                    <td style={{ padding: '10px 14px' }} className="t-num">₹{(p.amount || 0).toLocaleString('en-IN')}</td>
+                  </tr>
+                ))}
+                {payments.filter(p => inRange(p.date, range)).length === 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: 'var(--ink-3)' }}>No payments in this period</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
       </div>
 
       {/* Floating AI Insights button */}

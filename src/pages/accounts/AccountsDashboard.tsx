@@ -1,20 +1,8 @@
 import {
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
-  Users,
-  CreditCard,
-  ArrowUpRight,
-  ArrowDownRight,
   Download,
-  Wallet,
   Receipt,
-  ChevronRight,
-  IndianRupee,
-  BarChart3,
-  PieChart,
   Sparkles,
-  Scale,
+  IndianRupee,
 } from 'lucide-react';
 import { UserProfile, Expense, FeePayment, Fee, Student, FeeRequest, Class } from '../../types';
 import { useState, useEffect } from 'react';
@@ -34,24 +22,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import {
-  PageHeader,
-  Card,
-  Badge,
-  Button,
-  StatCard,
-  SearchInput,
-  Avatar,
-  Table,
-  Thead,
-  Th,
-  Tbody,
-  Tr,
-  Td,
-  EmptyState,
-  Spinner,
-} from '../../components/ui';
-import UpdatesSection from '../../components/UpdatesSection';
+import { Spinner } from '../../components/ui';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 
 interface AccountsDashboardProps {
@@ -194,326 +165,182 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
     .reduce((sum, p) => sum + (p.amount || 0), 0);
   const todayCount = payments.filter(p => p.date === todayStr).length;
 
-  const actionTiles = [
-    { label: 'Fee Collection', icon: IndianRupee, path: '/accounts/fee-collection', gradient: 'from-emerald-500 to-teal-600' },
-    { label: 'Payments', icon: Receipt, path: '/accounts/payment-history', gradient: 'from-teal-500 to-cyan-600' },
-    { label: 'Expenses', icon: TrendingDown, path: '/accounts/expenses', gradient: 'from-rose-500 to-red-600' },
-    { label: 'Salaries', icon: CreditCard, path: '/accounts/salaries', gradient: 'from-indigo-500 to-blue-600' },
-    { label: 'Reports', icon: BarChart3, path: '/accounts/reports', gradient: 'from-violet-500 to-purple-600' },
-    { label: 'Analytics', icon: PieChart, path: '/accounts/analytics', gradient: 'from-amber-500 to-orange-600' },
-    { label: 'Reconciliation', icon: Scale, path: '/accounts/reconciliation', gradient: 'from-slate-500 to-slate-700' },
-  ];
+  const pendingRequests = feeRequests.filter(r => r.status !== 'paid');
+  const today = new Date().toISOString().split('T')[0];
+  const overdueRequests = pendingRequests.filter(r => r.dueDate && r.dueDate < today);
+
+  const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Hi, {(user.name || user.email || 'User').split(' ')[0]}</h1>
-          <p className="text-[11px] text-emerald-100/80 mt-0.5">Here is today's financial snapshot</p>
-
-          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Today's Collection</p>
-            <p className="text-3xl font-black mt-1">₹{todayCollection.toLocaleString('en-IN')}</p>
-            <p className="text-[11px] text-emerald-100/90 mt-1">{todayCount} payment{todayCount === 1 ? '' : 's'} recorded</p>
-          </div>
-
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">₹{((totalCollection/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">Collected</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">₹{((totalPending/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">Pending</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">₹{((netProfit/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">Net</p>
-            </div>
-          </div>
+      {/* ── topbar ── */}
+      <div className="topbar pad">
+        <div>
+          <div className="eyebrow">{todayLabel}</div>
+          <h1>Accounts.</h1>
         </div>
-
-        <div className="px-4 pt-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Quick Actions</p>
-          <div className="grid grid-cols-2 gap-3">
-            {actionTiles.map((tile) => {
-              const Icon = tile.icon;
-              return (
-                <button
-                  key={tile.label}
-                  onClick={() => navigate(tile.path)}
-                  className={`bg-gradient-to-br ${tile.gradient} rounded-2xl p-4 text-white shadow-md active:scale-95 transition-transform min-h-[110px] flex flex-col justify-between text-left`}
-                >
-                  <Icon className="w-6 h-6" strokeWidth={2.2} />
-                  <p className="text-sm font-bold mt-2">{tile.label}</p>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="px-4 mt-5">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Recent Activity</p>
-            <button
-              onClick={() => navigate('/accounts/payment-history')}
-              className="text-[11px] font-bold text-emerald-600 active:scale-95 transition-transform flex items-center gap-0.5"
-            >
-              View all <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 divide-y divide-slate-100">
-            {payments.length === 0 && expenses.length === 0 ? (
-              <div className="p-6 text-center">
-                <p className="text-xs text-slate-500">No recent activity</p>
-              </div>
-            ) : (
-              <>
-                {payments.slice(0, 4).map((tx) => (
-                  <div key={tx.id} className="flex items-center justify-between p-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                        <ArrowUpRight className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-900 truncate">Fee Payment</p>
-                        <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-emerald-600 shrink-0">+₹{(tx.amount || 0).toLocaleString()}</span>
-                  </div>
-                ))}
-                {expenses.slice(0, 3).map((tx) => (
-                  <div key={tx.id} className="flex items-center justify-between p-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-                        <ArrowDownRight className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-900 truncate">{tx.biller}</p>
-                        <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-rose-600 shrink-0">-₹{(tx.amount || 0).toLocaleString()}</span>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        </div>
-
-        <button
-          onClick={exportReport}
-          className="fixed bottom-24 right-5 w-12 h-12 bg-white border border-slate-200 text-emerald-600 rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform z-40 md:hidden"
-          aria-label="Export report"
-        >
-          <Download className="w-5 h-5" strokeWidth={2.5} />
-        </button>
-      </div>
-
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Financial Overview"
-        subtitle={`Welcome back, ${user.name}. Here's the school's financial status.`}
-        icon={Wallet}
-        iconColor="gradient-amber"
-        actions={
-          <Button variant="secondary" icon={Download} onClick={exportReport}>
+        <div>
+          <button className="btn ghost" onClick={exportReport}>
+            <Download size={15} />
             Export Report
-          </Button>
-        }
-      />
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Total Collection" value={`₹${(totalCollection || 0).toLocaleString()}`} icon={Wallet} gradient="gradient-amber" index={0} />
-        <StatCard label="Pending Fees" value={`₹${(totalPending || 0).toLocaleString()}`} icon={CreditCard} gradient="gradient-amber" index={1} />
-        <StatCard label="Monthly Expenses" value={`₹${(monthlyExpenses || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" index={2} />
-        <StatCard label="Net Profit" value={`₹${(netProfit || 0).toLocaleString()}`} icon={TrendingUp} gradient="gradient-amber" index={3} />
+          </button>
+        </div>
       </div>
 
-      <UpdatesSection user={user} className="mb-8" />
+      <div className="pad stack">
+        {/* ── 4 stat cards — 2×2 on mobile, 4 cols on desktop ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}
+          className="lg:grid-cols-4-override">
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span className="eyebrow">Total Collected</span>
+            <span className="t-num" style={{ color: 'var(--leaf)' }}>
+              ₹{(totalCollection || 0).toLocaleString('en-IN')}
+            </span>
+          </div>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span className="eyebrow">Pending</span>
+            <span className="t-num" style={{ color: 'var(--coral)' }}>
+              ₹{(totalPending || 0).toLocaleString('en-IN')}
+            </span>
+          </div>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span className="eyebrow">Expenses</span>
+            <span className="t-num" style={{ color: 'var(--ink)' }}>
+              ₹{(monthlyExpenses || 0).toLocaleString('en-IN')}
+            </span>
+          </div>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span className="eyebrow">Net Balance</span>
+            <span className="t-num" style={{ color: 'var(--accent)' }}>
+              ₹{(netProfit || 0).toLocaleString('en-IN')}
+            </span>
+          </div>
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Collection vs Expense Chart */}
-        <Card className="lg:col-span-2">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="font-bold text-slate-900 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-amber-600" />
-              Cash Flow Analysis (Last 7 Days)
-            </h3>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                <span className="text-xs text-slate-500">Collection</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                <span className="text-xs text-slate-500">Expense</span>
-              </div>
+        {/* ── Pending payments ── */}
+        {pendingRequests.length > 0 && (
+          <div>
+            <div className="section-head"><h2>Pending Payments</h2></div>
+            <div className="stack">
+              {pendingRequests.slice(0, 8).map(req => {
+                const student = students.find(s => s.id === req.studentId);
+                const balance = (req.totalAmount || 0) - (req.paidAmount || 0);
+                const isOverdue = req.dueDate && req.dueDate < today;
+                return (
+                  <div key={req.id} className="card row" style={{ alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{student?.name || req.studentId}</div>
+                      <div className="mono tiny muted">
+                        {req.month} · Due {req.dueDate}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--coral)' }}>
+                        ₹{balance.toLocaleString('en-IN')}
+                      </span>
+                      {isOverdue && (
+                        <span className="chip solid" style={{ background: 'var(--coral)', color: '#fff', fontSize: '0.7rem' }}>
+                          Overdue
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={last7Days}>
-                <defs>
-                  <linearGradient id="colorColl" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1} />
-                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.1} />
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
-                />
-                <Area type="monotone" dataKey="collection" stroke="#f59e0b" strokeWidth={3} fillOpacity={1} fill="url(#colorColl)" />
-                <Area type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={3} fillOpacity={1} fill="url(#colorExp)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+        )}
 
-        {/* Recent Transactions */}
-        <Card>
-          <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-            <Receipt className="w-5 h-5 text-amber-600" />
-            Recent Activity
-          </h3>
-          <div className="space-y-6">
-            {payments.slice(0, 5).map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <ArrowUpRight className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">Fee Payment</p>
-                    <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
-                  </div>
-                </div>
-                <span className="text-sm font-bold text-emerald-600">
-                  +₹{(tx.amount || 0).toLocaleString()}
-                </span>
-              </div>
-            ))}
-            {expenses.slice(0, 5).map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
-                    <ArrowDownRight className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{tx.biller}</p>
-                    <p className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
-                  </div>
-                </div>
-                <span className="text-sm font-bold text-red-600">
-                  -₹{(tx.amount || 0).toLocaleString()}
-                </span>
-              </div>
-            ))}
-            {payments.length === 0 && expenses.length === 0 && (
-              <EmptyState title="No recent activity" />
-            )}
-          </div>
-          <button className="w-full mt-8 py-2 text-sm font-bold text-amber-600 hover:bg-amber-50 rounded-lg transition-all">
-            View All Transactions
-          </button>
-        </Card>
-      </div>
-
-      {/* Student Fee Status List */}
-      <Card padding="none">
-        <div className="p-6 border-b bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <h3 className="font-bold text-slate-900 flex items-center gap-2">
-            <Users className="w-5 h-5 text-amber-600" />
-            Student Fee Status
-          </h3>
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search students..."
-            className="max-w-md"
-          />
-        </div>
-        {filteredStudents.length > 0 ? (
-          <Table>
-            <Thead>
-              <tr>
-                <Th>Student</Th>
-                <Th>School No.</Th>
-                <Th>Class</Th>
-                <Th>Status</Th>
-                <Th className="text-right">Action</Th>
-              </tr>
-            </Thead>
-            <Tbody>
-              {filteredStudents.slice(0, 10).map((student) => (
-                <Tr key={student.id}>
-                  <Td>
-                    <div className="flex items-center gap-3">
-                      <Avatar name={student.name} size="sm" />
-                      <span className="font-bold text-slate-900">{student.name}</span>
+        {/* ── Recent payments ── */}
+        {payments.length > 0 && (
+          <div>
+            <div className="section-head"><h2>Recent Payments</h2></div>
+            <div className="stack">
+              {payments.slice(0, 5).map(tx => {
+                const student = students.find(s => s.id === tx.studentId);
+                return (
+                  <div key={tx.id} className="card row" style={{ alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{student?.name || tx.studentId}</div>
+                      <div className="mono tiny muted">{tx.date} · {(tx.method || '').replace('_', ' ')}</div>
                     </div>
-                  </Td>
-                  <Td>{student.schoolNumber}</Td>
-                  <Td>{classes.find(c => c.id === student.classId)?.name || student.classId} - {student.section}</Td>
-                  <Td>
-                    {(() => {
-                      const status = getStudentFeeStatus(student.id);
-                      if (!status) return <span className="text-xs text-slate-400">No fees</span>;
-                      return (
-                        <Badge variant={status === 'paid' ? 'success' : status === 'overdue' ? 'error' : 'warning'}>
-                          {status}
-                        </Badge>
-                      );
-                    })()}
-                  </Td>
-                  <Td className="text-right">
-                    <button
-                      onClick={() => navigate(`/accounts/fee-collection?search=${student.schoolNumber}`)}
-                      className="text-xs font-bold text-amber-600 hover:underline"
-                    >
-                      Manage Fees
-                    </button>
-                  </Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        ) : (
-          <EmptyState icon={Users} title="No students found" />
-        )}
-        {filteredStudents.length > 10 && (
-          <div className="p-4 border-t bg-slate-50/30 text-center">
-            <button
-              onClick={() => navigate('/accounts/fee-collection')}
-              className="text-sm font-bold text-amber-600 hover:underline"
-            >
-              View All Students in Fee Collection
-            </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--leaf)' }}>
+                        ₹{(tx.amount || 0).toLocaleString('en-IN')}
+                      </span>
+                      <button
+                        className="icon-btn"
+                        aria-label="Receipt"
+                        title={`Receipt ${tx.receiptNumber || ''}`}
+                      >
+                        <Receipt size={15} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
-      </Card>
+
+        {/* ── Charts — desktop only ── */}
+        <div className="hidden lg:block">
+          <div className="section-head"><h2>Cash Flow — Last 7 Days</h2></div>
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <div style={{ height: 280 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={last7Days}>
+                  <defs>
+                    <linearGradient id="colorColl" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--leaf)" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="var(--leaf)" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--coral)" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="var(--coral)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--ink)' }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--ink)' }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'var(--paper)', borderRadius: '10px', border: '1px solid var(--line)' }}
+                    itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                  />
+                  <Area type="monotone" dataKey="collection" stroke="var(--leaf)" strokeWidth={2.5} fillOpacity={1} fill="url(#colorColl)" name="Collection" />
+                  <Area type="monotone" dataKey="expense" stroke="var(--coral)" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExp)" name="Expense" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
       </div>
 
+      {/* ── Floating AI button ── */}
       <button
         onClick={() => setAiOpen(true)}
-        className="fixed bottom-5 right-5 md:bottom-8 md:right-8 z-30 flex items-center gap-2 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white shadow-xl shadow-violet-500/30 rounded-full pl-3 pr-4 py-3 active:scale-95 transition-transform"
+        style={{
+          position: 'fixed',
+          bottom: '1.5rem',
+          right: '1.5rem',
+          zIndex: 30,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          background: 'var(--ink)',
+          color: '#c8f135',
+          border: 'none',
+          borderRadius: '9999px',
+          padding: '0.75rem 1.1rem',
+          fontWeight: 700,
+          fontSize: '0.8rem',
+          cursor: 'pointer',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
+        }}
         aria-label="Open AI insights"
       >
-        <Sparkles className="w-5 h-5" />
-        <span className="text-xs font-bold hidden md:inline">Ask AI</span>
+        <Sparkles size={18} />
+        <span className="hidden lg:inline">Ask AI</span>
       </button>
 
       <AIInsightsPanel open={aiOpen} onClose={() => setAiOpen(false)} period="This Month" />

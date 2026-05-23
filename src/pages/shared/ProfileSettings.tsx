@@ -1,30 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
-  User, 
-  Lock, 
-  Mail, 
-  Phone, 
-  Camera, 
-  Save, 
-  Eye, 
+import {
+  Lock,
+  Camera,
+  Eye,
   EyeOff,
-  AlertCircle,
-  CheckCircle2,
   Loader2,
-  Shield,
-  Briefcase,
-  GraduationCap,
-  Home,
-  Hash,
-  MapPin,
-  Calendar,
-  X
 } from 'lucide-react';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../../firebase';
-import { Button, Input, FormField, Avatar, Badge, Card } from '../../components/ui';
+import { Button, Input, FormField, Avatar } from '../../components/ui';
 import { UserProfile, Student, Teacher, House } from '../../types';
 import { logActivity } from '../../services/activityService';
 import type { ActivitySection } from '../../types';
@@ -37,9 +23,11 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
   const [loading, setLoading] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+
   const [studentData, setStudentData] = useState<Student | null>(null);
   const [teacherData, setTeacherData] = useState<Teacher | null>(null);
   const [parentStudents, setParentStudents] = useState<Student[]>([]);
@@ -47,10 +35,9 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
   const [className, setClassName] = useState<string>('');
   const [subjectNames, setSubjectNames] = useState<string[]>([]);
   const [assignedClasses, setAssignedClasses] = useState<string[]>([]);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Profile Form State
   const [profileData, setProfileData] = useState({
     name: user.name || '',
     phone: user.phone || '',
@@ -59,7 +46,6 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
     address: user.address || '',
   });
 
-  // Password State
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -77,14 +63,10 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
           if (studentDoc.exists()) {
             const sData = { id: studentDoc.id, ...studentDoc.data() } as Student;
             setStudentData(sData);
-            
-            // Get House
             if (sData.houseId) {
               const houseDoc = await getDoc(doc(db, 'houses', sData.houseId));
               if (houseDoc.exists()) setHouseName((houseDoc.data() as House).name);
             }
-            
-            // Get Class
             if (sData.classId) {
               const classDoc = await getDoc(doc(db, 'classes', sData.classId));
               if (classDoc.exists()) setClassName(classDoc.data().name);
@@ -105,16 +87,15 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
           if (teacherDoc.exists()) {
             const tData = { id: teacherDoc.id, ...teacherDoc.data() } as Teacher;
             setTeacherData(tData);
-
             if (tData.subjects) {
-              const names = await Promise.all(tData.subjects.map(async id => {
+              const names = await Promise.all(tData.subjects.map(async (id: string) => {
                 const docSnap = await getDoc(doc(db, 'subjects', id));
                 return docSnap.exists() ? docSnap.data().name : id;
               }));
               setSubjectNames(names);
             }
             if (tData.classes) {
-              const names = await Promise.all(tData.classes.map(async id => {
+              const names = await Promise.all(tData.classes.map(async (id: string) => {
                 const docSnap = await getDoc(doc(db, 'classes', id));
                 return docSnap.exists() ? docSnap.data().name : id;
               }));
@@ -132,8 +113,8 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdateLoading(true);
-    setError(null);
-    setSuccess(null);
+    setProfileError(null);
+    setProfileSuccess(null);
 
     try {
       const userRef = doc(db, 'users', user.uid);
@@ -144,7 +125,6 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
         updatedAt: new Date().toISOString()
       });
 
-      // Sync to the student / teacher document so all portals see the updated phone
       if (user.role === 'student') {
         const sid = user.studentId || user.uid;
         const studentRef = doc(db, 'students', sid);
@@ -157,9 +137,6 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
           });
         }
       } else if (user.role === 'parent') {
-        // Parents are linked to one or more students via studentIds.
-        // Sync the parent's phone onto parentDetails.phone for each child so
-        // that fee-collection, grievance, and broadcast portals all see fresh data.
         const linkedIds: string[] = [
           ...(user.studentIds ?? []),
           ...(user.studentId ? [user.studentId] : []),
@@ -179,8 +156,6 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
       } else if (user.role === 'teacher') {
         const tid = user.teacherId || user.uid;
         const teacherRef = doc(db, 'teachers', tid);
-        // Use a transaction so the version bump enforced by Firestore rules
-        // is atomic with the read of the current version.
         await runTransaction(db, async (tx) => {
           const snap = await tx.get(teacherRef);
           if (!snap.exists()) return;
@@ -207,19 +182,13 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
       if (profileData.name !== (user.name || '')) fieldsChanged.push('name');
       if (profileData.phone !== (user.phone || '')) fieldsChanged.push('phone');
       if (profileData.address !== (user.address || '')) fieldsChanged.push('address');
-      logActivity(
-        user,
-        'Profile Updated',
-        section,
-        `Updated own profile`,
-        { fieldsChanged }
-      );
+      logActivity(user, 'Profile Updated', section, `Updated own profile`, { fieldsChanged });
 
-      setSuccess('Profile updated successfully!');
-      setTimeout(() => setSuccess(null), 3000);
+      setProfileSuccess('Profile updated successfully!');
+      setTimeout(() => setProfileSuccess(null), 3000);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'users');
-      setError('Failed to update profile');
+      setProfileError('Failed to update profile');
     } finally {
       setUpdateLoading(false);
     }
@@ -230,33 +199,31 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      setError('Please upload an image file');
+      setProfileError('Please upload an image file');
       return;
     }
-
     if (file.size > 2 * 1024 * 1024) {
-      setError('Image size should be less than 2MB');
+      setProfileError('Image size should be less than 2MB');
       return;
     }
 
     setUploading(true);
-    setError(null);
+    setProfileError(null);
 
     try {
       const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name}`);
       await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
 
-      // Update user profile in Firestore
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, { photoURL: downloadURL });
-      
+
       setProfileData(prev => ({ ...prev, photoURL: downloadURL }));
-      setSuccess('Profile photo updated!');
-      setTimeout(() => setSuccess(null), 3000);
+      setProfileSuccess('Profile photo updated!');
+      setTimeout(() => setProfileSuccess(null), 3000);
     } catch (err) {
       console.error('Error uploading photo:', err);
-      setError('Failed to upload photo');
+      setProfileError('Failed to upload photo');
     } finally {
       setUploading(false);
     }
@@ -265,37 +232,34 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError('Passwords do not match');
+      setPasswordError('Passwords do not match');
       return;
     }
     if (passwordForm.newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
+      setPasswordError('Password must be at least 6 characters');
       return;
     }
 
     setLoading(true);
-    setError(null);
-    setSuccess(null);
+    setPasswordError(null);
+    setPasswordSuccess(null);
 
     try {
       const currentUser = auth.currentUser;
       if (!currentUser || !currentUser.email) return;
 
-      // Re-authenticate user before password change
       const credential = EmailAuthProvider.credential(currentUser.email, passwordForm.currentPassword);
       await reauthenticateWithCredential(currentUser, credential);
-      
-      // Update password
       await updatePassword(currentUser, passwordForm.newPassword);
-      
-      setSuccess('Password changed successfully!');
+
+      setPasswordSuccess('Password changed successfully!');
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      setTimeout(() => setSuccess(null), 3000);
+      setTimeout(() => setPasswordSuccess(null), 3000);
     } catch (err: any) {
       if (err.code === 'auth/wrong-password') {
-        setError('Current password is incorrect');
+        setPasswordError('Current password is incorrect');
       } else {
-        setError('Failed to change password. Please try logging in again.');
+        setPasswordError('Failed to change password. Please try logging in again.');
       }
     } finally {
       setLoading(false);
@@ -303,348 +267,229 @@ export default function ProfileSettings({ user }: ProfileSettingsProps) {
   };
 
   const isSuperAdmin = user.role === 'super_admin';
+  const canUploadPhoto = user.role === 'super_admin' || user.role === 'principal' || user.role === 'office_staff';
+  const initials = (user.name || user.email || 'U')[0].toUpperCase();
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="stack pad">
+      <div className="topbar">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Profile & Settings</h1>
-          <p className="text-slate-500 font-medium mt-1">Manage your identity and security across the portal.</p>
+          <div className="eyebrow">{user.role.replace('_', ' ')}</div>
+          <h1>Profile</h1>
         </div>
-        <Badge variant={user.role === 'super_admin' ? 'success' : 'indigo'} className="w-fit h-fit px-4 py-1.5 text-xs font-bold uppercase tracking-wider">
-          {user.role.replace('_', ' ')}
-        </Badge>
       </div>
 
-      {error && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-2">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <p className="font-semibold text-sm">{error}</p>
-          <button onClick={() => setError(null)} className="ml-auto p-1 hover:bg-rose-100 rounded-lg">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {success && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-2">
-          <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-          <p className="font-semibold text-sm">{success}</p>
-          <button onClick={() => setSuccess(null)} className="ml-auto p-1 hover:bg-emerald-100 rounded-lg">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column: Avatar & Role Info */}
-        <div className="lg:col-span-1 space-y-8">
-          <Card className="overflow-hidden border-none shadow-xl shadow-slate-200/50">
-            <div className="h-24 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500" />
-            <div className="px-6 pb-8">
-              <div className="relative -mt-12 flex flex-col items-center">
-                <div className="relative group">
-                  <div className="w-24 h-24 rounded-3xl overflow-hidden bg-white p-1 ring-4 ring-white shadow-xl transition-transform duration-300 group-hover:scale-105">
-                    {uploading ? (
-                      <div className="w-full h-full bg-slate-100 rounded-2xl flex items-center justify-center">
-                        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-                      </div>
-                    ) : profileData.photoURL ? (
-                      <img src={profileData.photoURL} alt={user.name || user.email || 'User'} className="w-full h-full object-cover rounded-2xl" />
-                    ) : (
-                      <div className="w-full h-full bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 font-bold text-3xl">
-                        {(user.name || user.email || 'U')[0].toUpperCase()}
-                      </div>
-                    )}
-                  </div>
-                  {/* Photo upload restricted to admin/principal/office_staff — students/parents/teachers
-                       have their photo set from the admin portal to keep records authoritative */}
-                  {(user.role === 'super_admin' || user.role === 'principal' || user.role === 'office_staff') && (
-                    <>
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="absolute -bottom-2 -right-2 p-2 bg-white rounded-xl shadow-lg border border-slate-100 text-slate-400 hover:text-indigo-600 hover:scale-110 transition-all active:scale-95"
-                        title="Change Photo"
-                      >
-                        <Camera className="w-4 h-4" />
-                      </button>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handlePhotoUpload}
-                        accept="image/*"
-                        className="hidden"
-                      />
-                    </>
-                  )}
-                </div>
-                <div className="mt-4 text-center">
-                  <h2 className="text-xl font-bold text-slate-900">{user.name || user.email || 'Super Admin'}</h2>
-                  <p className="text-slate-500 text-sm font-medium">{user.email}</p>
-                </div>
-              </div>
-
-              <div className="mt-8 space-y-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Identity Details</p>
-                
-                {user.schoolNumber && (
-                   <InfoRow icon={Hash} label="School Number" value={user.schoolNumber} />
-                )}
-
-                {user.role === 'student' && studentData && (
-                  <div className="space-y-2">
-                    <InfoRow icon={Hash} label="Admission Number" value={studentData.admissionNumber} />
-                    <InfoRow icon={GraduationCap} label="Class & Section" value={`${className} - ${studentData.section}`} />
-                    <InfoRow icon={Home} label="House" value={houseName || 'Not Assigned'} color="indigo" />
-                  </div>
-                )}
-
-                {user.role === 'parent' && parentStudents.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mt-2">Linked Students</p>
-                    {parentStudents.map(s => (
-                       <div key={s.id} className="flex items-center gap-3 p-2 bg-slate-50 border border-slate-100 rounded-xl">
-                          <Avatar name={s.name} size="sm" />
-                          <div className="min-w-0">
-                             <p className="text-xs font-bold truncate">{s.name}</p>
-                             <p className="text-[9px] text-slate-500 uppercase">{s.schoolNumber}</p>
-                          </div>
-                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {user.role === 'teacher' && teacherData && (
-                  <div className="space-y-2">
-                    <InfoRow icon={Briefcase} label="Employee ID" value={teacherData.id} />
-                    <InfoRow icon={Calendar} label="Joining Details" value={teacherData.joiningDetails} />
-                    
-                    {assignedClasses.length > 0 && (
-                      <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
-                        <p className="text-[10px] font-bold text-indigo-600 uppercase">Assigned Classes</p>
-                        <p className="text-xs font-bold text-indigo-900">{assignedClasses.join(', ')}</p>
-                      </div>
-                    )}
-
-                    {subjectNames.length > 0 && (
-                      <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
-                        <p className="text-[10px] font-bold text-emerald-600 uppercase">Subjects</p>
-                        <p className="text-xs font-bold text-emerald-900">{subjectNames.join(', ')}</p>
-                      </div>
-                    )}
-
-                    {teacherData.isHouseIncharge && (
-                      <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl">
-                        <p className="text-[10px] font-bold text-amber-600 uppercase">Special Role</p>
-                        <p className="text-xs font-bold text-amber-900">House In-charge</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {(user.role === 'principal' || user.role === 'accounts' || user.role === 'super_admin') && (
-                  <div className="space-y-2">
-                    <InfoRow icon={Briefcase} label="Staff Role" value={user.role.replace('_', ' ').toUpperCase()} />
-                    <InfoRow icon={Shield} label="Account Clearance" value="Tier 1 - Full Access" color="emerald" />
-                  </div>
-                )}
-              </div>
+      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          {uploading ? (
+            <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--cream-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Loader2 style={{ width: 28, height: 28, color: 'var(--accent)' }} className="animate-spin" />
             </div>
-          </Card>
-
-          <Card className="border-none bg-slate-900 text-white shadow-xl">
-            <div className="p-6 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
-                  <Shield className="w-4 h-4 text-indigo-400" />
-                </div>
-                <h3 className="font-bold">Privacy Note</h3>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Your profile information is only visible to school administrators. Contact your super admin if you need to change your official name or role.
-              </p>
+          ) : profileData.photoURL ? (
+            <img
+              src={profileData.photoURL}
+              alt={user.name || user.email || 'User'}
+              style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--line)' }}
+            />
+          ) : (
+            <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--cream-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', fontWeight: 700, color: 'var(--ink)' }}>
+              {initials}
             </div>
-          </Card>
+          )}
+          {canUploadPhoto && (
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="icon-btn"
+                title="Change Photo"
+                style={{ position: 'absolute', bottom: -4, right: -4, width: 28, height: 28, borderRadius: '50%', background: 'var(--paper)', border: '1px solid var(--line)' }}
+              >
+                <Camera style={{ width: 14, height: 14 }} />
+              </button>
+              <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" style={{ display: 'none' }} />
+            </>
+          )}
         </div>
 
-        {/* Right Column: Forms */}
-        <div className="lg:col-span-2 space-y-8">
-          {/* Main Information */}
-          <Card className="border-none shadow-xl shadow-slate-200/50">
-            <div className="p-8">
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-3">
-                  <User className="w-5 h-5 text-indigo-600" />
-                  General Information
-                </h2>
-                {!isSuperAdmin && (
-                  <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-md uppercase tracking-wider">
-                    Read-only by user
-                  </span>
-                )}
-              </div>
-
-              <form onSubmit={handleProfileUpdate} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField label="Full Name">
-                    <div className="relative">
-                      <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <Input
-                        value={profileData.name}
-                        onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
-                        className="pl-11 h-12 bg-slate-50/50 border-slate-200 focus:bg-white transition-all font-medium"
-                        placeholder="Full name"
-                        required
-                        disabled={!isSuperAdmin}
-                      />
-                    </div>
-                  </FormField>
-                  <FormField label="Phone Number">
-                    <div className="relative">
-                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <Input
-                        value={profileData.phone}
-                        onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                        className="pl-11 h-12 bg-slate-50/50 border-slate-200 focus:bg-white transition-all font-medium"
-                        placeholder="Contact number"
-                        disabled={!isSuperAdmin}
-                      />
-                    </div>
-                  </FormField>
-                </div>
-
-                <FormField label="Email Address (Login Identity)">
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input
-                      value={profileData.email}
-                      disabled
-                      className="pl-11 h-12 bg-slate-100 text-slate-400 italic cursor-not-allowed"
-                    />
-                  </div>
-                </FormField>
-
-                <FormField label="Physical Address">
-                  <div className="relative">
-                    <MapPin className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
-                    <textarea
-                      value={profileData.address}
-                      onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
-                      className="w-full min-h-[100px] pl-11 pt-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white transition-all font-medium resize-none"
-                      placeholder="Enter residence address"
-                      disabled={!isSuperAdmin}
-                    />
-                  </div>
-                </FormField>
-
-                {isSuperAdmin && (
-                  <div className="flex justify-end pt-4">
-                    <Button type="submit" loading={updateLoading} className="px-10 h-12 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200">
-                      Update Profile Information
-                    </Button>
-                  </div>
-                )}
-              </form>
-            </div>
-          </Card>
-
-          {/* Password Section */}
-          <Card className="border-none shadow-xl shadow-slate-200/50">
-            <div className="p-8">
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-3 mb-8">
-                <Lock className="w-5 h-5 text-orange-500" />
-                Credential Security
-              </h2>
-
-              <form onSubmit={handlePasswordChange} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField label="Current Password">
-                    <div className="relative">
-                      <Input
-                        type={showCurrentPassword ? 'text' : 'password'}
-                        value={passwordForm.currentPassword}
-                        onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                        className="h-12 bg-slate-50/50 border-slate-200 focus:bg-white transition-all"
-                        placeholder="••••••••"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 hover:text-indigo-600 transition-colors text-slate-400"
-                      >
-                        {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </FormField>
-                  <div className="hidden md:block" />
-                  
-                  <FormField label="New Password">
-                    <div className="relative">
-                      <Input
-                        type={showNewPassword ? 'text' : 'password'}
-                        value={passwordForm.newPassword}
-                        onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                        className="h-12 bg-slate-50/50 border-slate-200 focus:bg-white transition-all"
-                        placeholder="Min. 6 characters"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 hover:text-indigo-600 transition-colors text-slate-400"
-                      >
-                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </FormField>
-
-                  <FormField label="Confirm New Password">
-                    <Input
-                      type="password"
-                      value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                      className="h-12 bg-slate-50/50 border-slate-200 focus:bg-white transition-all"
-                      placeholder="Repeat new password"
-                      required
-                    />
-                  </FormField>
-                </div>
-
-                <div className="flex items-center justify-between pt-4">
-                  <p className="text-xs text-slate-500 font-medium max-w-[280px]">
-                    Updating your password will require you to log in again on all devices for security.
-                  </p>
-                  <Button type="submit" variant="secondary" disabled={loading} className="px-10 h-12 border-slate-200 font-bold">
-                    {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : 'Confirm Change'}
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </Card>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--ink)' }}>{user.name || user.email || 'User'}</div>
+          <span className="chip solid" style={{ marginTop: '0.25rem', display: 'inline-block' }}>{user.role.replace('_', ' ')}</span>
+          <div className="muted" style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>{user.email}</div>
         </div>
+      </div>
+
+      <div className="card stack">
+        <div className="eyebrow">Identity Details</div>
+
+        {user.schoolNumber && (
+          <IdentityRow label="School Number" value={user.schoolNumber} />
+        )}
+
+        {user.role === 'student' && studentData && (
+          <>
+            <IdentityRow label="Admission Number" value={studentData.admissionNumber} />
+            <IdentityRow label="Class & Section" value={`${className} – ${studentData.section}`} />
+            <IdentityRow label="House" value={houseName || 'Not Assigned'} />
+          </>
+        )}
+
+        {user.role === 'parent' && parentStudents.length > 0 && (
+          <div className="stack">
+            <div className="eyebrow" style={{ marginTop: '0.5rem' }}>Linked Students</div>
+            {parentStudents.map(s => (
+              <div key={s.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.75rem' }}>
+                <Avatar name={s.name} size="sm" />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>{s.name}</div>
+                  <div className="muted" style={{ fontSize: '0.7rem' }}>{s.schoolNumber}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {user.role === 'teacher' && teacherData && (
+          <>
+            <IdentityRow label="Employee ID" value={teacherData.id} />
+            {teacherData.joiningDetails && <IdentityRow label="Joining Details" value={teacherData.joiningDetails} />}
+            {assignedClasses.length > 0 && <IdentityRow label="Assigned Classes" value={assignedClasses.join(', ')} />}
+            {subjectNames.length > 0 && <IdentityRow label="Subjects" value={subjectNames.join(', ')} />}
+            {teacherData.isHouseIncharge && <IdentityRow label="Special Role" value="House In-charge" />}
+          </>
+        )}
+
+        {(user.role === 'principal' || user.role === 'accounts' || user.role === 'super_admin') && (
+          <IdentityRow label="Staff Role" value={user.role.replace('_', ' ').toUpperCase()} />
+        )}
+      </div>
+
+      <div className="card stack">
+        <div className="section-head">
+          General Information
+          {!isSuperAdmin && <span className="muted" style={{ fontSize: '0.7rem', fontWeight: 400, marginLeft: '0.5rem' }}>read-only</span>}
+        </div>
+
+        <form onSubmit={handleProfileUpdate} className="stack">
+          <FormField label="Full Name">
+            <Input
+              value={profileData.name}
+              onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+              placeholder="Full name"
+              required
+              disabled={!isSuperAdmin}
+            />
+          </FormField>
+
+          <FormField label="Phone Number">
+            <Input
+              value={profileData.phone}
+              onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+              placeholder="Contact number"
+              disabled={!isSuperAdmin}
+            />
+          </FormField>
+
+          <FormField label="Email Address (Login Identity)">
+            <Input value={profileData.email} disabled />
+          </FormField>
+
+          <FormField label="Physical Address">
+            <textarea
+              value={profileData.address}
+              onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
+              style={{ width: '100%', minHeight: 90, padding: '0.625rem 0.75rem', background: 'var(--cream)', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: '0.875rem', resize: 'vertical', color: 'var(--ink)' }}
+              placeholder="Enter residence address"
+              disabled={!isSuperAdmin}
+            />
+          </FormField>
+
+          {isSuperAdmin && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', flexDirection: 'column' }}>
+              {profileError && <span style={{ color: 'var(--coral)', fontSize: '0.8rem' }}>{profileError}</span>}
+              {profileSuccess && <span style={{ color: 'var(--leaf)', fontSize: '0.8rem' }}>{profileSuccess}</span>}
+              <Button type="submit" loading={updateLoading}>
+                Update Profile
+              </Button>
+            </div>
+          )}
+        </form>
+      </div>
+
+      <div className="card stack">
+        <div className="section-head">
+          <Lock style={{ width: 16, height: 16, display: 'inline', marginRight: '0.4rem' }} />
+          Change Password
+        </div>
+
+        <form onSubmit={handlePasswordChange} className="stack">
+          <FormField label="Current Password">
+            <div style={{ position: 'relative' }}>
+              <Input
+                type={showCurrentPassword ? 'text' : 'password'}
+                value={passwordForm.currentPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                placeholder="••••••••"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink)', opacity: 0.5 }}
+              >
+                {showCurrentPassword ? <EyeOff style={{ width: 16, height: 16 }} /> : <Eye style={{ width: 16, height: 16 }} />}
+              </button>
+            </div>
+          </FormField>
+
+          <FormField label="New Password">
+            <div style={{ position: 'relative' }}>
+              <Input
+                type={showNewPassword ? 'text' : 'password'}
+                value={passwordForm.newPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                placeholder="Min. 6 characters"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink)', opacity: 0.5 }}
+              >
+                {showNewPassword ? <EyeOff style={{ width: 16, height: 16 }} /> : <Eye style={{ width: 16, height: 16 }} />}
+              </button>
+            </div>
+          </FormField>
+
+          <FormField label="Confirm New Password">
+            <Input
+              type="password"
+              value={passwordForm.confirmPassword}
+              onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+              placeholder="Repeat new password"
+              required
+            />
+          </FormField>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {passwordError && <span style={{ color: 'var(--coral)', fontSize: '0.8rem' }}>{passwordError}</span>}
+            {passwordSuccess && <span style={{ color: 'var(--leaf)', fontSize: '0.8rem' }}>{passwordSuccess}</span>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button type="submit" variant="secondary" disabled={loading}>
+                {loading ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : 'Confirm Change'}
+              </Button>
+            </div>
+          </div>
+        </form>
       </div>
     </div>
   );
 }
 
-function InfoRow({ icon: Icon, label, value, color = 'slate' }: { icon: any, label: string, value: string, color?: string }) {
-  const colorMap: any = {
-    slate: 'bg-slate-50 text-slate-600 border-slate-100',
-    indigo: 'bg-indigo-50 text-indigo-600 border-indigo-100',
-    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100'
-  };
-
+function IdentityRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-2xl border ${colorMap[color] || colorMap.slate} transition-all hover:bg-white hover:shadow-sm`}>
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-sm bg-white`}>
-        <Icon className="w-4 h-4" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[9px] font-bold uppercase tracking-wider opacity-60 mb-0.5">{label}</p>
-        <p className="text-xs font-bold truncate">{value || 'N/A'}</p>
-      </div>
+    <div className="row">
+      <span className="muted" style={{ fontSize: '0.78rem' }}>{label}</span>
+      <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{value || 'N/A'}</span>
     </div>
   );
 }

@@ -1,40 +1,38 @@
 import {
-  CreditCard,
-  ClipboardCheck,
-  CheckSquare,
-  Bell,
-  UserCircle,
-  FileText,
-  Users,
-  DollarSign as DollarIcon,
+  Wallet,
+  Clock,
   Calendar,
   BookOpen,
-  ChevronRight,
-  Sparkles,
+  BarChart3,
+  ClipboardCheck,
   MessageCircle,
+  Bell,
+  Sparkles,
+  Users,
+  ChevronRight,
 } from 'lucide-react';
 import { UserProfile, Student, Notice, FeeRequest, Attendance, Homework, ExamResult } from '../../types';
 import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import {
-  PageHeader,
-  Card,
-  StatCard,
-  Badge,
-  EmptyState,
-} from '../../components/ui';
-import UpdatesSection from '../../components/UpdatesSection';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { buildParentContext } from '../../lib/aiContext';
 import { fmtDate } from '../../lib/utils';
-import { MobilePageEnter } from '../../components/animations';
 
 interface ParentDashboardProps {
   user: UserProfile;
   selectedStudent: Student | null;
 }
+
+const QUICK_ACTIONS = [
+  { to: '/parent/fees', label: 'Fees', icon: Wallet },
+  { to: '/parent/attendance', label: 'Attendance', icon: Clock },
+  { to: '/parent/timetable', label: 'Timetable', icon: Calendar },
+  { to: '/parent/exams', label: 'Grades', icon: BarChart3 },
+  { to: '/parent/leaves', label: 'Leaves', icon: ClipboardCheck },
+  { to: '/parent/grievances', label: 'Grievance', icon: MessageCircle },
+];
 
 export default function ParentDashboard({ user, selectedStudent }: ParentDashboardProps) {
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -50,7 +48,6 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
       if (!selectedStudent) return;
       setLoading(true);
       try {
-        // Fetch Notices
         const noticesQ = query(
           collection(db, 'notices'),
           where('targetRoles', 'array-contains', 'parent'),
@@ -60,7 +57,6 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
         const noticesSnap = await getDocs(noticesQ);
         setNotices(noticesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notice)));
 
-        // Fetch Fee Requests
         const feesQ = query(
           collection(db, 'feeRequests'),
           where('studentId', '==', selectedStudent.id),
@@ -70,7 +66,6 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
         const feesSnap = await getDocs(feesQ);
         setFeeRequests(feesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
 
-        // Fetch Attendance
         const attendanceQ = query(
           collection(db, 'attendance'),
           where('studentId', '==', selectedStudent.id)
@@ -78,7 +73,6 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
         const attendanceSnap = await getDocs(attendanceQ);
         setAttendance(attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Attendance)));
 
-        // Fetch Homework
         const homeworkQ = query(
           collection(db, 'homework'),
           where('classId', '==', selectedStudent.classId),
@@ -88,7 +82,6 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
         const homeworkSnap = await getDocs(homeworkQ);
         setHomework(homeworkSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Homework)));
 
-        // Fetch Exam Results
         const examResultsQ = query(
           collection(db, 'examResults'),
           where('studentId', '==', selectedStudent.id),
@@ -96,7 +89,6 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
         );
         const examResultsSnap = await getDocs(examResultsQ);
         setExamResults(examResultsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExamResult)));
-
       } catch (err) {
         handleFirestoreError(err, OperationType.LIST, 'dashboard-data');
       } finally {
@@ -108,347 +100,167 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
 
   if (!selectedStudent) {
     return (
-      <EmptyState
-        icon={Users}
-        title="No Students Linked"
-        description="There are no student profiles linked to this parent account. Please contact the administration."
-      />
+      <div className="pad stack" style={{ paddingTop: 48, textAlign: 'center' }}>
+        <Users className="w-12 h-12 mx-auto" style={{ color: 'var(--ink-4)' }} />
+        <p className="display" style={{ marginTop: 12 }}>No Students Linked</p>
+        <p className="muted tiny" style={{ marginTop: 4 }}>
+          There are no student profiles linked to this parent account. Please contact the administration.
+        </p>
+      </div>
     );
   }
 
-  // Calculate Stats
-  const pendingFees = feeRequests.filter(f => f.status === 'pending').reduce((sum, f) => sum + f.totalAmount, 0);
+  const pendingFees = feeRequests.filter(f => f.status === 'pending' || f.status === 'overdue')
+    .reduce((sum, f) => sum + f.totalAmount, 0);
   const totalDays = attendance.length;
   const presentDays = attendance.filter(a => a.status === 'present').length;
-  const attendancePercentage = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : '--';
+  const attendancePct = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
+  const attendanceLabel = totalDays > 0 ? `${attendancePct}%` : '--';
+  const parentName = user.name?.split(' ')[0] || 'there';
 
-  const pendingFeesCount = feeRequests.filter(f => f.status !== 'paid').length;
-  const unreadNoticesCount = notices.length;
-
-  const mobileTiles = [
-    {
-      to: '/parent/fees',
-      label: 'Fees',
-      icon: CreditCard,
-      hint: pendingFees > 0 ? `₹${pendingFees.toLocaleString('en-IN')} due` : 'All paid',
-      urgent: pendingFees > 0,
-      bg: 'from-violet-500 to-violet-700',
-    },
-    {
-      to: '/parent/attendance',
-      label: 'Attendance',
-      icon: ClipboardCheck,
-      hint: totalDays > 0 ? `${attendancePercentage}% present` : 'No data',
-      bg: 'from-emerald-500 to-emerald-700',
-    },
-    {
-      to: '/parent/exams',
-      label: 'Results',
-      icon: FileText,
-      hint: examResults.length > 0 ? `${examResults.length} exams` : 'No results',
-      bg: 'from-indigo-500 to-indigo-700',
-    },
-    {
-      to: '/parent/diary',
-      label: 'Homework',
-      icon: CheckSquare,
-      hint: homework.length > 0 ? `${homework.length} active` : 'None pending',
-      bg: 'from-amber-500 to-amber-700',
-    },
-    {
-      to: '/parent/timetable',
-      label: 'Timetable',
-      icon: Calendar,
-      hint: 'Class schedule',
-      bg: 'from-sky-500 to-sky-700',
-    },
-    {
-      to: '/parent/notices',
-      label: 'Notices',
-      icon: Bell,
-      hint: unreadNoticesCount > 0 ? `${unreadNoticesCount} updates` : 'No new',
-      bg: 'from-rose-500 to-rose-700',
-    },
-    {
-      to: '/parent/grievances',
-      label: 'Grievances',
-      icon: MessageCircle,
-      hint: 'Raise a concern',
-      bg: 'from-teal-500 to-teal-700',
-    },
-  ];
+  const attColor = attendancePct >= 75 ? 'var(--leaf)' : attendancePct >= 60 ? '#f59e0b' : 'var(--coral)';
 
   return (
-    <>
-      {/* ─── Mobile Simplified UI ───────────────────────────────────────────── */}
-      <MobilePageEnter className="md:hidden space-y-5 -mx-4 -mt-4">
-        {/* Greeting card */}
-        <div className="bg-gradient-to-br from-violet-600 to-indigo-700 px-5 pt-6 pb-8 text-white rounded-b-3xl shadow-lg">
-          <p className="text-xs font-medium text-violet-100 uppercase tracking-widest">Welcome</p>
-          <h1 className="text-2xl font-bold mt-1">{selectedStudent.name}</h1>
-          <p className="text-xs text-violet-100 mt-1">School No. {selectedStudent.schoolNumber}</p>
-
-          {pendingFees > 0 && (
-            <Link
-              to="/parent/fees"
-              className="mt-5 flex items-center justify-between bg-white/15 backdrop-blur-sm border border-white/20 rounded-2xl px-4 py-3 active:bg-white/25 transition-all"
-            >
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-violet-100">Pay Now</p>
-                <p className="text-lg font-bold leading-tight">₹{pendingFees.toLocaleString('en-IN')}</p>
-              </div>
-              <div className="bg-white text-violet-700 rounded-full px-3 py-1.5 text-xs font-bold flex items-center gap-1">
-                Pay <ChevronRight className="w-3.5 h-3.5" />
-              </div>
-            </Link>
-          )}
+    <div className="pad stack" style={{ '--stack-gap': '20px' } as React.CSSProperties}>
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <p className="eyebrow">{selectedStudent.name}</p>
+          <h1 className="display" style={{ fontSize: 22 }}>Hello, {parentName}.</h1>
         </div>
+        <Bell className="w-5 h-5 lg:hidden" style={{ color: 'var(--ink-3)' }} />
+      </div>
 
-        {/* Big action tiles — 2 columns */}
-        <div className="grid grid-cols-2 gap-3 px-4">
-          {mobileTiles.map(({ to, label, icon: Icon, hint, urgent, bg }) => (
+      {/* Fee hero card — only if outstanding */}
+      {pendingFees > 0 && (
+        <Link
+          to="/parent/fees"
+          className="card"
+          style={{ background: 'var(--ink)', color: 'var(--cream)', display: 'block', textDecoration: 'none' }}
+        >
+          <p className="eyebrow" style={{ color: 'var(--cream-2)' }}>Outstanding Balance</p>
+          <p className="t-num display" style={{ fontSize: 36, lineHeight: 1.1, marginTop: 4 }}>
+            ₹{pendingFees.toLocaleString('en-IN')}
+          </p>
+          <div className="flex items-center gap-2" style={{ marginTop: 16 }}>
+            <span className="btn accent" style={{ fontSize: 13, padding: '6px 16px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              Pay Now <ChevronRight className="w-3.5 h-3.5" />
+            </span>
+          </div>
+        </Link>
+      )}
+
+      {/* Attendance stat card */}
+      <div className="card">
+        <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+          <div>
+            <p className="eyebrow">Attendance</p>
+            <p className="t-num display" style={{ fontSize: 32, lineHeight: 1 }}>{presentDays}</p>
+            <p className="muted tiny" style={{ marginTop: 2 }}>of {totalDays} days present</p>
+          </div>
+          <p className="t-num" style={{ fontSize: 28, fontWeight: 800, color: attColor }}>{attendanceLabel}</p>
+        </div>
+        <div className="bar" style={{ height: 6, borderRadius: 4, background: 'var(--cream-2)' }}>
+          <i style={{ width: `${attendancePct}%`, background: attColor, borderRadius: 4, display: 'block', height: '100%' }} />
+        </div>
+      </div>
+
+      {/* Quick-action tiles */}
+      <div>
+        <p className="eyebrow" style={{ marginBottom: 10 }}>Quick Actions</p>
+        <div className="hscroll" style={{ gap: 10 }}>
+          {QUICK_ACTIONS.map(({ to, label, icon: Icon }) => (
             <Link
               key={to}
               to={to}
-              className={`relative bg-gradient-to-br ${bg} rounded-2xl p-4 text-white shadow-md active:scale-95 transition-transform min-h-[110px] flex flex-col justify-between`}
+              style={{
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                width: 72,
+                height: 72,
+                borderRadius: 16,
+                background: 'var(--paper)',
+                border: '1px solid var(--line)',
+                textDecoration: 'none',
+                color: 'var(--ink)',
+              }}
             >
-              <Icon className="w-7 h-7" strokeWidth={2.25} />
-              <div>
-                <p className="text-base font-bold leading-tight">{label}</p>
-                <p className="text-[11px] text-white/80 mt-0.5">{hint}</p>
-              </div>
-              {urgent && (
-                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-yellow-300 rounded-full animate-pulse" />
-              )}
+              <Icon className="w-5 h-5" strokeWidth={1.8} />
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em' }}>{label}</span>
             </Link>
           ))}
         </div>
+      </div>
 
-        {/* Recent notices preview */}
-        {notices.length > 0 && (
-          <div className="px-4 pb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Bell className="w-4 h-4 text-violet-600" />
-                Latest Notices
-              </h3>
-              <Link to="/parent/notices" className="text-xs text-violet-600 font-bold">See all</Link>
-            </div>
-            <div className="space-y-2">
-              {notices.slice(0, 2).map((notice) => (
-                <div key={notice.id} className="bg-white border border-slate-100 rounded-xl p-3">
-                  <p className="text-sm font-bold text-slate-900 line-clamp-1">{notice.title}</p>
-                  <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{notice.content}</p>
-                </div>
-              ))}
-            </div>
+      {/* Upcoming homework */}
+      {homework.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+            <p className="eyebrow">Upcoming Homework</p>
+            <Link to="/parent/diary" style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none' }}>See all</Link>
           </div>
-        )}
-      </MobilePageEnter>
-
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Parent Dashboard"
-        subtitle={`Monitoring progress for ${selectedStudent.name}`}
-        icon={UserCircle}
-        iconColor="gradient-violet"
-        actions={
-          <div className="text-right hidden sm:block">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">School Number</p>
-            <p className="text-sm font-bold text-violet-600">{selectedStudent.schoolNumber}</p>
+          <div className="stack" style={{ '--stack-gap': '8px' } as React.CSSProperties}>
+            {homework.slice(0, 2).map(hw => (
+              <div key={hw.id} className="card" style={{ padding: '12px 16px' }}>
+                <div className="flex items-center justify-between">
+                  <span className="eyebrow" style={{ color: 'var(--accent)' }}>{hw.subjectId}</span>
+                  <span className="tiny muted">{fmtDate(hw.dueDate)}</span>
+                </div>
+                <p style={{ fontSize: 13, fontWeight: 600, marginTop: 4, color: 'var(--ink)' }}>
+                  {hw.content.substring(0, 80)}{hw.content.length > 80 ? '…' : ''}
+                </p>
+              </div>
+            ))}
           </div>
-        }
-      />
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard
-          label="Pending Fees"
-          value={`₹${pendingFees}`}
-          icon={CreditCard}
-          gradient="gradient-violet"
-          index={0}
-        />
-        <StatCard
-          label="Attendance"
-          value={`${attendancePercentage}%`}
-          icon={ClipboardCheck}
-          gradient="gradient-violet"
-          index={1}
-        />
-        <StatCard
-          label="Homework"
-          value={`${homework.length} Active`}
-          icon={CheckSquare}
-          gradient="gradient-violet"
-          index={2}
-        />
-      </div>
-
-      <UpdatesSection user={user} className="mb-8" />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Fee Tracking */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-violet-600" />
-                Fee Status &amp; Payments
-              </h3>
-              <Link to="/parent/fees" className="text-sm text-violet-600 font-medium hover:underline">View All</Link>
-            </div>
-            <div className="space-y-4">
-              {feeRequests.length > 0 ? feeRequests.map((fee) => (
-                <div key={fee.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${fee.status === 'paid' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-                      <DollarIcon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900">{fee.month} Fees</h4>
-                      <p className="text-xs text-slate-500">Due: {fmtDate(fee.dueDate)} • ₹{fee.totalAmount}</p>
-                    </div>
-                  </div>
-                  <Badge variant={fee.status === 'paid' ? 'success' : 'warning'}>
-                    {fee.status}
-                  </Badge>
-                </div>
-              )) : (
-                <p className="text-sm text-slate-500 italic text-center py-4">No fee records found.</p>
-              )}
-            </div>
-          </Card>
-
-          {/* Exam Results */}
-          <Card>
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-violet-600" />
-                Recent Exam Results
-              </h3>
-              <Link to="/parent/exams" className="text-sm text-violet-600 font-bold hover:underline">View Full Report</Link>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {examResults.length > 0 ? examResults.map((result) => (
-                <div key={result.id} className="p-4 border border-slate-100 rounded-xl hover:bg-slate-50 transition-all">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Overall Result</p>
-                  <div className="flex items-end justify-between mt-2">
-                    <h4 className="text-xl font-bold text-slate-900">{result.percentage}%</h4>
-                    <span className="text-lg font-black text-violet-600">{result.overallGrade}</span>
-                  </div>
-                </div>
-              )) : (
-                <p className="text-sm text-slate-500 italic text-center py-4 col-span-2">No exam results found.</p>
-              )}
-            </div>
-          </Card>
         </div>
+      )}
 
-        {/* Sidebar: Attendance & Notices */}
-        <div className="space-y-8">
-          {/* School Notices */}
-          <Card>
-            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-              <Bell className="w-5 h-5 text-violet-600" />
-              School Notices
-            </h3>
-            <div className="space-y-4">
-              {notices.length > 0 ? notices.map((notice) => (
-                <div key={notice.id} className="p-3 bg-slate-50 rounded-xl border border-transparent hover:border-violet-100 hover:bg-white hover:shadow-sm transition-all group">
-                  <div className="flex items-center justify-between mb-1">
-                    <h4 className="text-xs font-bold text-slate-900 group-hover:text-violet-600">{notice.title}</h4>
-                    <span className="text-[8px] text-slate-400">{new Date(notice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 line-clamp-2">{notice.content}</p>
-                </div>
-              )) : (
-                <p className="text-xs text-slate-500 italic text-center py-4">No recent notices.</p>
-              )}
-            </div>
-          </Card>
-
-          <Card>
-            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-              <ClipboardCheck className="w-5 h-5 text-violet-600" />
-              Attendance Summary
-            </h3>
-            <div className="flex items-center justify-center mb-6">
-              <div className="relative w-32 h-32">
-                <svg className="w-full h-full" viewBox="0 0 36 36">
-                  <path
-                    className="text-slate-100"
-                    strokeDasharray="100, 100"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                  />
-                  <path
-                    className="text-violet-600"
-                    strokeDasharray={`${attendancePercentage}, 100`}
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-xl font-bold text-slate-900">{attendancePercentage}%</span>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase">Present</span>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Total Days</span>
-                <span className="font-bold text-slate-900">{totalDays}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Present</span>
-                <span className="font-bold text-emerald-600">{presentDays}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Absent</span>
-                <span className="font-bold text-red-600">{totalDays - presentDays}</span>
-              </div>
-            </div>
-          </Card>
-
-          {/* Recent Homework */}
-          <Card>
-            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-              <CheckSquare className="w-5 h-5 text-violet-600" />
-              Homework Updates
-            </h3>
-            <div className="space-y-4">
-              {homework.length > 0 ? homework.map((hw) => (
-                <div key={hw.id} className="p-3 bg-slate-50 rounded-xl">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold text-violet-600 uppercase">{hw.subjectId}</span>
-                    <span className="text-[10px] text-slate-400">{fmtDate(hw.dueDate)}</span>
-                  </div>
-                  <h4 className="text-sm font-bold text-slate-900">{hw.content.substring(0, 50)}...</h4>
-                  <div className="flex items-center gap-2 mt-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-                    <span className="text-[10px] font-medium text-slate-500">Due soon</span>
+      {/* Notice strip */}
+      {notices.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+            <p className="eyebrow">Latest Notices</p>
+            <Link to="/parent/notices" style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none' }}>See all</Link>
+          </div>
+          <div className="stack" style={{ '--stack-gap': '8px' } as React.CSSProperties}>
+            {notices.slice(0, 2).map(notice => (
+              <div key={notice.id} className="card" style={{ padding: '12px 16px' }}>
+                <div className="flex items-start gap-3">
+                  <Bell className="w-4 h-4 shrink-0" style={{ color: 'var(--ink-3)', marginTop: 2 }} />
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{notice.title}</p>
+                    <p className="muted tiny" style={{ marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {notice.content}
+                    </p>
                   </div>
                 </div>
-              )) : (
-                <p className="text-sm text-slate-500 italic text-center py-4">No pending homework.</p>
-              )}
-            </div>
-          </Card>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
-      </div>
+      )}
 
-      {/* AI Insights floating button */}
+      {/* Floating AI button */}
       <button
         onClick={() => setAiOpen(true)}
-        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white px-4 py-3 rounded-2xl shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 active:scale-95 transition-all text-sm font-bold"
+        className="fixed z-30 flex items-center gap-2"
+        style={{
+          bottom: 80,
+          right: 20,
+          background: 'var(--ink)',
+          color: '#d4ff6e',
+          border: 'none',
+          borderRadius: 20,
+          padding: '10px 18px',
+          fontSize: 13,
+          fontWeight: 700,
+          cursor: 'pointer',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+        }}
         aria-label="Open AI Insights"
       >
         <Sparkles className="w-4 h-4" />
@@ -488,6 +300,6 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
           </div>
         ) : null}
       />
-    </>
+    </div>
   );
 }

@@ -46,7 +46,6 @@ import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import {
-  PageHeader,
   Card,
   Badge,
   Button,
@@ -64,16 +63,15 @@ import {
   Td,
   EmptyState,
   Avatar,
-  StatCard,
 } from '../../components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   Cell,
   PieChart,
@@ -103,6 +101,8 @@ interface SalaryAdvance {
   adjustments?: { salaryId: string; month: string; amount: number; date: string }[];
 }
 
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
 export default function SalaryManagement({ user }: SalaryManagementProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -111,7 +111,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [loading, setLoading] = useState(false);
   const [payrollConfig, setPayrollConfig] = useState<PayrollConfig | null>(null);
-  
+
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -124,7 +124,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
   const [salaryToDelete, setSalaryToDelete] = useState<Salary | null>(null);
   const [editingSalary, setEditingSalary] = useState<Salary | null>(null);
   const [advances, setAdvances] = useState<SalaryAdvance[]>([]);
-  
+
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [targetMonth, setTargetMonth] = useState(selectedMonth); // For specific generation
   const [processingStaff, setProcessingStaff] = useState<UnifiedStaff | null>(null);
@@ -733,7 +733,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
     const totalNet = monthSalaries.reduce((sum, s) => sum + (s.netAmount || (s as any).amount || 0), 0);
     const totalPaid = monthSalaries.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
     const pendingCount = monthSalaries.filter(s => s.status !== 'paid').length;
-    
+
     return {
       totalNet,
       totalPaid,
@@ -758,467 +758,345 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
 
   const COLORS = ['#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e'];
 
-  const categories = ['All', 'Teacher', 'Principal', 'Accounts', 'Admin', 'Other Staff'];
+  const staffCategoryChips = ['all', 'teacher', 'principal', 'accounts', 'admin', 'other staff'];
+
+  // Derive year and month index from selectedMonth string (YYYY-MM)
+  const [selYear, selMonthIdx] = selectedMonth.split('-').map(Number);
+
+  const handleMonthChip = (idx: number) => {
+    const mm = String(idx + 1).padStart(2, '0');
+    setSelectedMonth(`${selYear}-${mm}`);
+  };
 
   const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-  const staffCategoryChips = ['all', 'teacher', 'principal', 'accounts', 'admin', 'other staff'];
 
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Salary Management</h1>
-          <p className="text-[11px] text-emerald-100/90 mt-1">Payroll for {monthLabel}</p>
-
-          <div className="mt-3 flex items-center gap-2">
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-white/15 backdrop-blur rounded-lg px-3 py-1.5 text-xs font-bold text-white border-0 focus:outline-none"
-              style={{ colorScheme: 'dark' }}
-            />
-          </div>
-
-          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Total Payout</p>
-            <p className="text-3xl font-black mt-1">₹{stats.totalPaid.toLocaleString('en-IN')}</p>
-            <p className="text-[11px] text-emerald-100/90 mt-1">Net est. ₹{stats.totalNet.toLocaleString('en-IN')}</p>
-          </div>
-
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-base font-bold">{staffList.length}</p>
-              <p className="text-[9px] text-white/80">Staff</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-base font-bold">{stats.pendingCount}</p>
-              <p className="text-[9px] text-white/80">Pending</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-base font-bold">₹{((stats.totalExpenses/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">All Paid</p>
-            </div>
-          </div>
+      {/* ── Topbar ──────────────────────────────────────────────────────── */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">{monthLabel}</div>
+          <h1>Salaries</h1>
         </div>
-
-        <div className="px-4 pt-4 pb-2">
-          <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search staff by name or email..." />
+        <div className="flex items-center gap-2">
+          <button className="btn ghost" onClick={exportPayroll}>
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
+          <button className="btn accent" onClick={() => setIsAnalyticsOpen(true)}>
+            <TrendingUp className="w-4 h-4" /> Analytics
+          </button>
         </div>
+      </div>
 
-        <div className="px-4 overflow-x-auto flex gap-2 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {staffCategoryChips.map(c => (
+      {/* ── Month Selector ───────────────────────────────────────────────── */}
+      <div className="hscroll pad" style={{ paddingTop: 0, paddingBottom: 0 }}>
+        <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem 0' }}>
+          {MONTHS.map((m, i) => (
             <button
-              key={c}
-              onClick={() => setSelectedCategory(c)}
-              className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap capitalize active:scale-95 transition-transform ${selectedCategory === c ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+              key={m}
+              onClick={() => handleMonthChip(i)}
+              className={`chip${(i + 1) === selMonthIdx ? ' solid' : ''}`}
+              style={{ whiteSpace: 'nowrap' }}
             >
-              {c === 'all' ? 'All' : c}
+              {m}
             </button>
           ))}
         </div>
+      </div>
 
-        <div className="px-4 pt-2 space-y-2.5">
-          {filteredStaff.length === 0 ? (
-            <div className="py-12 text-center">
-              <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No staff found</p>
+      {/* ── Summary Stat Cards ───────────────────────────────────────────── */}
+      <div className="pad" style={{ paddingBottom: 0 }}>
+        <div className="stack" style={{ '--stack-cols': 3 } as any}>
+          <div className="card" style={{ padding: '1rem 1.25rem' }}>
+            <div className="eyebrow">Total Payroll</div>
+            <div className="t-num" style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '0.25rem' }}>
+              ₹{stats.totalNet.toLocaleString('en-IN')}
             </div>
+            <div className="tiny muted">{fmtMonth(selectedMonth)}</div>
+          </div>
+          <div className="card" style={{ padding: '1rem 1.25rem', borderColor: 'var(--leaf)' }}>
+            <div className="eyebrow" style={{ color: 'var(--leaf)' }}>Paid</div>
+            <div className="t-num" style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '0.25rem', color: 'var(--leaf)' }}>
+              ₹{stats.totalPaid.toLocaleString('en-IN')}
+            </div>
+            <div className="tiny muted">disbursed this month</div>
+          </div>
+          <div className="card" style={{ padding: '1rem 1.25rem', borderColor: 'var(--coral)' }}>
+            <div className="eyebrow" style={{ color: 'var(--coral)' }}>Pending</div>
+            <div className="t-num" style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '0.25rem', color: 'var(--coral)' }}>
+              {stats.pendingCount}
+            </div>
+            <div className="tiny muted">staff awaiting payment</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Search + Category Filter ─────────────────────────────────────── */}
+      <div className="pad" style={{ paddingTop: '1rem', paddingBottom: 0 }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ flex: '1 1 240px' }}>
+            <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search staff by name or email…" />
+          </div>
+          <div className="hscroll" style={{ flex: '0 0 auto' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {staffCategoryChips.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setSelectedCategory(c)}
+                  className={`chip${selectedCategory === c ? ' solid' : ''}`}
+                  style={{ textTransform: 'capitalize', whiteSpace: 'nowrap' }}
+                >
+                  {c === 'all' ? 'All' : c}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            style={{ width: '140px' }}
+          >
+            <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="paid">Paid</option>
+          </Select>
+        </div>
+      </div>
+
+      {/* ── Mobile Cards ─────────────────────────────────────────────────── */}
+      <div className="pad lg:hidden">
+        <div className="stack">
+          {filteredStaff.length === 0 ? (
+            <EmptyState icon={Users} title="No staff found" />
           ) : (
             filteredStaff.map((staff) => {
               const salary = salaries.find(s => (s.employeeId === staff.id || (s as any).teacherId === staff.id) && s.month === selectedMonth);
+              if (selectedStatus !== 'all') {
+                const st = salary?.status || 'unrecorded';
+                if (selectedStatus === 'pending' && st === 'paid') return null;
+                if (selectedStatus === 'paid' && st !== 'paid') return null;
+              }
               const isPaid = salary?.status === 'paid';
+              const initials = staff.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
               return (
-                <div key={staff.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5">
-                  <div className="flex items-center gap-3">
-                    <Avatar name={staff.name} size="sm" src={staff.photoURL} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-900 truncate">{staff.name}</p>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                        {staff.staffCategory} • {(staff as any).role || 'Staff'}
-                      </p>
+                <div key={staff.id} className="card" style={{ padding: '1rem' }}>
+                  {/* Row 1: avatar + name + status chip */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{
+                      width: '2.5rem', height: '2.5rem', borderRadius: '50%',
+                      background: 'var(--cream-2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 700, fontSize: '0.85rem', color: 'var(--ink)', flexShrink: 0,
+                      overflow: 'hidden',
+                    }}>
+                      {staff.photoURL
+                        ? <img src={staff.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : initials}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{staff.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
+                        <span className="chip" style={{ fontSize: '0.7rem', padding: '0.1rem 0.5rem' }}>{staff.staffCategory}</span>
+                        <span className="tiny muted">{(staff as any).role || 'Staff'}</span>
+                      </div>
                     </div>
                     {!salary ? (
-                      <Badge variant="warning" className="text-[9px] shrink-0">UNRECORDED</Badge>
+                      <span className="chip" style={{ fontSize: '0.7rem', background: 'var(--cream-2)', color: 'var(--ink)', flexShrink: 0 }}>Unrecorded</span>
                     ) : (
-                      <Badge variant={isPaid ? 'success' : salary.status === 'partially_paid' ? 'info' : 'default'} className="text-[9px] shrink-0">
-                        {salary.status.replace('_', ' ').toUpperCase()}
-                      </Badge>
+                      <span
+                        className="chip solid"
+                        style={{
+                          fontSize: '0.7rem', flexShrink: 0,
+                          background: isPaid ? 'var(--leaf)' : salary.status === 'partially_paid' ? 'var(--accent)' : 'var(--coral)',
+                        }}
+                      >
+                        {salary.status.replace('_', ' ')}
+                      </span>
                     )}
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <div className="bg-slate-50 rounded-lg py-1.5 px-2">
-                      <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Net Salary</p>
-                      <p className="text-sm font-black text-slate-900">
-                        ₹{(salary ? (salary.netAmount || (salary as any).amount) : staff.baseSalary).toLocaleString()}
-                      </p>
+                  {/* Row 2: salary numbers */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.75rem' }}>
+                    <div style={{ background: 'var(--cream-2)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem' }}>
+                      <div className="eyebrow">Basic + Allowances</div>
+                      <div className="t-num" style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                        ₹{(staff.baseSalary || 0).toLocaleString('en-IN')}
+                        {salary && salary.allowances > 0 && (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--leaf)', marginLeft: '0.3rem' }}>+{salary.allowances.toLocaleString('en-IN')}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="bg-emerald-50 rounded-lg py-1.5 px-2">
-                      <p className="text-[9px] text-emerald-700 uppercase tracking-widest font-bold">Paid</p>
-                      <p className="text-sm font-black text-emerald-700">₹{(salary?.paidAmount || 0).toLocaleString()}</p>
+                    <div style={{ background: 'var(--cream-2)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem' }}>
+                      <div className="eyebrow">Net Pay</div>
+                      <div className="t-num" style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--ink)' }}>
+                        ₹{(salary ? (salary.netAmount || (salary as any).amount) : staff.baseSalary).toLocaleString('en-IN')}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="mt-3 space-y-2">
+                  {/* Row 3: action buttons */}
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                     {!salary ? (
-                      <button
-                        onClick={() => handleOpenCreatePayroll(staff)}
-                        className="w-full py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Generate Payroll
+                      <button className="btn accent" style={{ flex: 1 }} onClick={() => handleOpenCreatePayroll(staff)}>
+                        <Plus className="w-3.5 h-3.5" /> Generate
                       </button>
                     ) : !isPaid ? (
-                      <button
-                        onClick={() => handleOpenPayment(salary)}
-                        className="w-full py-2 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform shadow-sm"
-                      >
-                        <CreditCard className="w-3.5 h-3.5" /> Disburse ₹{salary.balanceAmount.toLocaleString()}
+                      <button className="btn accent" style={{ flex: 1 }} onClick={() => handleOpenPayment(salary)}>
+                        <CreditCard className="w-3.5 h-3.5" /> Pay ₹{salary.balanceAmount.toLocaleString('en-IN')}
                       </button>
                     ) : (
-                      <div className="w-full py-2 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-bold flex items-center justify-center gap-1">
+                      <div className="btn ghost" style={{ flex: 1, cursor: 'default', color: 'var(--leaf)' }}>
                         <CheckCircle2 className="w-3.5 h-3.5" /> Paid
                       </div>
                     )}
-                    <div className="grid grid-cols-3 gap-2">
+                    <button className="icon-btn" title="Advance" onClick={() => handleOpenAdvance(staff)} style={{ color: '#b45309' }}>
+                      <HandCoins className="w-4 h-4" />
+                    </button>
+                    <button className="icon-btn" title="History" onClick={() => handleOpenHistory(staff)}>
+                      <History className="w-4 h-4" />
+                    </button>
+                    {salary ? (
                       <button
-                        onClick={() => handleOpenAdvance(staff)}
-                        className="py-2 rounded-xl bg-amber-50 text-amber-700 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
+                        className="icon-btn"
+                        title="Download Payslip"
+                        onClick={() => generatePayrollSlip(salary, (staffList.find(s => s.id === salary.employeeId) as any)?.employeeId)}
                       >
-                        <HandCoins className="w-3.5 h-3.5" /> Advance
+                        <Download className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => handleOpenHistory(staff)}
-                        className="py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
-                      >
-                        <History className="w-3.5 h-3.5" /> History
+                    ) : (
+                      <button className="icon-btn" disabled style={{ opacity: 0.35 }}>
+                        <Download className="w-4 h-4" />
                       </button>
-                      {salary ? (
-                        <button
-                          onClick={() => generatePayrollSlip(salary, (staffList.find(s => s.id === salary.employeeId) as any)?.employeeId)}
-                          className="py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 transition-transform"
-                        >
-                          <Download className="w-3.5 h-3.5" /> Slip
+                    )}
+                    {salary && salary.status === 'pending' && (
+                      <>
+                        <button className="icon-btn" title="Edit" onClick={() => handleOpenEditPayroll(salary, staff)}>
+                          <Edit2 className="w-4 h-4" />
                         </button>
-                      ) : (
-                        <div className="py-2 rounded-xl bg-slate-50 text-slate-400 text-xs font-bold flex items-center justify-center gap-1">
-                          <Download className="w-3.5 h-3.5" /> Slip
-                        </div>
-                      )}
-                    </div>
+                        <button className="icon-btn" title="Delete" style={{ color: 'var(--coral)' }} onClick={() => { setSalaryToDelete(salary); setIsDeleteConfirmOpen(true); }}>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               );
             })
           )}
         </div>
-
-        <button
-          onClick={exportPayroll}
-          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-          aria-label="Export"
-        >
-          <Download className="w-6 h-6" strokeWidth={2.5} />
-        </button>
       </div>
 
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8 pb-20">
-      <PageHeader
-        title="Robust Payroll Management"
-        subtitle="End-to-end salary processing with deduction tracking and detailed analytics"
-        icon={CreditCard}
-        iconColor="gradient-blue"
-        actions={
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setIsAnalyticsOpen(true)} icon={TrendingUp}>
-              Analytics
-            </Button>
-            <Button variant="secondary" size="sm" onClick={exportPayroll} icon={Download}>
-              Export CSV
-            </Button>
-          </div>
-        }
-      />
-
-      {/* Monthly Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard 
-          label="Estimated Monthly Net" 
-          value={`₹${stats.totalNet.toLocaleString()}`} 
-          icon={Wallet} 
-          gradient="gradient-blue" 
-          index={0} 
-        />
-        <StatCard 
-          label="Total Disbursed (Month)" 
-          value={`₹${stats.totalPaid.toLocaleString()}`} 
-          icon={Banknote} 
-          gradient="gradient-emerald" 
-          index={1} 
-        />
-        <StatCard 
-          label="Pending Payments" 
-          value={stats.pendingCount.toString()} 
-          icon={Clock} 
-          gradient="gradient-amber" 
-          index={2} 
-        />
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-              <Calendar className="w-5 h-5 text-blue-600" />
-            </div>
-            <Badge variant="info">Current Selection</Badge>
-          </div>
-          <div className="mt-4">
-            <p className="text-sm font-medium text-slate-500">Payroll Month</p>
-            <input 
-              type="month" 
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="mt-1 block w-full bg-transparent border-none p-0 text-xl font-black text-slate-900 focus:ring-0 cursor-pointer"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-2 space-y-6">
-          <Card padding="none">
-            <div className="p-4 border-b bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex-1 w-full max-w-sm">
-                <SearchInput
-                  value={searchTerm}
-                  onChange={setSearchTerm}
-                  placeholder="Filter by name, email or role..."
-                />
-              </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Select 
-                  value={selectedCategory} 
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full sm:w-40 bg-white"
-                >
-                  {categories.map(cat => (
-                    <option key={cat} value={cat.toLowerCase()}>{cat}</option>
-                  ))}
-                </Select>
-                <Select
-                  value={selectedStatus}
-                  onChange={(e) => setSelectedStatus(e.target.value)}
-                  className="w-full sm:w-40 bg-white"
-                >
-                  <option value="all">All Status</option>
-                  <option value="pending">Pending</option>
-                  <option value="paid">Paid</option>
-                </Select>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <Table>
-                <Thead>
-                  <tr>
-                    <Th>Employee</Th>
-                    <Th>Category</Th>
-                    <Th>Status ({fmtMonth(selectedMonth)})</Th>
-                    <Th>Net Salary</Th>
-                    <Th className="text-right">Actions</Th>
-                  </tr>
-                </Thead>
-                <Tbody>
-                  {filteredStaff.map((staff) => {
-                    const salary = salaries.find(s => (s.employeeId === staff.id || (s as any).teacherId === staff.id) && s.month === selectedMonth);
-                    
-                    if (selectedStatus !== 'all') {
-                      const currentStatus = salary?.status || 'unrecorded';
-                      if (selectedStatus === 'pending' && currentStatus === 'paid') return null;
-                      if (selectedStatus === 'paid' && currentStatus !== 'paid') return null;
-                    }
-
-                    return (
-                      <Tr key={staff.id}>
-                        <Td>
-                          <div className="flex items-center gap-3">
-                            <Avatar name={staff.name} size="sm" src={staff.photoURL} />
-                            <div>
-                              <p className="font-bold text-slate-900 leading-none">{staff.name}</p>
-                              <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-semibold">
-                                {(staff as any).role || 'Faculty'}
-                              </p>
-                            </div>
-                          </div>
-                        </Td>
-                        <Td>
-                          <Badge variant="indigo" className="font-mono text-[10px]">
-                            {staff.staffCategory}
-                          </Badge>
-                        </Td>
-                        <Td>
-                          {!salary ? (
-                            <Badge variant="warning" className="flex items-center gap-1 w-fit">
-                              <AlertCircle className="w-3 h-3" />
-                              Unrecorded
-                            </Badge>
-                          ) : (
-                            <div className="flex flex-col gap-1">
-                              <Badge variant={salary.status === 'paid' ? 'success' : salary.status === 'partially_paid' ? 'info' : 'default'}>
-                                {salary.status.replace('_', ' ').toUpperCase()}
-                              </Badge>
-                              {salary.paidAmount > 0 && (
-                                <span className="text-[10px] text-slate-400">
-                                  Paid: ₹{salary.paidAmount.toLocaleString()}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </Td>
-                        <Td>
-                          <div className="flex flex-col">
-                            <span className="font-black text-slate-900">
-                              ₹{(salary ? (salary.netAmount || (salary as any).amount) : staff.baseSalary).toLocaleString()}
-                            </span>
-                            <span className="text-[10px] text-slate-400 italic">
-                              Base: ₹{(staff.baseSalary || 0).toLocaleString()}
-                            </span>
-                          </div>
-                        </Td>
-                        <Td className="text-right">
-                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            {!salary ? (
-                              <Button size="sm" onClick={() => handleOpenCreatePayroll(staff)} icon={Plus}>
-                                Generate
-                              </Button>
-                            ) : salary.status !== 'paid' ? (
-                              <Button size="sm" variant="primary" onClick={() => handleOpenPayment(salary)} icon={CreditCard}>
-                                Pay
-                              </Button>
-                            ) : (
-                              <Button size="sm" variant="ghost" className="text-emerald-600 font-bold" disabled icon={CheckCircle2}>
-                                Paid
-                              </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-amber-600"
-                              onClick={() => handleOpenAdvance(staff)}
-                              icon={HandCoins}
-                              title="Pay Salary Advance"
-                            />
-                            {salary && salary.status === 'pending' && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-slate-500"
-                                  onClick={() => handleOpenEditPayroll(salary, staff)}
-                                  icon={Edit2}
-                                  title="Edit Payroll"
-                                />
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-rose-500"
-                                  onClick={() => { setSalaryToDelete(salary); setIsDeleteConfirmOpen(true); }}
-                                  icon={Trash2}
-                                  title="Delete Payroll"
-                                />
-                              </>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-slate-500"
-                              onClick={() => handleOpenHistory(staff)}
-                              icon={History}
-                              title="View Payment History"
-                            />
-                            {salary && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-slate-500"
-                                onClick={() => generatePayrollSlip(salary, (staffList.find(s => s.id === salary.employeeId) as any)?.employeeId)}
-                                icon={Download}
-                                title="Download Payslip PDF"
-                              />
-                            )}
-                          </div>
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-                </Tbody>
-              </Table>
-              {filteredStaff.length === 0 && <EmptyState icon={Users} title="No staff members match filters" />}
-            </div>
-          </Card>
-        </div>
-
-        <div className="space-y-6">
-          <Card className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white border-none p-6 overflow-hidden relative">
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-4">
-                <PieChartIcon className="w-6 h-6 text-blue-200" />
-                <h3 className="font-bold text-lg">Expense Breakup</h3>
-              </div>
-              <div className="h-48 w-full mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={chartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={40}
-                      outerRadius={65}
-                      paddingAngle={5}
-                      dataKey="amount"
-                    >
-                      {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', color: '#000' }}
-                      formatter={(v: any) => `₹${v.toLocaleString()}`}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="space-y-2 mt-4 text-xs">
-                {chartData.map((d, i) => (
-                  <div key={d.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                      <span className="text-blue-100">{d.name}</span>
+      {/* ── Desktop Table ────────────────────────────────────────────────── */}
+      <div className="hidden lg:block overflow-x-auto pad" style={{ paddingTop: '1rem' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid var(--line)' }}>
+              {['Employee', 'Category', `Status — ${monthLabel}`, 'Net Salary', 'Actions'].map(h => (
+                <th key={h} style={{ padding: '0.6rem 0.75rem', textAlign: h === 'Actions' ? 'right' : 'left', fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filteredStaff.map((staff) => {
+              const salary = salaries.find(s => (s.employeeId === staff.id || (s as any).teacherId === staff.id) && s.month === selectedMonth);
+              if (selectedStatus !== 'all') {
+                const st = salary?.status || 'unrecorded';
+                if (selectedStatus === 'pending' && st === 'paid') return null;
+                if (selectedStatus === 'paid' && st !== 'paid') return null;
+              }
+              const isPaid = salary?.status === 'paid';
+              const initials = staff.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+              return (
+                <tr key={staff.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                  {/* Employee */}
+                  <td style={{ padding: '0.65rem 0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <div style={{
+                        width: '2rem', height: '2rem', borderRadius: '50%',
+                        background: 'var(--cream-2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontWeight: 700, fontSize: '0.75rem', flexShrink: 0, overflow: 'hidden',
+                      }}>
+                        {staff.photoURL
+                          ? <img src={staff.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : initials}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{staff.name}</div>
+                        <div className="tiny muted" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>{(staff as any).role || 'Faculty'}</div>
+                      </div>
                     </div>
-                    <span className="font-bold">₹{d.amount.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-
-          <Card className="border border-blue-100 bg-blue-50/30">
-            <h3 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Payroll Export
-            </h3>
-            <p className="text-xs text-blue-700 mb-4">
-              Export all calculated salary records specifically for {new Date(selectedMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} across all departments.
-            </p>
-            <Button variant="primary" className="w-full" onClick={exportPayroll} icon={Download}>
-              Download CSV
-            </Button>
-          </Card>
-        </div>
+                  </td>
+                  {/* Category */}
+                  <td style={{ padding: '0.65rem 0.75rem' }}>
+                    <span className="chip" style={{ fontSize: '0.7rem' }}>{staff.staffCategory}</span>
+                  </td>
+                  {/* Status */}
+                  <td style={{ padding: '0.65rem 0.75rem' }}>
+                    {!salary ? (
+                      <span className="chip" style={{ fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <AlertCircle className="w-3 h-3" /> Unrecorded
+                      </span>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                        <span
+                          className="chip solid"
+                          style={{
+                            fontSize: '0.7rem', display: 'inline-block',
+                            background: isPaid ? 'var(--leaf)' : salary.status === 'partially_paid' ? 'var(--accent)' : 'var(--coral)',
+                          }}
+                        >
+                          {salary.status.replace('_', ' ')}
+                        </span>
+                        {salary.paidAmount > 0 && (
+                          <span className="tiny muted">Paid: ₹{salary.paidAmount.toLocaleString('en-IN')}</span>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  {/* Net Salary */}
+                  <td style={{ padding: '0.65rem 0.75rem' }}>
+                    <div className="t-num" style={{ fontWeight: 800 }}>
+                      ₹{(salary ? (salary.netAmount || (salary as any).amount) : staff.baseSalary).toLocaleString('en-IN')}
+                    </div>
+                    <div className="tiny muted">Base: ₹{(staff.baseSalary || 0).toLocaleString('en-IN')}</div>
+                  </td>
+                  {/* Actions */}
+                  <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
+                      {!salary ? (
+                        <Button size="sm" onClick={() => handleOpenCreatePayroll(staff)} icon={Plus}>Generate</Button>
+                      ) : salary.status !== 'paid' ? (
+                        <Button size="sm" variant="primary" onClick={() => handleOpenPayment(salary)} icon={CreditCard}>Pay</Button>
+                      ) : (
+                        <Button size="sm" variant="ghost" className="text-emerald-600" disabled icon={CheckCircle2}>Paid</Button>
+                      )}
+                      <Button size="sm" variant="ghost" className="text-amber-600" onClick={() => handleOpenAdvance(staff)} icon={HandCoins} title="Pay Salary Advance" />
+                      {salary && salary.status === 'pending' && (
+                        <>
+                          <Button size="sm" variant="ghost" className="text-slate-500" onClick={() => handleOpenEditPayroll(salary, staff)} icon={Edit2} title="Edit Payroll" />
+                          <Button size="sm" variant="ghost" className="text-rose-500" onClick={() => { setSalaryToDelete(salary); setIsDeleteConfirmOpen(true); }} icon={Trash2} title="Delete Payroll" />
+                        </>
+                      )}
+                      <Button size="sm" variant="ghost" className="text-slate-500" onClick={() => handleOpenHistory(staff)} icon={History} title="View Payment History" />
+                      {salary && (
+                        <button
+                          className="icon-btn"
+                          title="Download Payslip"
+                          onClick={() => generatePayrollSlip(salary, (staffList.find(s => s.id === salary.employeeId) as any)?.employeeId)}
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {filteredStaff.length === 0 && <EmptyState icon={Users} title="No staff members match filters" />}
       </div>
 
-      </div>
+      {/* ─────────────────────── MODALS (all preserved) ─────────────────── */}
 
       {/* Step 1: Create Payroll Modal */}
       <Modal
@@ -1286,9 +1164,9 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                     <Input value={`₹${processingStaff.baseSalary.toLocaleString()}`} disabled className="bg-slate-50 font-bold" />
                   </FormField>
                   <FormField label="Incentives / Bonus">
-                    <Input 
-                      type="number" 
-                      value={payrollForm.bonus} 
+                    <Input
+                      type="number"
+                      value={payrollForm.bonus}
                       onChange={(e) => setPayrollForm({ ...payrollForm, bonus: Number(e.target.value) })}
                       placeholder="0"
                     />
@@ -1298,41 +1176,41 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-2 pt-4">Deductions</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField label={`EPF (${payrollConfig?.pfRate || 12}%)`}>
-                    <Input 
-                      type="number" 
-                      value={payrollForm.pf} 
+                    <Input
+                      type="number"
+                      value={payrollForm.pf}
                       onChange={(e) => setPayrollForm({ ...payrollForm, pf: Number(e.target.value) })}
                     />
                   </FormField>
                   <FormField label="Tax (P-Tax / TDS)">
-                    <Input 
-                      type="number" 
-                      value={payrollForm.tax} 
+                    <Input
+                      type="number"
+                      value={payrollForm.tax}
                       onChange={(e) => setPayrollForm({ ...payrollForm, tax: Number(e.target.value) })}
                     />
                   </FormField>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField label="Leaves Taken">
-                    <Input 
-                      type="number" 
+                    <Input
+                      type="number"
                       max="31"
-                      value={payrollForm.leaves} 
+                      value={payrollForm.leaves}
                       onChange={(e) => setPayrollForm({ ...payrollForm, leaves: Number(e.target.value) })}
                     />
                   </FormField>
                   <FormField label="Deduction per Day Leave">
-                    <Input 
-                      type="number" 
-                      value={payrollForm.leaveDeductionRate} 
+                    <Input
+                      type="number"
+                      value={payrollForm.leaveDeductionRate}
                       onChange={(e) => setPayrollForm({ ...payrollForm, leaveDeductionRate: Number(e.target.value) })}
                     />
                   </FormField>
                 </div>
                 <FormField label="Misc Deductions">
-                  <Input 
-                    type="number" 
-                    value={payrollForm.otherDeductions} 
+                  <Input
+                    type="number"
+                    value={payrollForm.otherDeductions}
                     onChange={(e) => setPayrollForm({ ...payrollForm, otherDeductions: Number(e.target.value) })}
                   />
                 </FormField>
@@ -1355,9 +1233,9 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                         <span className="text-slate-400">Total Deductions</span>
                         <span className="text-rose-400 font-mono">
                           - ₹{(
-                            payrollForm.pf + 
-                            payrollForm.tax + 
-                            payrollForm.otherDeductions + 
+                            payrollForm.pf +
+                            payrollForm.tax +
+                            payrollForm.otherDeductions +
                             (payrollForm.leaves * payrollForm.leaveDeductionRate)
                           ).toLocaleString()}
                         </span>
@@ -1425,9 +1303,9 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField label="Amount to Pay">
-                <Input 
-                  type="number" 
-                  value={paymentData.paidAmount} 
+                <Input
+                  type="number"
+                  value={paymentData.paidAmount}
                   onChange={(e) => setPaymentData({ ...paymentData, paidAmount: Number(e.target.value) })}
                   className="font-bold text-lg"
                 />
@@ -1485,7 +1363,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
       >
         <div className="space-y-8 min-h-[500px]">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <Card className="p-6 overflow-hidden">
+            <div className="card p-6 overflow-hidden">
               <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
                 <PieChartIcon className="w-5 h-5 text-blue-500" />
                 Distribution by Category
@@ -1505,7 +1383,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </Card>
+            </div>
 
             <div className="space-y-4">
               <h3 className="font-bold text-slate-900 flex items-center gap-2">
@@ -1514,7 +1392,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
               </h3>
               <div className="space-y-3">
                 {salaries.filter(s => s.paidAmount > 0).slice(0, 6).map(s => (
-                  <div key={s.id} className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center justify-between hover:border-blue-200 transition-colors">
+                  <div key={s.id} className="card p-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <Avatar name={s.employeeName} size="sm" />
                       <div>
@@ -1522,7 +1400,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                         <p className="text-[10px] text-slate-400 capitalize font-medium">{fmtMonth(s.month)} • {s.employeeRole}</p>
                       </div>
                     </div>
-                    <p className="font-black text-emerald-600">₹{s.paidAmount.toLocaleString()}</p>
+                    <p className="font-black" style={{ color: 'var(--leaf)' }}>₹{s.paidAmount.toLocaleString()}</p>
                   </div>
                 ))}
                 {salaries.filter(s => s.paidAmount > 0).length === 0 && (
@@ -1565,22 +1443,20 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
             <div className="space-y-6">
               {/* Summary cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Total Earned (All Months)</p>
-                  <p className="text-2xl font-black text-slate-900 mt-2">Rs. {totalEarned.toLocaleString('en-IN')}</p>
-                  <p className="text-[11px] text-slate-400 mt-1">{employeeSalaries.length} payroll record(s)</p>
+                <div className="card" style={{ padding: '1rem' }}>
+                  <div className="eyebrow">Total Earned (All Months)</div>
+                  <div className="t-num" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '0.5rem' }}>Rs. {totalEarned.toLocaleString('en-IN')}</div>
+                  <div className="tiny muted mt-1">{employeeSalaries.length} payroll record(s)</div>
                 </div>
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">Total Disbursed</p>
-                  <p className="text-2xl font-black text-emerald-700 mt-2">Rs. {totalPaid.toLocaleString('en-IN')}</p>
-                  <p className="text-[11px] text-emerald-600 mt-1">{allPayments.length} payment(s) made</p>
+                <div className="card" style={{ padding: '1rem', borderColor: 'var(--leaf)' }}>
+                  <div className="eyebrow" style={{ color: 'var(--leaf)' }}>Total Disbursed</div>
+                  <div className="t-num" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '0.5rem', color: 'var(--leaf)' }}>Rs. {totalPaid.toLocaleString('en-IN')}</div>
+                  <div className="tiny muted mt-1">{allPayments.length} payment(s) made</div>
                 </div>
-                <div className={`rounded-2xl border p-4 ${totalDue > 0 ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-slate-50'}`}>
-                  <p className={`text-[10px] font-bold uppercase tracking-widest ${totalDue > 0 ? 'text-rose-700' : 'text-slate-500'}`}>Outstanding Balance</p>
-                  <p className={`text-2xl font-black mt-2 ${totalDue > 0 ? 'text-rose-700' : 'text-slate-900'}`}>Rs. {totalDue.toLocaleString('en-IN')}</p>
-                  <p className={`text-[11px] mt-1 ${totalDue > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
-                    {totalDue > 0 ? 'Pending disbursement' : 'All settled'}
-                  </p>
+                <div className="card" style={{ padding: '1rem', borderColor: totalDue > 0 ? 'var(--coral)' : 'var(--line)' }}>
+                  <div className="eyebrow" style={{ color: totalDue > 0 ? 'var(--coral)' : undefined }}>Outstanding Balance</div>
+                  <div className="t-num" style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '0.5rem', color: totalDue > 0 ? 'var(--coral)' : 'var(--ink)' }}>Rs. {totalDue.toLocaleString('en-IN')}</div>
+                  <div className="tiny muted mt-1">{totalDue > 0 ? 'Pending disbursement' : 'All settled'}</div>
                 </div>
               </div>
 
@@ -1652,7 +1528,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Monthly Payroll Breakdown</h4>
                   {employeeSalaries.map((s) => {
-                    const monthLabel = fmtMonth(s.month);
+                    const mLabel = fmtMonth(s.month);
                     const history = s.paymentHistory || [];
                     const statusColor =
                       s.status === 'paid' ? 'success' :
@@ -1665,7 +1541,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
                           <div className="flex items-center gap-3">
                             <Calendar className="w-4 h-4 text-slate-400" />
                             <div>
-                              <p className="text-sm font-bold text-slate-900 leading-none">{monthLabel}</p>
+                              <p className="text-sm font-bold text-slate-900 leading-none">{mLabel}</p>
                               <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-bold">
                                 Net Rs. {(s.netAmount || 0).toLocaleString('en-IN')} · Paid Rs. {(s.paidAmount || 0).toLocaleString('en-IN')} · Balance Rs. {(s.balanceAmount || 0).toLocaleString('en-IN')}
                               </p>
@@ -1861,4 +1737,3 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
     </>
   );
 }
-

@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { UserProfile, Teacher, Class } from '../../types';
-import { GraduationCap, Users, Layers, BookOpen } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { PageHeader, Card, Badge, EmptyState, Spinner } from '../../components/ui';
+import { GraduationCap, Users, Layers } from 'lucide-react';
+import { Spinner } from '../../components/ui';
 
 interface MyClassesProps {
   user: UserProfile;
@@ -21,7 +20,7 @@ export default function MyClasses({ user }: MyClassesProps) {
       try {
         const teacherId = user.teacherId || user.uid;
         const teacherDoc = await getDoc(doc(db, 'teachers', teacherId));
-        
+
         if (teacherDoc.exists()) {
           const tData = { id: teacherDoc.id, ...teacherDoc.data() } as Teacher;
           setTeacherData(tData);
@@ -48,79 +47,115 @@ export default function MyClasses({ user }: MyClassesProps) {
   }, [user.uid, user.teacherId]);
 
   return (
-    <div className="space-y-6">
-      {/* Mobile compact header */}
-      <div className="md:hidden -mx-4 -mt-4 bg-gradient-to-br from-blue-600 to-indigo-700 px-4 pt-5 pb-5 text-white">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100">Assigned Classes</p>
-        <h1 className="text-xl font-bold mt-0.5">My Classes</h1>
-        <p className="text-xs text-blue-100 mt-1">{classes.length} class{classes.length !== 1 ? 'es' : ''} assigned</p>
+    <>
+      <div className="topbar">
+        <div className="pad">
+          <p className="eyebrow">{classes.length} assigned</p>
+          <h1 className="display">My Classes</h1>
+        </div>
       </div>
 
-      <div className="hidden md:block">
-      <PageHeader
-        title="My Assigned Classes"
-        subtitle="Manage and view details of classes you are assigned to."
-        icon={GraduationCap}
-        iconColor="gradient-blue"
-      />
-      </div>
-
-      {loading ? (
-        <Spinner />
-      ) : classes.length === 0 ? (
-        <EmptyState
-          icon={GraduationCap}
-          title="No classes assigned"
-          description="You haven't been assigned to any classes yet. Please contact the administrator."
-        />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          <AnimatePresence mode="popLayout">
-            {classes.map((cls, i) => (
-              <motion.div 
-                layout 
-                key={cls.id} 
-                initial={{ opacity: 0, y: 16 }} 
-                animate={{ opacity: 1, y: 0 }} 
-                transition={{ delay: i * 0.05 }}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-6 hover:shadow-md transition-all group"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shadow-sm group-hover:scale-110 transition-transform">
-                    <GraduationCap className="w-6 h-6" />
+      <div className="pad" style={{ paddingBottom: '2rem' }}>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Spinner />
+          </div>
+        ) : classes.length === 0 ? (
+          <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+            <GraduationCap className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--ink-3)' }} />
+            <p style={{ fontWeight: 700, color: 'var(--ink)' }}>No classes assigned</p>
+            <p className="muted" style={{ fontSize: '0.8125rem', marginTop: '0.25rem' }}>
+              Contact the administrator to get assigned to classes.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.875rem' }}>
+            {classes.map((cls) => (
+              <div key={cls.id} className="card" style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: '0.75rem',
+                      background: 'var(--ink)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <GraduationCap className="w-5 h-5" style={{ color: 'var(--accent)' }} />
                   </div>
                   {teacherData?.classTeacherOf?.classId === cls.id && (
-                    <Badge variant="success">Class Teacher</Badge>
+                    <span
+                      className="chip solid"
+                      style={{ fontSize: '0.65rem' }}
+                    >
+                      Class Teacher
+                    </span>
                   )}
                 </div>
-                
-                <h3 className="text-xl font-bold text-slate-900">Class {cls.name}</h3>
-                <div className="flex items-center gap-2 mt-1 mb-4 text-slate-500">
-                  <Layers className="w-4 h-4" />
-                  <span className="text-sm font-medium">{cls.sections?.length || 0} Sections</span>
+
+                <p style={{ fontSize: '1.125rem', fontWeight: 800, color: 'var(--ink)' }}>
+                  Class {cls.name}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: '0.25rem', marginBottom: '1rem' }}>
+                  <Layers className="w-3.5 h-3.5" style={{ color: 'var(--ink-3)' }} />
+                  <span className="muted" style={{ fontSize: '0.8125rem' }}>
+                    {cls.sections?.length || 0} Section{(cls.sections?.length || 0) !== 1 ? 's' : ''}
+                  </span>
                 </div>
 
-                <div className="space-y-2">
+                <div className="stack" style={{ gap: '0.375rem' }}>
                   {cls.sections?.map((sec, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-transparent hover:border-blue-100 hover:bg-white hover:shadow-sm transition-all group/sec text-sm">
-                      <div className="flex items-center gap-3">
-                        <span className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-xs font-bold text-blue-600 shadow-sm group-hover/sec:scale-110 transition-transform">
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.625rem 0.75rem',
+                        background: 'var(--cream-2)',
+                        borderRadius: '0.625rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                        <span
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: '0.375rem',
+                            background: 'var(--paper)',
+                            border: '1px solid var(--line)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.7rem',
+                            fontWeight: 800,
+                            color: 'var(--ink)',
+                          }}
+                        >
                           {sec.name || 'A'}
                         </span>
-                        <span className="font-semibold text-slate-700">Section {sec.name || 'A'}</span>
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--ink-2)' }}>
+                          Section {sec.name || 'A'}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-slate-400">
-                        <Users className="w-4 h-4" />
-                        <span className="font-medium">{sec.capacity} Students</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Users className="w-3.5 h-3.5" style={{ color: 'var(--ink-3)' }} />
+                        <span className="muted" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                          {sec.capacity}
+                        </span>
                       </div>
                     </div>
                   ))}
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </AnimatePresence>
-        </div>
-      )}
-    </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }

@@ -3,43 +3,25 @@ import { db } from '../../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { RolePermissions, ModulePermission, UserRole, UserProfile } from '../../types';
 import {
-  ShieldCheck,
-  Eye,
-  Edit3,
-  Save,
-  RefreshCcw,
-  Users,
-  GraduationCap,
-  BookOpen,
-  Calendar,
-  ClipboardCheck,
-  FileText,
-  Megaphone,
-  History,
-  LayoutGrid,
-  Briefcase,
-  UserPlus,
-  Home,
-  Clock,
-  CheckSquare,
-  Shield,
+  ShieldCheck, Eye, Edit3, Save, RefreshCcw, Users, GraduationCap, BookOpen,
+  Calendar, ClipboardCheck, FileText, Megaphone, History, LayoutGrid, Briefcase,
+  UserPlus, Home, Clock, CheckSquare, Shield,
 } from 'lucide-react';
-import { motion } from 'motion/react';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 
 const MODULES = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
-  { id: 'students', label: 'Students Management', icon: Users },
-  { id: 'teachers', label: 'Faculty Management', icon: Briefcase },
-  { id: 'staff', label: 'Staff Management', icon: Shield },
+  { id: 'students', label: 'Students', icon: Users },
+  { id: 'teachers', label: 'Faculty', icon: Briefcase },
+  { id: 'staff', label: 'Staff', icon: Shield },
   { id: 'classes', label: 'Classes', icon: GraduationCap },
   { id: 'subjects', label: 'Subjects', icon: BookOpen },
   { id: 'houses', label: 'Houses', icon: Home },
   { id: 'admissions', label: 'Admissions', icon: UserPlus },
   { id: 'exams', label: 'Exams', icon: FileText },
   { id: 'timetable', label: 'Timetable', icon: Clock },
-  { id: 'leaves', label: 'Leave Requests', icon: ClipboardCheck },
+  { id: 'leaves', label: 'Leaves', icon: ClipboardCheck },
   { id: 'grading-scales', label: 'Grading Scales', icon: CheckSquare },
   { id: 'calendar', label: 'Calendar', icon: Calendar },
   { id: 'diary', label: 'Class Diary', icon: BookOpen },
@@ -52,7 +34,7 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: 'office_staff', label: 'Office Staff' },
   { value: 'teacher', label: 'Teacher' },
   { value: 'accounts', label: 'Accountant' },
-  { value: 'grievance_officer', label: 'Grievance Officer' },
+  { value: 'grievance_officer', label: 'Grievance' },
 ];
 
 export default function RolePermissionsManager({ user }: { user: UserProfile }) {
@@ -62,33 +44,22 @@ export default function RolePermissionsManager({ user }: { user: UserProfile }) 
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
 
-  useEffect(() => {
-    fetchPermissions();
-  }, [targetRole]);
+  useEffect(() => { fetchPermissions(); }, [targetRole]);
 
   const fetchPermissions = async () => {
     setLoading(true);
     try {
       const docRef = doc(db, 'rolePermissions', targetRole);
       const docSnap = await getDoc(docRef);
-
       if (docSnap.exists()) {
         setPermissions(docSnap.data() as RolePermissions);
       } else {
         const defaultModules: Record<string, ModulePermission> = {};
         MODULES.forEach(md => {
-          let readOnly = targetRole === 'principal';
-          if (targetRole === 'principal' && md.id === 'leaves') {
-            readOnly = false;
-          }
+          const readOnly = targetRole === 'principal' && md.id !== 'leaves';
           defaultModules[md.id] = { enabled: true, readOnly };
         });
-        const initialData: RolePermissions = {
-          id: targetRole,
-          modules: defaultModules,
-          updatedAt: new Date().toISOString()
-        };
-        setPermissions(initialData);
+        setPermissions({ id: targetRole, modules: defaultModules, updatedAt: new Date().toISOString() });
       }
     } catch (error) {
       console.error('Error fetching permissions:', error);
@@ -100,16 +71,12 @@ export default function RolePermissionsManager({ user }: { user: UserProfile }) 
 
   const handleToggleModule = (moduleId: string, field: keyof ModulePermission) => {
     if (!permissions) return;
-
     setPermissions({
       ...permissions,
       modules: {
         ...permissions.modules,
-        [moduleId]: {
-          ...permissions.modules[moduleId],
-          [field]: !permissions.modules[moduleId][field]
-        }
-      }
+        [moduleId]: { ...permissions.modules[moduleId], [field]: !permissions.modules[moduleId][field] },
+      },
     });
   };
 
@@ -117,27 +84,10 @@ export default function RolePermissionsManager({ user }: { user: UserProfile }) 
     if (!permissions) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'rolePermissions', targetRole), {
-        ...permissions,
-        updatedAt: new Date().toISOString()
-      });
-      const enabledModules = Object.entries(permissions.modules)
-        .filter(([_, m]) => m.enabled)
-        .map(([id]) => id);
-      const readOnlyModules = Object.entries(permissions.modules)
-        .filter(([_, m]) => m.enabled && m.readOnly)
-        .map(([id]) => id);
-      logActivity(
-        user,
-        'Role Permissions Updated',
-        'Super Admin',
-        `Updated permissions for role: ${targetRole}`,
-        {
-          role: targetRole,
-          enabledCount: enabledModules.length,
-          readOnlyCount: readOnlyModules.length,
-        }
-      );
+      await setDoc(doc(db, 'rolePermissions', targetRole), { ...permissions, updatedAt: new Date().toISOString() });
+      const enabledModules = Object.entries(permissions.modules).filter(([_, m]) => m.enabled).map(([id]) => id);
+      const readOnlyModules = Object.entries(permissions.modules).filter(([_, m]) => m.enabled && m.readOnly).map(([id]) => id);
+      logActivity(user, 'Role Permissions Updated', 'Super Admin', `Updated permissions for role: ${targetRole}`, { role: targetRole, enabledCount: enabledModules.length, readOnlyCount: readOnlyModules.length });
       showToast('Permissions updated successfully', 'success');
     } catch (error) {
       console.error('Error saving permissions:', error);
@@ -148,201 +98,104 @@ export default function RolePermissionsManager({ user }: { user: UserProfile }) 
   };
 
   return (
-    <>
-      {/* Mobile UI */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Role Permissions</h1>
-          <p className="text-xs text-indigo-200 mt-0.5">Configure module-level access control</p>
+    <div className="pb-2">
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">Admin</div>
+          <h1>Permissions</h1>
         </div>
+        <button className="btn accent" onClick={savePermissions} disabled={saving || loading} style={{ gap: 8 }}>
+          {saving ? <RefreshCcw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={14} />}
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
 
-        <div className="px-4 pt-3 pb-2 bg-white border-b border-slate-100">
-          <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] pb-1">
-            {ROLES.map(r => (
-              <button
-                key={r.value}
-                onClick={() => setTargetRole(r.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all active:scale-95 ${targetRole === r.value ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}
-              >
-                {r.label}
-              </button>
-            ))}
+      {/* Role selector */}
+      <div className="hscroll" style={{ marginTop: 8 }}>
+        {ROLES.map(r => (
+          <button
+            key={r.value}
+            className={'chip' + (targetRole === r.value ? ' solid' : '')}
+            onClick={() => setTargetRole(r.value)}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="pad" style={{ marginTop: 14 }}>
+        {loading ? (
+          <div className="card muted small" style={{ textAlign: 'center', padding: 32 }}>
+            <RefreshCcw size={20} style={{ margin: '0 auto', animation: 'spin 1s linear infinite' }} />
           </div>
-        </div>
-
-        <div className="px-4 pt-3 pb-24 space-y-2">
-          {loading ? (
-            <div className="flex justify-center py-12">
-              <RefreshCcw className="w-6 h-6 text-indigo-500 animate-spin" />
-            </div>
-          ) : (
-            MODULES.map((module) => {
-              const config = permissions?.modules[module.id] || { enabled: true, readOnly: false };
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+            {MODULES.map(module => {
+              const cfg = permissions?.modules[module.id] || { enabled: true, readOnly: false };
               return (
                 <div
                   key={module.id}
-                  className={`bg-white rounded-2xl border shadow-sm p-4 transition-all ${config.enabled ? 'border-slate-100' : 'border-slate-200 opacity-60'}`}
+                  className="card"
+                  style={{ padding: 14, opacity: cfg.enabled ? 1 : 0.5, transition: 'opacity 0.15s' }}
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${config.enabled ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>
-                        <module.icon className="w-4 h-4" />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--cream-2)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                        <module.icon size={16} />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-900">{module.label}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">{module.id}</p>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{module.label}</div>
+                        <div className="mono tiny muted">{module.id}</div>
                       </div>
                     </div>
+                    {/* Enable toggle */}
                     <div
                       onClick={() => handleToggleModule(module.id, 'enabled')}
-                      className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${config.enabled ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                      style={{ width: 38, height: 22, borderRadius: 999, background: cfg.enabled ? 'var(--ink)' : 'var(--line)', position: 'relative', cursor: 'pointer', transition: 'background 0.15s', flexShrink: 0 }}
                     >
-                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${config.enabled ? 'left-5' : 'left-1'}`} />
+                      <div style={{ position: 'absolute', top: 3, left: cfg.enabled ? 19 : 3, width: 16, height: 16, borderRadius: 999, background: 'var(--cream)', transition: 'left 0.15s' }} />
                     </div>
                   </div>
 
                   <button
-                    disabled={!config.enabled}
+                    disabled={!cfg.enabled}
                     onClick={() => handleToggleModule(module.id, 'readOnly')}
-                    className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      !config.enabled
-                        ? 'bg-slate-100 text-slate-300 pointer-events-none'
-                        : config.readOnly
-                          ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                          : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                    }`}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '6px 0',
+                      borderRadius: 8,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      cursor: cfg.enabled ? 'pointer' : 'not-allowed',
+                      border: '1px solid',
+                      background: !cfg.enabled ? 'var(--cream-2)' : cfg.readOnly ? 'oklch(0.97 0.05 105)' : 'oklch(0.95 0.05 145)',
+                      borderColor: !cfg.enabled ? 'var(--line)' : cfg.readOnly ? 'var(--accent)' : 'var(--leaf)',
+                      color: !cfg.enabled ? 'var(--ink-3)' : cfg.readOnly ? 'oklch(0.45 0.12 105)' : 'var(--leaf)',
+                    }}
                   >
-                    {config.readOnly ? <Eye className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
-                    {config.readOnly ? 'VIEW ONLY' : 'FULL ACCESS'}
+                    {cfg.readOnly ? <Eye size={12} /> : <Edit3 size={12} />}
+                    {cfg.readOnly ? 'View Only' : 'Full Access'}
                   </button>
                 </div>
-              );
-            })
-          )}
-
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
-            <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-[10px] text-amber-800 leading-relaxed">
-              These permissions apply immediately to the {targetRole.replace('_', ' ')} portal.
-            </p>
-          </div>
-        </div>
-
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 safe-area-bottom">
-          <button
-            onClick={savePermissions}
-            disabled={saving || loading}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-sm active:scale-95 transition-transform disabled:opacity-50"
-          >
-            {saving ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? 'Saving…' : 'Save Changes'}
-          </button>
-        </div>
-      </div>
-
-      {/* Desktop UI */}
-      <div className="hidden md:block space-y-6">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Role Permissions</h1>
-            <p className="text-slate-500">Configure module-level access and read-only restrictions.</p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <select
-              value={targetRole}
-              onChange={(e) => setTargetRole(e.target.value as UserRole)}
-              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-            >
-              <option value="principal">Principal</option>
-              <option value="office_staff">Office Staff</option>
-              <option value="teacher">Teacher</option>
-              <option value="accounts">Accountant</option>
-            </select>
-
-            <button
-              onClick={savePermissions}
-              disabled={saving || loading}
-              className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg shadow-indigo-200"
-            >
-              {saving ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </header>
-
-        {loading ? (
-          <div className="flex items-center justify-center h-64 bg-white rounded-2xl shadow-sm border border-slate-100">
-            <RefreshCcw className="w-8 h-8 text-indigo-500 animate-spin" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {MODULES.map((module) => {
-              const config = permissions?.modules[module.id] || { enabled: true, readOnly: false };
-              return (
-                <motion.div
-                  key={module.id}
-                  layout
-                  className={`p-5 rounded-2xl border transition-all ${
-                    config.enabled
-                      ? 'bg-white border-slate-100 shadow-sm'
-                      : 'bg-slate-50 border-slate-200 opacity-60'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2.5 rounded-xl ${config.enabled ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 text-slate-500'}`}>
-                        <module.icon className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-slate-900">{module.label}</h3>
-                        <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">ID: {module.id}</p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => handleToggleModule(module.id, 'enabled')}
-                      className={`w-10 h-6 rounded-full relative transition-colors ${
-                        config.enabled ? 'bg-indigo-600' : 'bg-slate-300'
-                      }`}
-                    >
-                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
-                        config.enabled ? 'left-5' : 'left-1'
-                      }`} />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-4 pt-4 border-t border-slate-50">
-                    <button
-                      disabled={!config.enabled}
-                      onClick={() => handleToggleModule(module.id, 'readOnly')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${
-                        !config.enabled
-                          ? 'bg-slate-100 text-slate-300 pointer-events-none'
-                          : config.readOnly
-                            ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                            : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                      }`}
-                    >
-                      {config.readOnly ? <Eye className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
-                      {config.readOnly ? 'VIEW ONLY' : 'FULL ACCESS'}
-                    </button>
-                  </div>
-                </motion.div>
               );
             })}
           </div>
         )}
 
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
-          <ShieldCheck className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-800">
-            <p className="font-bold mb-1">Important Note</p>
-            <p>These permissions apply immediately to the {targetRole.replace('_', ' ')} portal. Existing Principal access has been set to "Read Only" by default per your requirements. You can toggle "Full Access" for specific modules as needed.</p>
-          </div>
+        <div className="card" style={{ marginTop: 12, padding: '12px 14px', background: 'oklch(0.98 0.04 80)', border: '1px solid oklch(0.88 0.08 80)', display: 'flex', gap: 10 }}>
+          <ShieldCheck size={16} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 1 }} />
+          <span className="small" style={{ color: 'oklch(0.35 0.08 80)' }}>
+            Permissions apply immediately to the {targetRole.replace('_', ' ')} portal.
+          </span>
         </div>
       </div>
-    </>
+      <div style={{ height: 16 }} />
+    </div>
   );
 }

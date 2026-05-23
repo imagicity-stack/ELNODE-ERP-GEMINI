@@ -28,7 +28,6 @@ import { fmtDate } from '../../lib/utils';
 import { saveText, openExternalUrl } from '../../lib/download';
 import Papa from 'papaparse';
 import {
-  PageHeader,
   Card,
   Badge,
   Button,
@@ -290,38 +289,32 @@ export default function PaymentHistory({ user }: { user: UserProfile }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Payment History"
-        subtitle="Complete record of all fee transactions with discount & breakdown details"
-        icon={History}
-        iconColor="gradient-amber"
-        actions={
-          <div className="flex gap-3">
-            <Button variant="primary" icon={Download} onClick={handleExport} disabled={!filteredPayments.length}>
-              Export CSV
-            </Button>
-          </div>
-        }
-      />
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">Accounts</div>
+          <h1>Payment History</h1>
+        </div>
+        <div>
+          <Button variant="primary" icon={Download} onClick={handleExport} disabled={!filteredPayments.length}>
+            Export CSV
+          </Button>
+        </div>
+      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Today's Collection", value: `₹${todayTotal.toLocaleString('en-IN')}`, sub: `${payments.filter(p => p.date?.startsWith(todayStr)).length} txns`, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'This Month', value: `₹${monthTotal.toLocaleString('en-IN')}`, sub: `${payments.filter(p => p.date?.startsWith(monthPrefix)).length} txns`, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'Total Payments', value: payments.length.toLocaleString('en-IN'), sub: 'all time', color: 'text-slate-700', bg: 'bg-slate-50' },
-          { label: 'Discounts Given', value: `₹${totalDiscount.toLocaleString('en-IN')}`, sub: 'across all requests', color: 'text-violet-600', bg: 'bg-violet-50' },
+          { label: "Today's Collection", value: `₹${todayTotal.toLocaleString('en-IN')}`, sub: `${payments.filter(p => p.date?.startsWith(todayStr)).length} txns` },
+          { label: 'This Month', value: `₹${monthTotal.toLocaleString('en-IN')}`, sub: `${payments.filter(p => p.date?.startsWith(monthPrefix)).length} txns` },
+          { label: 'Total Payments', value: payments.length.toLocaleString('en-IN'), sub: 'all time' },
+          { label: 'Discounts Given', value: `₹${totalDiscount.toLocaleString('en-IN')}`, sub: 'across all requests' },
         ].map(s => (
-          <Card key={s.label} className="p-4 flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${s.bg}`}>
-              <IndianRupee className={`w-5 h-5 ${s.color}`} />
-            </div>
-            <div>
-              <p className={`text-lg font-black ${s.color}`}>{s.value}</p>
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{s.label}</p>
-              <p className="text-[10px] text-slate-400">{s.sub}</p>
-            </div>
-          </Card>
+          <div key={s.label} className="card" style={{ padding: '1rem 1.25rem' }}>
+            <div className="eyebrow">{s.label}</div>
+            <div className="t-num" style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: '0.25rem' }}>{s.value}</div>
+            <div className="tiny muted" style={{ marginTop: '0.15rem' }}>{s.sub}</div>
+          </div>
         ))}
       </div>
 

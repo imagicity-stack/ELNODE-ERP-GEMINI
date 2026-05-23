@@ -1,12 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { Plus, GraduationCap, Trash2, Edit2, Users, Layers, ChevronRight } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Search, Plus, Trash2, Edit2, Users } from 'lucide-react';
 import { Class, Student, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
 import { usePermissions } from '../../hooks/usePermissions';
-import { PageHeader, Button, IconButton, Modal, ConfirmModal, SearchInput, FormField, Input, EmptyState, Avatar } from '../../components/ui';
+import { Modal, ConfirmModal, FormField, Input, Button, Avatar } from '../../components/ui';
 
 interface ViewingSection {
   classId: string;
@@ -24,19 +23,15 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingClass, setEditingClass] = useState<Class | null>(null);
   const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [search, setSearch] = useState('');
   const [viewingSection, setViewingSection] = useState<ViewingSection | null>(null);
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('classes');
 
-  // Students store their section as `sec.name || 'A'` (see StudentManagement),
-  // so a single-section class (sec.name === '') stores 'A'. Normalize both
-  // sides with `|| 'A'` so the roster matches regardless of how it was saved.
   const countStudents = (classId: string, section: string) =>
     students.filter(s => s.classId === classId && (s.section || 'A') === (section || 'A')).length;
 
-  // Roster for the section currently being viewed, sorted by name
   const rosterStudents = useMemo(() => {
     if (!viewingSection) return [];
     return students
@@ -81,10 +76,7 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
     const newCount = Math.max(1, count);
     const newSections = Array.from({ length: newCount }, (_, i) => {
       const name = newCount > 1 ? String.fromCharCode(65 + i) : '';
-      return { 
-        name, 
-        capacity: formData.sections[i]?.capacity || 40 
-      };
+      return { name, capacity: formData.sections[i]?.capacity || 40 };
     });
     setFormData({ ...formData, sectionCount: newCount, sections: newSections });
   };
@@ -98,7 +90,6 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
         sections: formData.sections,
         updatedAt: new Date().toISOString(),
       };
-
       if (isEditMode && editingClass) {
         await updateDoc(doc(db, 'classes', editingClass.id), classData);
         logActivity(user, 'Class Updated', 'Super Admin', `Updated class "${formData.name}" with ${formData.sections.length} section(s)`, { classId: editingClass.id, name: formData.name });
@@ -121,11 +112,7 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
   const handleEdit = (cls: Class) => {
     setEditingClass(cls);
     setIsEditMode(true);
-    setFormData({
-      name: cls.name,
-      sectionCount: cls.sections.length,
-      sections: cls.sections,
-    });
+    setFormData({ name: cls.name, sectionCount: cls.sections.length, sections: cls.sections });
     setIsModalOpen(true);
   };
 
@@ -148,167 +135,144 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
     }
   };
 
-  const filteredClasses = classes.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredClasses = classes.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const openAdd = () => { setIsEditMode(false); setEditingClass(null); setFormData({ name: '', sectionCount: 1, sections: [{ name: '', capacity: 40 }] }); setIsModalOpen(true); };
+  const openAdd = () => {
+    setIsEditMode(false);
+    setEditingClass(null);
+    setFormData({ name: '', sectionCount: 1, sections: [{ name: '', capacity: 40 }] });
+    setIsModalOpen(true);
+  };
 
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Classes</h1>
-          <p className="text-xs text-indigo-100 mt-0.5">{classes.length} classes · {classes.reduce((sum, c) => sum + (c.sections?.length || 0), 0)} sections</p>
+      <div className="pad stack">
+        {/* Topbar */}
+        <div className="topbar">
+          <div>
+            <div className="eyebrow">{classes.length} {classes.length === 1 ? 'class' : 'classes'}</div>
+            <h1>Classes</h1>
+          </div>
+          <div>
+            {!readOnly && (
+              <button className="btn accent" onClick={openAdd}>
+                <Plus size={15} style={{ marginRight: 6 }} />
+                Add Class
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="card flex" style={{ gap: 10, padding: '10px 14px', alignItems: 'center' }}>
+          <Search size={16} className="muted" style={{ flexShrink: 0 }} />
           <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search classes..."
-            className="mt-3 w-full px-4 py-2.5 rounded-xl bg-white/15 backdrop-blur border border-white/20 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search classes…"
+            style={{ border: 0, outline: 'none', background: 'transparent', flex: 1, fontSize: 14, fontFamily: 'var(--body)', color: 'var(--ink)' }}
           />
         </div>
 
-        <div className="px-4 pt-4 space-y-2.5">
-          {filteredClasses.length === 0 ? (
-            <div className="py-12 text-center">
-              <GraduationCap className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No classes</p>
-            </div>
-          ) : (
-            filteredClasses.map((cls) => (
-              <div key={cls.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center shrink-0">
-                    <GraduationCap className="w-5 h-5 text-white" />
+        {/* Grid */}
+        {filteredClasses.length === 0 ? (
+          <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+            <p className="muted">No classes found.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+            {filteredClasses.map(cls => {
+              const totalStudents = (cls.sections || []).reduce((sum, sec) => sum + countStudents(cls.id, sec.name), 0);
+              const totalCapacity = (cls.sections || []).reduce((sum, sec) => sum + (sec.capacity || 0), 0);
+              return (
+                <div key={cls.id} className="card" style={{ padding: 20 }}>
+                  {/* Header row */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <div>
+                      <div className="eyebrow" style={{ marginBottom: 2 }}>
+                        {(cls.sections || []).length} {(cls.sections || []).length === 1 ? 'section' : 'sections'}
+                      </div>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.1 }}>
+                        Class {cls.name}
+                      </div>
+                    </div>
+                    {!readOnly && (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="icon-btn" onClick={() => handleEdit(cls)} title="Edit">
+                          <Edit2 size={14} />
+                        </button>
+                        <button className="icon-btn" onClick={() => handleDelete(cls.id)} title="Delete" style={{ color: 'var(--coral)' }}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-900">Class {cls.name}</p>
-                    <p className="text-[11px] text-slate-500">{cls.sections?.length || 0} sections · {(cls.sections || []).reduce((s, x) => s + (x.capacity || 0), 0)} seats</p>
+
+                  {/* Student count */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                    <Users size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, color: 'var(--ink)' }}>
+                      <strong>{totalStudents}</strong>
+                      <span className="muted"> / {totalCapacity} students</span>
+                    </span>
                   </div>
-                  {!readOnly && (
-                    <div className="flex gap-1 shrink-0">
-                      <button onClick={() => handleEdit(cls)} className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center active:scale-90 transition-transform">
-                        <Edit2 className="w-3.5 h-3.5 text-slate-600" />
-                      </button>
-                      <button onClick={() => handleDelete(cls.id)} className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center active:scale-90 transition-transform">
-                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                      </button>
+
+                  {/* Section chips */}
+                  {(cls.sections || []).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {cls.sections.map((sec, idx) => {
+                        const filled = countStudents(cls.id, sec.name);
+                        return (
+                          <button
+                            key={idx}
+                            className="chip"
+                            onClick={() => openRoster(cls, sec.name, sec.capacity)}
+                            style={{ cursor: 'pointer', fontSize: 12 }}
+                          >
+                            {sec.name || 'A'} · {filled}/{sec.capacity}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-                {cls.sections && cls.sections.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {cls.sections.map((sec, idx) => {
-                      const filled = countStudents(cls.id, sec.name);
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => openRoster(cls, sec.name, sec.capacity)}
-                          className="text-[9px] font-bold text-violet-700 bg-violet-50 px-2 py-1 rounded-md active:scale-95 transition-transform"
-                        >
-                          {sec.name || 'A'} · {filled}/{sec.capacity}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-
-        {!readOnly && (
-          <button
-            onClick={openAdd}
-            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-          >
-            <Plus className="w-6 h-6" strokeWidth={2.5} />
-          </button>
+              );
+            })}
+          </div>
         )}
       </div>
 
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-6">
-      <PageHeader title="Academic Classes" subtitle="Define grade levels, sections, and capacities" icon={GraduationCap} iconColor="gradient-violet"
-        actions={!readOnly && <Button size="sm" icon={Plus} onClick={openAdd}>New Class</Button>} />
+      {/* Delete confirm */}
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={performDelete}
+        title="Delete Class?"
+        message="This action cannot be undone. All sections in this class will be removed."
+        loading={loading}
+      />
 
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
-        <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search classes..." />
-      </div>
-
-      {filteredClasses.length === 0 ? (
-        <EmptyState icon={GraduationCap} title="No classes found" description="Create your first class to get started" action={<Button size="sm" icon={Plus} onClick={openAdd}>New Class</Button>} />
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          <AnimatePresence mode="popLayout">
-            {filteredClasses.map((cls, i) => (
-              <motion.div layout key={cls.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ delay: i * 0.04 }}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:shadow-md hover:-translate-y-0.5 transition-all group"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 rounded-xl gradient-violet flex items-center justify-center shadow-lg">
-                    <GraduationCap className="w-6 h-6 text-white" />
-                  </div>
-                  {!readOnly && (
-                    <div className="flex gap-1">
-                      <IconButton icon={Edit2} size="sm" onClick={() => handleEdit(cls)} />
-                      <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDelete(cls.id)} />
-                    </div>
-                  )}
-                </div>
-                <h3 className="text-xl font-bold text-slate-900">Class {cls.name}</h3>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <Layers className="w-3.5 h-3.5 text-violet-400" />
-                  <span className="text-xs font-semibold text-violet-600">{cls.sections?.length || 0} Sections</span>
-                </div>
-                <div className="mt-4 pt-4 border-t border-slate-50 space-y-2">
-                  {cls.sections?.map((sec, idx) => {
-                    const filled = countStudents(cls.id, sec.name);
-                    const isFull = filled >= sec.capacity;
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => openRoster(cls, sec.name, sec.capacity)}
-                        className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 rounded-lg hover:bg-violet-50 transition-colors text-left group/sec"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-md bg-white border border-violet-100 flex items-center justify-center text-[10px] font-bold text-violet-600 shadow-sm">{sec.name || 'A'}</span>
-                          <span className="text-xs font-semibold text-slate-600">Section {sec.name || 'A'}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="flex items-center gap-1 text-slate-400">
-                            <Users className="w-3 h-3" />
-                            <span className={`text-xs font-semibold ${isFull ? 'text-rose-500' : 'text-slate-500'}`}>{filled}/{sec.capacity}</span>
-                          </span>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover/sec:text-violet-500 transition-colors" />
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-      )}
-      </div>
-
-      <ConfirmModal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} onConfirm={performDelete}
-        title="Delete Class?" message="This action cannot be undone. All sections in this class will be removed." loading={loading} />
-
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}
-        title={isEditMode ? 'Edit Class' : 'New Class'} subtitle="Define academic structure and section configuration"
+      {/* Add / Edit modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={isEditMode ? 'Edit Class' : 'New Class'}
+        subtitle="Define academic structure and section configuration"
         size="md"
-        footer={<div className="flex justify-end gap-3"><Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button form="class-form" loading={loading}>{isEditMode ? 'Update Class' : 'Create Class'}</Button></div>}
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button form="class-form" loading={loading}>{isEditMode ? 'Update Class' : 'Create Class'}</Button>
+          </div>
+        }
       >
         <form id="class-form" onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <FormField label="Class Name / Grade" required>
-                <Input required placeholder="e.g. 10 or X" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                <Input required placeholder="e.g. 10 or X" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
               </FormField>
               <FormField label="Number of Sections">
                 <div className="flex items-center gap-3">
@@ -327,7 +291,7 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
                     <span className="w-8 h-8 rounded-lg bg-white border border-violet-100 flex items-center justify-center text-xs font-bold text-violet-600 shrink-0">{sec.name || 'A'}</span>
                     <div className="flex-1">
                       <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-1">Capacity</p>
-                      <Input type="number" required value={sec.capacity} onChange={e => { const s = [...formData.sections]; s[idx].capacity = Number(e.target.value); setFormData({...formData, sections: s}); }} />
+                      <Input type="number" required value={sec.capacity} onChange={e => { const s = [...formData.sections]; s[idx].capacity = Number(e.target.value); setFormData({ ...formData, sections: s }); }} />
                     </div>
                   </div>
                 ))}
@@ -337,7 +301,7 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
         </form>
       </Modal>
 
-      {/* ─── Section Roster (students synced from the student list) ────────── */}
+      {/* Section Roster modal */}
       <Modal
         isOpen={!!viewingSection}
         onClose={() => setViewingSection(null)}
@@ -347,7 +311,6 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
       >
         {viewingSection && (
           <div>
-            {/* Capacity bar */}
             <div className="mb-4">
               <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
                 <span>Enrollment</span>
@@ -363,7 +326,6 @@ export default function ClassManagement({ user }: { user: UserProfile }) {
                 />
               </div>
             </div>
-
             {rosterStudents.length === 0 ? (
               <div className="py-10 text-center">
                 <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />

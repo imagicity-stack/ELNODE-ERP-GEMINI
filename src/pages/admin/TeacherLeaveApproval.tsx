@@ -6,11 +6,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  User,
   AlertCircle,
   RotateCcw,
-  ChevronDown,
-  Users,
 } from 'lucide-react';
 import {
   collection,
@@ -23,6 +20,7 @@ import {
   getDoc,
   runTransaction,
   deleteDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import {
@@ -33,34 +31,23 @@ import {
   Timetable,
   TimetableConfig,
 } from '../../types';
-import {
-  Card,
-  Button,
-  Input,
-  Badge,
-  PageHeader,
-  Modal,
-  FormField,
-  Textarea,
-  Select,
-} from '../../components/ui';
+import { Modal, FormField, Button, Select } from '../../components/ui';
 import { useToast } from '../../components/Toast';
-import { format, addDays, parseISO, isWithinInterval, startOfMonth, endOfMonth, isSunday } from 'date-fns';
-import { motion, AnimatePresence } from 'motion/react';
+import { format, addDays, parseISO, startOfMonth, endOfMonth, isSunday } from 'date-fns';
 import { logActivity } from '../../services/activityService';
 import { fmtDate } from '../../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface SubstituteRow {
-  date: string;        // ISO date e.g. '2025-12-01'
+  date: string;
   slotId: string;
   slotLabel: string;
   slotStartTime: string;
   classId: string;
   subjectId: string;
   originalTeacherId: string;
-  substituteTeacherId: string; // '' = TBD
+  substituteTeacherId: string;
   substituteTeacherName: string;
 }
 
@@ -71,101 +58,57 @@ function getDatesInRange(startDate: string, endDate: string): string[] {
   let current = parseISO(startDate);
   const end = parseISO(endDate);
   while (current <= end) {
-    if (!isSunday(current)) {
-      result.push(format(current, 'yyyy-MM-dd'));
-    }
+    if (!isSunday(current)) result.push(format(current, 'yyyy-MM-dd'));
     current = addDays(current, 1);
   }
   return result;
 }
 
 function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
-function getLeaveTypeBadge(type: string) {
-  const map: Record<string, { label: string; variant: 'success' | 'error' | 'warning' | 'info' | 'indigo' | 'purple' | 'default' }> = {
-    casual:    { label: 'Casual',    variant: 'info' },
-    medical:   { label: 'Medical',   variant: 'error' },
-    emergency: { label: 'Emergency', variant: 'error' },
-    half_day:  { label: 'Half Day',  variant: 'warning' },
-    comp_off:  { label: 'Comp Off',  variant: 'purple' },
-    earned:    { label: 'Earned',    variant: 'indigo' },
-  };
-  const entry = map[type] ?? { label: type, variant: 'default' as const };
-  return <Badge variant={entry.variant}>{entry.label}</Badge>;
-}
+const LEAVE_TYPE_LABELS: Record<string, string> = {
+  casual: 'Casual', medical: 'Medical', emergency: 'Emergency',
+  half_day: 'Half Day', comp_off: 'Comp Off', earned: 'Earned',
+};
 
-function getStatusBadge(status: string) {
-  switch (status) {
-    case 'pending':
-      return (
-        <Badge variant="warning" className="flex items-center gap-1">
-          <Clock className="w-3 h-3" /> Pending
-        </Badge>
-      );
-    case 'approved':
-      return (
-        <Badge variant="success" className="flex items-center gap-1">
-          <CheckCircle2 className="w-3 h-3" /> Approved
-        </Badge>
-      );
-    case 'rejected':
-      return (
-        <Badge variant="error" className="flex items-center gap-1">
-          <XCircle className="w-3 h-3" /> Rejected
-        </Badge>
-      );
-    case 'cancelled':
-      return <Badge variant="default">Cancelled</Badge>;
-    default:
-      return <Badge variant="default">{status}</Badge>;
-  }
-}
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'var(--coral)',
+  approved: 'var(--leaf)',
+  rejected: '#ef4444',
+  cancelled: 'var(--ink-3)',
+};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
   const { showToast } = useToast();
 
-  // ── data
   const [leaves, setLeaves] = useState<TeacherLeaveRequest[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [timetables, setTimetables] = useState<Timetable[]>([]);
   const [timetableConfig, setTimetableConfig] = useState<TimetableConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ── filters
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ── approval modal
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
   const [selectedLeave, setSelectedLeave] = useState<TeacherLeaveRequest | null>(null);
   const [principalRemarks, setPrincipalRemarks] = useState('');
   const [substituteRows, setSubstituteRows] = useState<SubstituteRow[]>([]);
   const [isApproving, setIsApproving] = useState(false);
 
-  // ── reject modal
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectRemarks, setRejectRemarks] = useState('');
   const [isRejecting, setIsRejecting] = useState(false);
 
-  // ── revoke modal
   const [revokeModalOpen, setRevokeModalOpen] = useState(false);
   const [revokeReason, setRevokeReason] = useState('');
   const [isRevoking, setIsRevoking] = useState(false);
 
-  // ─── Load data ───────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    loadAll();
-  }, []);
+  useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
     try {
@@ -176,13 +119,10 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
         getDocs(collection(db, 'timetable')),
         getDoc(doc(db, 'timetableSettings', 'global')),
       ]);
-
-      setLeaves(leavesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as TeacherLeaveRequest)));
-      setTeachers(teachersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Teacher)));
-      setTimetables(timetablesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Timetable)));
-      if (configSnap.exists()) {
-        setTimetableConfig({ id: configSnap.id, ...configSnap.data() } as TimetableConfig);
-      }
+      setLeaves(leavesSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeacherLeaveRequest)));
+      setTeachers(teachersSnap.docs.map(d => ({ id: d.id, ...d.data() } as Teacher)));
+      setTimetables(timetablesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Timetable)));
+      if (configSnap.exists()) setTimetableConfig({ id: configSnap.id, ...configSnap.data() } as TimetableConfig);
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'teacherLeaves');
       showToast('Failed to load data', 'error');
@@ -191,117 +131,44 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
     }
   };
 
-  // ─── Derived stats ────────────────────────────────────────────────────────
-
   const now = new Date();
   const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
   const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
   const today = format(now, 'yyyy-MM-dd');
 
-  const pendingCount = useMemo(() => leaves.filter((l) => l.status === 'pending').length, [leaves]);
+  const pendingCount = useMemo(() => leaves.filter(l => l.status === 'pending').length, [leaves]);
+  const approvedThisMonth = useMemo(() => leaves.filter(l => l.status === 'approved' && l.approvedAt && l.approvedAt >= monthStart && l.approvedAt <= monthEnd + 'T23:59:59').length, [leaves, monthStart, monthEnd]);
+  const rejectedThisMonth = useMemo(() => leaves.filter(l => l.status === 'rejected' && l.approvedAt && l.approvedAt >= monthStart && l.approvedAt <= monthEnd + 'T23:59:59').length, [leaves, monthStart, monthEnd]);
+  const teachersOnLeaveToday = useMemo(() => new Set(leaves.filter(l => l.status === 'approved' && l.startDate <= today && l.endDate >= today).map(l => l.teacherId)).size, [leaves, today]);
 
-  const approvedThisMonth = useMemo(
-    () =>
-      leaves.filter(
-        (l) =>
-          l.status === 'approved' &&
-          l.approvedAt &&
-          l.approvedAt >= monthStart &&
-          l.approvedAt <= monthEnd + 'T23:59:59'
-      ).length,
-    [leaves, monthStart, monthEnd]
-  );
-
-  const rejectedThisMonth = useMemo(
-    () =>
-      leaves.filter(
-        (l) =>
-          l.status === 'rejected' &&
-          l.approvedAt &&
-          l.approvedAt >= monthStart &&
-          l.approvedAt <= monthEnd + 'T23:59:59'
-      ).length,
-    [leaves, monthStart, monthEnd]
-  );
-
-  const teachersOnLeaveToday = useMemo(
-    () =>
-      new Set(
-        leaves
-          .filter(
-            (l) =>
-              l.status === 'approved' && l.startDate <= today && l.endDate >= today
-          )
-          .map((l) => l.teacherId)
-      ).size,
-    [leaves, today]
-  );
-
-  // ─── Filters ─────────────────────────────────────────────────────────────
-
-  const filteredLeaves = useMemo(() => {
-    return leaves.filter((leave) => {
-      const matchStatus = filterStatus === 'all' || leave.status === filterStatus;
-      const matchSearch =
-        !searchQuery ||
-        leave.teacherName.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchStatus && matchSearch;
-    });
-  }, [leaves, filterStatus, searchQuery]);
-
-  // ─── Build substitute rows ────────────────────────────────────────────────
+  const filteredLeaves = useMemo(() => leaves.filter(leave => {
+    const matchStatus = filterStatus === 'all' || leave.status === filterStatus;
+    const matchSearch = !searchQuery || leave.teacherName.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchStatus && matchSearch;
+  }), [leaves, filterStatus, searchQuery]);
 
   const buildSubstituteRows = (leave: TeacherLeaveRequest): SubstituteRow[] => {
     if (!timetableConfig) return [];
     const dates = getDatesInRange(leave.startDate, leave.endDate);
     const rows: SubstituteRow[] = [];
-
     for (const dateStr of dates) {
-      const dayOfWeek = format(parseISO(dateStr), 'EEEE'); // e.g. 'Monday'
-
+      const dayOfWeek = format(parseISO(dateStr), 'EEEE');
       for (const timetable of timetables) {
-        const daySchedule = timetable.schedule.find(
-          (s) => s.day.toLowerCase() === dayOfWeek.toLowerCase()
-        );
+        const daySchedule = timetable.schedule.find(s => s.day.toLowerCase() === dayOfWeek.toLowerCase());
         if (!daySchedule) continue;
-
         for (const period of daySchedule.periods) {
           if (period.teacherId !== leave.teacherId) continue;
-
-          const slot = timetableConfig.slots.find((s) => s.id === period.slotId);
+          const slot = timetableConfig.slots.find(s => s.id === period.slotId);
           if (!slot || slot.type !== 'period') continue;
-
-          // Avoid duplicate rows for same date+slot (shouldn't happen, but guard)
-          const alreadyExists = rows.some(
-            (r) => r.date === dateStr && r.slotId === period.slotId && r.classId === timetable.classId
-          );
+          const alreadyExists = rows.some(r => r.date === dateStr && r.slotId === period.slotId && r.classId === timetable.classId);
           if (alreadyExists) continue;
-
-          rows.push({
-            date: dateStr,
-            slotId: period.slotId,
-            slotLabel: slot.label,
-            slotStartTime: slot.startTime,
-            classId: timetable.classId,
-            subjectId: period.subjectId,
-            originalTeacherId: leave.teacherId,
-            substituteTeacherId: '',
-            substituteTeacherName: '',
-          });
+          rows.push({ date: dateStr, slotId: period.slotId, slotLabel: slot.label, slotStartTime: slot.startTime, classId: timetable.classId, subjectId: period.subjectId, originalTeacherId: leave.teacherId, substituteTeacherId: '', substituteTeacherName: '' });
         }
       }
     }
-
-    // Sort by date, then slot start time
-    rows.sort((a, b) => {
-      if (a.date !== b.date) return a.date.localeCompare(b.date);
-      return a.slotStartTime.localeCompare(b.slotStartTime);
-    });
-
+    rows.sort((a, b) => a.date !== b.date ? a.date.localeCompare(b.date) : a.slotStartTime.localeCompare(b.slotStartTime));
     return rows;
   };
-
-  // ─── Open approval modal ──────────────────────────────────────────────────
 
   const openApprovalModal = (leave: TeacherLeaveRequest) => {
     setSelectedLeave(leave);
@@ -310,128 +177,43 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
     setApprovalModalOpen(true);
   };
 
-  // ─── Update substitute row ────────────────────────────────────────────────
-
   const updateSubstituteRow = (index: number, teacherId: string) => {
-    const teacher = teachers.find((t) => t.id === teacherId);
-    setSubstituteRows((prev) =>
-      prev.map((row, i) =>
-        i === index
-          ? {
-              ...row,
-              substituteTeacherId: teacherId,
-              substituteTeacherName: teacher?.name ?? '',
-            }
-          : row
-      )
-    );
+    const teacher = teachers.find(t => t.id === teacherId);
+    setSubstituteRows(prev => prev.map((row, i) => i === index ? { ...row, substituteTeacherId: teacherId, substituteTeacherName: teacher?.name ?? '' } : row));
   };
 
   const assignAllTBD = () => {
-    setSubstituteRows((prev) =>
-      prev.map((row) =>
-        row.substituteTeacherId === ''
-          ? { ...row, substituteTeacherId: 'TBD', substituteTeacherName: 'TBD' }
-          : row
-      )
-    );
+    setSubstituteRows(prev => prev.map(row => row.substituteTeacherId === '' ? { ...row, substituteTeacherId: 'TBD', substituteTeacherName: 'TBD' } : row));
   };
-
-  // ─── Approve ─────────────────────────────────────────────────────────────
 
   const handleApprove = async () => {
     if (!selectedLeave) return;
-
-    const tbdCount = substituteRows.filter(
-      r => !r.substituteTeacherId || r.substituteTeacherId === 'TBD',
-    ).length;
+    const tbdCount = substituteRows.filter(r => !r.substituteTeacherId || r.substituteTeacherId === 'TBD').length;
     if (tbdCount > 0) {
-      const proceed = window.confirm(
-        `${tbdCount} period(s) still have no substitute assigned (TBD). ` +
-        `These classes will be unattended unless you assign substitutes later.\n\nApprove anyway?`,
-      );
+      const proceed = window.confirm(`${tbdCount} period(s) still have no substitute assigned (TBD). These classes will be unattended unless you assign substitutes later.\n\nApprove anyway?`);
       if (!proceed) return;
     }
-
     try {
       setIsApproving(true);
       const now = new Date().toISOString();
       const dates = getDatesInRange(selectedLeave.startDate, selectedLeave.endDate);
-
-      // Pre-build all new doc refs outside the transaction so Firestore
-      // doesn't complain about addDoc inside a transaction.
       const attendanceRefs = dates.map(() => doc(collection(db, 'attendance')));
       const subRefs = substituteRows.map(() => doc(collection(db, 'substituteAssignments')));
-
-      await runTransaction(db, async (tx) => {
-        // Guard: re-read the leave and ensure it's still pending.
+      await runTransaction(db, async tx => {
         const leaveSnap = await tx.get(doc(db, 'teacherLeaves', selectedLeave.id));
         if (!leaveSnap.exists()) throw new Error('Leave request no longer exists');
-        if (leaveSnap.data().status !== 'pending') {
-          throw new Error(`Leave is already ${leaveSnap.data().status}. Reload the page.`);
-        }
-
-        // 1. Update leave doc
-        tx.update(doc(db, 'teacherLeaves', selectedLeave.id), {
-          status: 'approved',
-          approvedBy: user.uid,
-          approvedAt: now,
-          principalRemarks: principalRemarks.trim() || null,
-          substituteAssigned: true,
-          attendanceSynced: true,
-          updatedAt: now,
-        });
-
-        // 2. Create attendance records (one per leave day)
-        dates.forEach((dateStr, i) => {
-          tx.set(attendanceRefs[i], {
-            date: dateStr,
-            employeeId: selectedLeave.teacherId,
-            type: 'staff',
-            status: 'approved_leave',
-            leaveId: selectedLeave.id,
-            remarks: 'Teacher leave approved by principal',
-            classId: null,
-            createdAt: now,
-          });
-        });
-
-        // 3. Create substitute assignment docs
+        if (leaveSnap.data().status !== 'pending') throw new Error(`Leave is already ${leaveSnap.data().status}. Reload the page.`);
+        tx.update(doc(db, 'teacherLeaves', selectedLeave.id), { status: 'approved', approvedBy: user.uid, approvedAt: now, principalRemarks: principalRemarks.trim() || null, substituteAssigned: true, attendanceSynced: true, updatedAt: now });
+        dates.forEach((dateStr, i) => { tx.set(attendanceRefs[i], { date: dateStr, employeeId: selectedLeave.teacherId, type: 'staff', status: 'approved_leave', leaveId: selectedLeave.id, remarks: 'Teacher leave approved by principal', classId: null, createdAt: now }); });
         substituteRows.forEach((row, i) => {
           const isTBD = !row.substituteTeacherId || row.substituteTeacherId === 'TBD';
-          const assignment: Record<string, any> = {
-            leaveId: selectedLeave.id,
-            date: row.date,
-            slotId: row.slotId,
-            classId: row.classId,
-            originalTeacherId: row.originalTeacherId,
-            status: isTBD ? 'unassigned' : 'assigned',
-            assignedBy: user.uid,
-            createdAt: now,
-            updatedAt: now,
-          };
-          if (!isTBD) {
-            assignment.substituteTeacherId = row.substituteTeacherId;
-            assignment.substituteTeacherName = row.substituteTeacherName;
-          }
+          const assignment: Record<string, any> = { leaveId: selectedLeave.id, date: row.date, slotId: row.slotId, classId: row.classId, originalTeacherId: row.originalTeacherId, status: isTBD ? 'unassigned' : 'assigned', assignedBy: user.uid, createdAt: now, updatedAt: now };
+          if (!isTBD) { assignment.substituteTeacherId = row.substituteTeacherId; assignment.substituteTeacherName = row.substituteTeacherName; }
           tx.set(subRefs[i], assignment);
         });
       });
-
-      await logActivity(
-        user,
-        'Teacher Leave Approved',
-        'Principal',
-        `Approved leave for ${selectedLeave.teacherName} (${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)})` +
-        (tbdCount > 0 ? ` — ${tbdCount} period(s) still TBD` : ''),
-        { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId, tbdCount },
-      );
-
-      showToast(
-        `Leave approved for ${selectedLeave.teacherName}` +
-        (tbdCount > 0 ? ` (${tbdCount} TBD periods need substitutes)` : ''),
-        tbdCount > 0 ? 'info' : 'success',
-      );
+      await logActivity(user, 'Teacher Leave Approved', 'Principal', `Approved leave for ${selectedLeave.teacherName} (${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)})` + (tbdCount > 0 ? ` — ${tbdCount} period(s) still TBD` : ''), { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId, tbdCount });
+      showToast(`Leave approved for ${selectedLeave.teacherName}` + (tbdCount > 0 ? ` (${tbdCount} TBD periods need substitutes)` : ''), tbdCount > 0 ? 'info' : 'success');
       setApprovalModalOpen(false);
       setSelectedLeave(null);
       loadAll();
@@ -443,33 +225,14 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
     }
   };
 
-  // ─── Reject ──────────────────────────────────────────────────────────────
-
   const handleReject = async () => {
     if (!selectedLeave) return;
-    if (!rejectRemarks.trim()) {
-      showToast('Please provide a reason for rejection', 'error');
-      return;
-    }
+    if (!rejectRemarks.trim()) { showToast('Please provide a reason for rejection', 'error'); return; }
     try {
       setIsRejecting(true);
       const now = new Date().toISOString();
-      await updateDoc(doc(db, 'teacherLeaves', selectedLeave.id), {
-        status: 'rejected',
-        approvedBy: user.uid,
-        approvedAt: now,
-        principalRemarks: rejectRemarks.trim(),
-        updatedAt: now,
-      });
-
-      await logActivity(
-        user,
-        'Teacher Leave Rejected',
-        'Principal',
-        `Rejected leave for ${selectedLeave.teacherName} (${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)})`,
-        { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId }
-      );
-
+      await updateDoc(doc(db, 'teacherLeaves', selectedLeave.id), { status: 'rejected', approvedBy: user.uid, approvedAt: now, principalRemarks: rejectRemarks.trim(), updatedAt: now });
+      await logActivity(user, 'Teacher Leave Rejected', 'Principal', `Rejected leave for ${selectedLeave.teacherName} (${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)})`, { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId });
       showToast(`Leave rejected for ${selectedLeave.teacherName}`, 'success');
       setRejectModalOpen(false);
       setRejectRemarks('');
@@ -483,50 +246,19 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
     }
   };
 
-  // ─── Revoke ──────────────────────────────────────────────────────────────
-
   const handleRevoke = async () => {
     if (!selectedLeave) return;
     try {
       setIsRevoking(true);
       const now = new Date().toISOString();
       const batch = writeBatch(db);
-
-      // Revert leave to pending
-      batch.update(doc(db, 'teacherLeaves', selectedLeave.id), {
-        status: 'pending',
-        substituteAssigned: false,
-        attendanceSynced: false,
-        principalRemarks: revokeReason.trim() || null,
-        updatedAt: now,
-      });
-
-      // Delete substitute assignments for this leave
-      const subSnap = await getDocs(
-        query(collection(db, 'substituteAssignments'), where('leaveId', '==', selectedLeave.id))
-      );
-      subSnap.docs.forEach((d) => batch.delete(d.ref));
-
-      // Delete attendance docs created for this leave
-      const attSnap = await getDocs(
-        query(
-          collection(db, 'attendance'),
-          where('leaveId', '==', selectedLeave.id),
-          where('type', '==', 'staff')
-        )
-      );
-      attSnap.docs.forEach((d) => batch.delete(d.ref));
-
+      batch.update(doc(db, 'teacherLeaves', selectedLeave.id), { status: 'pending', substituteAssigned: false, attendanceSynced: false, principalRemarks: revokeReason.trim() || null, updatedAt: now });
+      const subSnap = await getDocs(query(collection(db, 'substituteAssignments'), where('leaveId', '==', selectedLeave.id)));
+      subSnap.docs.forEach(d => batch.delete(d.ref));
+      const attSnap = await getDocs(query(collection(db, 'attendance'), where('leaveId', '==', selectedLeave.id), where('type', '==', 'staff')));
+      attSnap.docs.forEach(d => batch.delete(d.ref));
       await batch.commit();
-
-      await logActivity(
-        user,
-        'Teacher Leave Revoked',
-        'Principal',
-        `Revoked approved leave for ${selectedLeave.teacherName} (${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)})`,
-        { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId }
-      );
-
+      await logActivity(user, 'Teacher Leave Revoked', 'Principal', `Revoked approved leave for ${selectedLeave.teacherName} (${fmtDate(selectedLeave.startDate)} to ${fmtDate(selectedLeave.endDate)})`, { leaveId: selectedLeave.id, teacherId: selectedLeave.teacherId });
       showToast(`Leave revoked for ${selectedLeave.teacherName}`, 'success');
       setRevokeModalOpen(false);
       setRevokeReason('');
@@ -540,417 +272,155 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
     }
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-
-  const teacherMap = useMemo(
-    () => Object.fromEntries(teachers.map((t) => [t.id, t])),
-    [teachers]
-  );
-
+  const teacherMap = useMemo(() => Object.fromEntries(teachers.map(t => [t.id, t])), [teachers]);
   const statusFilters = ['all', 'pending', 'approved', 'rejected', 'cancelled'];
 
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-violet-600 to-indigo-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-violet-200">
-            Principal Portal
-          </p>
-          <h1 className="text-xl font-bold mt-0.5">Teacher Leave Approval</h1>
-          <p className="text-xs text-violet-100 mt-0.5">
-            {leaves.length} total · {pendingCount} pending
-          </p>
-          <div className="mt-3 grid grid-cols-4 gap-2">
-            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{pendingCount}</p>
-              <p className="text-[9px] text-white/70 uppercase">Pending</p>
-            </div>
-            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{approvedThisMonth}</p>
-              <p className="text-[9px] text-white/70 uppercase">Approved</p>
-            </div>
-            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{rejectedThisMonth}</p>
-              <p className="text-[9px] text-white/70 uppercase">Rejected</p>
-            </div>
-            <div className="bg-white/15 backdrop-blur rounded-xl px-2 py-2 text-center">
-              <p className="text-base font-bold">{teachersOnLeaveToday}</p>
-              <p className="text-[9px] text-white/70 uppercase">Today</p>
-            </div>
-          </div>
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">{pendingCount} pending</div>
+          <h1>Teacher Leaves</h1>
+        </div>
+      </div>
+
+      <div className="pad stack" style={{ paddingBottom: 32 }}>
+        {/* Search */}
+        <div className="card flex" style={{ gap: 10, padding: '10px 14px', alignItems: 'center' }}>
+          <Search size={16} className="muted" style={{ flexShrink: 0 }} />
           <input
-            type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search teacher..."
-            className="mt-3 w-full px-4 py-2.5 rounded-xl bg-white/15 backdrop-blur border border-white/20 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20"
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search teacher name…"
+            style={{ border: 0, outline: 'none', background: 'transparent', flex: 1, fontSize: 14, fontFamily: 'var(--body)', color: 'var(--ink)' }}
           />
         </div>
 
-        <div className="px-4 pt-3 overflow-x-auto flex gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {statusFilters.map((s) => (
+        {/* Status filter chips */}
+        <div className="hscroll" style={{ padding: 0 }}>
+          {statusFilters.map(s => (
             <button
               key={s}
               onClick={() => setFilterStatus(s)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform capitalize ${
-                filterStatus === s
-                  ? 'bg-violet-600 text-white'
-                  : 'bg-white text-slate-600 border border-slate-200'
-              }`}
+              className={filterStatus === s ? 'chip solid' : 'chip'}
+              style={{ textTransform: 'capitalize' }}
             >
-              {s}
+              {s === 'all' ? 'All' : s}
             </button>
           ))}
         </div>
 
-        <div className="px-4 pt-4 space-y-2.5">
-          {loading ? (
-            <div className="py-12 text-center text-sm text-slate-500">Loading...</div>
-          ) : filteredLeaves.length === 0 ? (
-            <div className="py-12 text-center">
-              <ClipboardCheck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No leave requests</p>
+        {/* Stats row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+          {[
+            { label: 'Pending', value: pendingCount, color: 'var(--coral)' },
+            { label: 'Approved', value: approvedThisMonth, color: 'var(--leaf)' },
+            { label: 'Rejected', value: rejectedThisMonth, color: '#ef4444' },
+            { label: 'On Leave Today', value: teachersOnLeaveToday, color: 'var(--accent)' },
+          ].map(s => (
+            <div key={s.label} className="card" style={{ textAlign: 'center', padding: '12px 8px' }}>
+              <div className="t-num" style={{ fontSize: 24, color: s.color }}>{s.value}</div>
+              <div className="eyebrow" style={{ marginTop: 2 }}>{s.label}</div>
             </div>
-          ) : (
-            filteredLeaves.map((leave) => {
+          ))}
+        </div>
+
+        {/* Leave cards */}
+        {loading ? (
+          <div className="card" style={{ textAlign: 'center', padding: 48 }}>
+            <p className="muted">Loading…</p>
+          </div>
+        ) : filteredLeaves.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 48 }}>
+            <ClipboardCheck size={36} style={{ margin: '0 auto 12px', color: 'var(--ink-3)' }} />
+            <p style={{ fontWeight: 700 }}>No leave requests found</p>
+          </div>
+        ) : (
+          <div className="stack">
+            {filteredLeaves.map(leave => {
               const teacher = teacherMap[leave.teacherId];
               return (
-                <div
-                  key={leave.id}
-                  className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                      {teacher?.photoURL ? (
-                        <img
-                          src={teacher.photoURL}
-                          alt={leave.teacherName}
-                          className="w-9 h-9 rounded-full object-cover shrink-0"
-                        />
-                      ) : (
-                        <div className="w-9 h-9 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-bold text-xs shrink-0">
-                          {getInitials(leave.teacherName)}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-900 truncate">
-                          {leave.teacherName}
-                        </p>
-                        <p className="text-[10px] text-slate-500">
-                          {leave.startDate === leave.endDate
-                            ? fmtDate(leave.startDate)
-                            : `${fmtDate(leave.startDate)} → ${fmtDate(leave.endDate)}`}{' '}
-                          · {leave.totalDays}d
-                        </p>
+                <div key={leave.id} className="card" style={{ padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    {/* Avatar */}
+                    {teacher?.photoURL ? (
+                      <img src={teacher.photoURL} alt={leave.teacherName}
+                        style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                    ) : (
+                      <div className="avatar" style={{ width: 40, height: 40, fontSize: 14, flexShrink: 0 }}>
+                        {getInitials(leave.teacherName)}
                       </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>{leave.teacherName}</span>
+                        {/* Status dot */}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: STATUS_COLORS[leave.status] || 'var(--ink-3)', fontWeight: 600 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: STATUS_COLORS[leave.status] || 'var(--ink-3)', display: 'inline-block' }} />
+                          {leave.status.charAt(0).toUpperCase() + leave.status.slice(1)}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                        <span className="chip" style={{ fontSize: 11, padding: '2px 8px' }}>
+                          {LEAVE_TYPE_LABELS[leave.leaveType] || leave.leaveType}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--ink-3)' }}>
+                          <Calendar size={11} />
+                          {leave.startDate === leave.endDate ? fmtDate(leave.startDate) : `${fmtDate(leave.startDate)} → ${fmtDate(leave.endDate)}`}
+                          {' · '}<strong>{leave.totalDays}d</strong>
+                        </span>
+                      </div>
+                      <p className="muted" style={{ fontSize: 12, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        {leave.reason}
+                      </p>
                     </div>
-                    {getStatusBadge(leave.status)}
                   </div>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    {getLeaveTypeBadge(leave.leaveType)}
-                    <p className="text-[11px] text-slate-500 line-clamp-1 flex-1">
-                      {leave.reason}
-                    </p>
-                  </div>
+
+                  {/* Action buttons */}
                   {leave.status === 'pending' && (
-                    <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
                       <button
                         onClick={() => openApprovalModal(leave)}
-                        className="py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold active:scale-95 transition-transform flex items-center justify-center gap-1"
+                        style={{ padding: '8px 0', borderRadius: 10, background: 'var(--leaf)', color: '#fff', border: 0, fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                        <CheckCircle2 size={14} /> Approve
                       </button>
                       <button
-                        onClick={() => {
-                          setSelectedLeave(leave);
-                          setRejectModalOpen(true);
-                        }}
-                        className="py-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs font-bold active:scale-95 transition-transform flex items-center justify-center gap-1"
+                        onClick={() => { setSelectedLeave(leave); setRejectModalOpen(true); }}
+                        style={{ padding: '8px 0', borderRadius: 10, background: 'transparent', border: '1px solid var(--coral)', color: 'var(--coral)', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}
                       >
-                        <XCircle className="w-3.5 h-3.5" /> Reject
+                        <XCircle size={14} /> Reject
                       </button>
                     </div>
                   )}
                   {leave.status === 'approved' && (
                     <button
-                      onClick={() => {
-                        setSelectedLeave(leave);
-                        setRevokeModalOpen(true);
-                      }}
-                      className="mt-2 w-full py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold active:scale-95 transition-transform flex items-center justify-center gap-1"
+                      onClick={() => { setSelectedLeave(leave); setRevokeModalOpen(true); }}
+                      style={{ marginTop: 12, width: '100%', padding: '8px 0', borderRadius: 10, background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer' }}
                     >
-                      <RotateCcw className="w-3.5 h-3.5" /> Revoke
+                      <RotateCcw size={14} /> Revoke
                     </button>
                   )}
                 </div>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+        )}
       </div>
 
-      {/* ─── Desktop UI ───────────────────────────────────────────────── */}
-      <div className="hidden md:block space-y-6">
-        <PageHeader
-          title="Teacher Leave Approval"
-          subtitle="Review, approve and manage teacher leave requests with substitute assignments"
-          icon={ClipboardCheck}
-          iconColor="bg-violet-500"
-        />
-
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="p-4 bg-gradient-to-br from-amber-50 to-white border-amber-100">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-500 rounded-lg text-white">
-                <Clock className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Pending
-                </p>
-                <h3 className="text-2xl font-black text-slate-900">{pendingCount}</h3>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4 bg-gradient-to-br from-emerald-50 to-white border-emerald-100">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-500 rounded-lg text-white">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Approved (Month)
-                </p>
-                <h3 className="text-2xl font-black text-emerald-600">{approvedThisMonth}</h3>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4 bg-gradient-to-br from-rose-50 to-white border-rose-100">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-rose-500 rounded-lg text-white">
-                <XCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Rejected (Month)
-                </p>
-                <h3 className="text-2xl font-black text-rose-600">{rejectedThisMonth}</h3>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4 bg-gradient-to-br from-violet-50 to-white border-violet-100">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-violet-500 rounded-lg text-white">
-                <Users className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  On Leave Today
-                </p>
-                <h3 className="text-2xl font-black text-violet-600">{teachersOnLeaveToday}</h3>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Filter + Table */}
-        <Card className="p-4">
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-4">
-            <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-              {statusFilters.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setFilterStatus(s)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap capitalize ${
-                    filterStatus === s
-                      ? 'bg-violet-600 text-white shadow-md'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-            <div className="relative w-full md:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder="Search teacher..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-10"
-              />
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">
-                    Teacher
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">
-                    Leave Type
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">
-                    Dates
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">
-                    Reason
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">
-                    Status
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">
-                    Submitted
-                  </th>
-                  <th className="text-right py-3 px-4 text-xs font-bold text-slate-500 uppercase">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <AnimatePresence mode="popLayout">
-                  {filteredLeaves.map((leave) => {
-                    const teacher = teacherMap[leave.teacherId];
-                    return (
-                      <motion.tr
-                        layout
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        key={leave.id}
-                        className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group"
-                      >
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-3">
-                            {teacher?.photoURL ? (
-                              <img
-                                src={teacher.photoURL}
-                                alt={leave.teacherName}
-                                className="w-8 h-8 rounded-full object-cover shrink-0"
-                              />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-bold text-xs shrink-0">
-                                {getInitials(leave.teacherName)}
-                              </div>
-                            )}
-                            <div>
-                              <p className="font-bold text-slate-900 group-hover:text-violet-600 transition-colors text-sm uppercase tracking-tight">
-                                {leave.teacherName}
-                              </p>
-                              {teacher?.classes && teacher.classes.length > 0 && (
-                                <p className="text-[10px] text-slate-400 font-bold uppercase">
-                                  {teacher.classes.slice(0, 3).join(', ')}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">{getLeaveTypeBadge(leave.leaveType)}</td>
-                        <td className="py-3.5 px-4">
-                          <div className="space-y-0.5">
-                            <p className="text-xs font-bold text-slate-900 flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-violet-500" />
-                              {format(parseISO(leave.startDate), 'd MMM')}
-                              {leave.endDate !== leave.startDate
-                                ? ` – ${format(parseISO(leave.endDate), 'd MMM')}`
-                                : ''}
-                            </p>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                              {leave.totalDays} {leave.totalDays === 1 ? 'Day' : 'Days'}
-                            </p>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 max-w-[200px]">
-                          <p className="text-xs text-slate-600 line-clamp-2">{leave.reason}</p>
-                        </td>
-                        <td className="py-3.5 px-4">{getStatusBadge(leave.status)}</td>
-                        <td className="py-3.5 px-4">
-                          <p className="text-xs text-slate-500">
-                            {format(parseISO(leave.submittedAt), 'd MMM yyyy')}
-                          </p>
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {leave.status === 'pending' && (
-                              <>
-                                <Button
-                                  variant="success"
-                                  size="xs"
-                                  onClick={() => openApprovalModal(leave)}
-                                >
-                                  <CheckCircle2 className="w-3 h-3 mr-1" /> Approve
-                                </Button>
-                                <Button
-                                  variant="danger"
-                                  size="xs"
-                                  onClick={() => {
-                                    setSelectedLeave(leave);
-                                    setRejectModalOpen(true);
-                                  }}
-                                >
-                                  <XCircle className="w-3 h-3 mr-1" /> Reject
-                                </Button>
-                              </>
-                            )}
-                            {leave.status === 'approved' && (
-                              <Button
-                                variant="secondary"
-                                size="xs"
-                                onClick={() => {
-                                  setSelectedLeave(leave);
-                                  setRevokeModalOpen(true);
-                                }}
-                              >
-                                <RotateCcw className="w-3 h-3 mr-1" /> Revoke
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </motion.tr>
-                    );
-                  })}
-                </AnimatePresence>
-                {filteredLeaves.length === 0 && !loading && (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-500 font-bold">
-                      No leave requests found matching the filters.
-                    </td>
-                  </tr>
-                )}
-                {loading && (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400 text-sm">
-                      Loading...
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </div>
-
-      {/* ─── Approval Modal ──────────────────────────────────────────── */}
+      {/* ─── Approval Modal ───────────────────────────────────────────────── */}
       <Modal
         isOpen={approvalModalOpen}
-        onClose={() => {
-          if (!isApproving) setApprovalModalOpen(false);
-        }}
+        onClose={() => { if (!isApproving) setApprovalModalOpen(false); }}
         title="Approve Leave Request"
         subtitle={`Teacher: ${selectedLeave?.teacherName}`}
         size="lg"
       >
         {selectedLeave && (
           <div className="space-y-6">
-            {/* Section 1: Leave Summary */}
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">
-                Leave Summary
-              </p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Leave Summary</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Teacher</p>
@@ -958,22 +428,18 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
                 </div>
                 <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Type</p>
-                  {getLeaveTypeBadge(selectedLeave.leaveType)}
+                  <p className="text-sm font-bold text-slate-900">{LEAVE_TYPE_LABELS[selectedLeave.leaveType] || selectedLeave.leaveType}</p>
                 </div>
                 <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Dates</p>
                   <p className="text-sm font-bold text-slate-900">
                     {format(parseISO(selectedLeave.startDate), 'd MMM')}
-                    {selectedLeave.endDate !== selectedLeave.startDate
-                      ? ` – ${format(parseISO(selectedLeave.endDate), 'd MMM')}`
-                      : ''}
+                    {selectedLeave.endDate !== selectedLeave.startDate ? ` – ${format(parseISO(selectedLeave.endDate), 'd MMM')}` : ''}
                   </p>
                 </div>
                 <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Duration</p>
-                  <p className="text-sm font-bold text-slate-900">
-                    {selectedLeave.totalDays} {selectedLeave.totalDays === 1 ? 'Day' : 'Days'}
-                  </p>
+                  <p className="text-sm font-bold text-slate-900">{selectedLeave.totalDays} {selectedLeave.totalDays === 1 ? 'Day' : 'Days'}</p>
                 </div>
               </div>
               <div className="mt-3 bg-slate-50 rounded-xl p-3 border border-slate-100">
@@ -982,44 +448,34 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
               </div>
               {selectedLeave.substitutePreference && (
                 <div className="mt-3 bg-amber-50 rounded-xl p-3 border border-amber-100">
-                  <p className="text-[10px] text-amber-700 font-bold uppercase mb-1">
-                    Teacher's Substitute Suggestion
-                  </p>
+                  <p className="text-[10px] text-amber-700 font-bold uppercase mb-1">Teacher's Substitute Suggestion</p>
                   <p className="text-sm text-amber-900">{selectedLeave.substitutePreference}</p>
                 </div>
               )}
             </div>
 
-            {/* Section 2: Principal Remarks */}
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">
-                Principal Remarks (Optional)
-              </p>
-              <Textarea
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Principal Remarks (Optional)</p>
+              <textarea
                 placeholder="Add any remarks or instructions..."
                 value={principalRemarks}
-                onChange={(e) => setPrincipalRemarks(e.target.value)}
+                onChange={e => setPrincipalRemarks(e.target.value)}
                 rows={2}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 resize-none"
               />
             </div>
 
-            {/* Section 3: Substitute Assignment */}
             <div>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  Substitute Assignment ({substituteRows.length} period
-                  {substituteRows.length !== 1 ? 's' : ''})
+                  Substitute Assignment ({substituteRows.length} period{substituteRows.length !== 1 ? 's' : ''})
                 </p>
                 {substituteRows.length > 0 && (
-                  <button
-                    onClick={assignAllTBD}
-                    className="text-xs text-violet-600 font-bold hover:underline"
-                  >
+                  <button onClick={assignAllTBD} className="text-xs text-violet-600 font-bold hover:underline">
                     Mark all remaining as TBD
                   </button>
                 )}
               </div>
-
               {substituteRows.length === 0 ? (
                 <div className="bg-slate-50 rounded-xl p-4 text-center text-sm text-slate-500 border border-slate-100">
                   No periods found for this teacher in the timetable for the leave dates.
@@ -1030,51 +486,33 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
                     <table className="w-full text-xs">
                       <thead className="bg-slate-50 sticky top-0">
                         <tr>
-                          <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                            Date
-                          </th>
-                          <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                            Period
-                          </th>
-                          <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                            Class
-                          </th>
-                          <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
-                            Assign Substitute
-                          </th>
+                          <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Date</th>
+                          <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Period</th>
+                          <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Class</th>
+                          <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Assign Substitute</th>
                         </tr>
                       </thead>
                       <tbody>
                         {substituteRows.map((row, idx) => (
                           <tr key={idx} className="border-t border-slate-100 hover:bg-slate-50">
-                            <td className="px-3 py-2 font-bold text-slate-700 whitespace-nowrap">
-                              {format(parseISO(row.date), 'EEE, d MMM')}
-                            </td>
+                            <td className="px-3 py-2 font-bold text-slate-700 whitespace-nowrap">{format(parseISO(row.date), 'EEE, d MMM')}</td>
                             <td className="px-3 py-2 whitespace-nowrap">
                               <span className="font-bold text-slate-800">{row.slotLabel}</span>
                               <span className="text-slate-400 ml-1">({row.slotStartTime})</span>
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap text-slate-600 font-bold">
-                              {row.classId}
-                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-slate-600 font-bold">{row.classId}</td>
                             <td className="px-3 py-2 min-w-[180px]">
                               <select
                                 value={row.substituteTeacherId}
-                                onChange={(e) => updateSubstituteRow(idx, e.target.value)}
+                                onChange={e => updateSubstituteRow(idx, e.target.value)}
                                 className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                               >
                                 <option value="">-- TBD --</option>
-                                {teachers
-                                  .filter((t) => t.id !== selectedLeave.teacherId)
-                                  .map((t) => {
-                                    const teachesSubject = t.subjects?.includes(row.subjectId);
-                                    return (
-                                      <option key={t.id} value={t.id}>
-                                        {t.name}
-                                        {teachesSubject ? ' (Subject match)' : ''}
-                                      </option>
-                                    );
-                                  })}
+                                {teachers.filter(t => t.id !== selectedLeave.teacherId).map(t => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.name}{t.subjects?.includes(row.subjectId) ? ' (Subject match)' : ''}
+                                  </option>
+                                ))}
                               </select>
                             </td>
                           </tr>
@@ -1086,38 +524,20 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
               )}
             </div>
 
-            {/* Footer */}
             <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-              <Button
-                variant="secondary"
-                onClick={() => setApprovalModalOpen(false)}
-                disabled={isApproving}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="success"
-                loading={isApproving}
-                onClick={handleApprove}
-                className="bg-emerald-600 hover:bg-emerald-700 font-bold"
-              >
-                <CheckCircle2 className="w-4 h-4 mr-1.5" />
-                Confirm Approval
+              <Button variant="secondary" onClick={() => setApprovalModalOpen(false)} disabled={isApproving}>Cancel</Button>
+              <Button variant="success" loading={isApproving} onClick={handleApprove} className="bg-emerald-600 hover:bg-emerald-700 font-bold">
+                <CheckCircle2 className="w-4 h-4 mr-1.5" /> Confirm Approval
               </Button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* ─── Reject Modal ─────────────────────────────────────────────── */}
+      {/* ─── Reject Modal ─────────────────────────────────────────────────── */}
       <Modal
         isOpen={rejectModalOpen}
-        onClose={() => {
-          if (!isRejecting) {
-            setRejectModalOpen(false);
-            setRejectRemarks('');
-          }
-        }}
+        onClose={() => { if (!isRejecting) { setRejectModalOpen(false); setRejectRemarks(''); } }}
         title="Reject Leave Request"
         subtitle={`Teacher: ${selectedLeave?.teacherName}`}
         size="sm"
@@ -1128,56 +548,35 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
               <p className="font-bold text-slate-800">{selectedLeave.teacherName}</p>
               <p className="text-slate-500 mt-0.5">
                 {format(parseISO(selectedLeave.startDate), 'd MMM')}
-                {selectedLeave.endDate !== selectedLeave.startDate
-                  ? ` – ${format(parseISO(selectedLeave.endDate), 'd MMM')}`
-                  : ''}{' '}
-                · {selectedLeave.totalDays}d ·{' '}
-                <span className="capitalize">{selectedLeave.leaveType.replace('_', ' ')}</span>
+                {selectedLeave.endDate !== selectedLeave.startDate ? ` – ${format(parseISO(selectedLeave.endDate), 'd MMM')}` : ''}
+                {' · '}{selectedLeave.totalDays}d · <span className="capitalize">{selectedLeave.leaveType.replace('_', ' ')}</span>
               </p>
             </div>
           )}
           <FormField label="Reason for Rejection" hint="Required — will be shared with the teacher">
-            <Textarea
+            <textarea
               placeholder="e.g. Insufficient notice period, critical exam week, etc."
               value={rejectRemarks}
-              onChange={(e) => setRejectRemarks(e.target.value)}
+              onChange={e => setRejectRemarks(e.target.value)}
               rows={3}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 resize-none"
             />
           </FormField>
           <div className="flex justify-end gap-3 pt-1">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setRejectModalOpen(false);
-                setRejectRemarks('');
-              }}
-              disabled={isRejecting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              loading={isRejecting}
-              onClick={handleReject}
-            >
-              <XCircle className="w-4 h-4 mr-1.5" />
-              Reject Leave
+            <Button variant="secondary" onClick={() => { setRejectModalOpen(false); setRejectRemarks(''); }} disabled={isRejecting}>Cancel</Button>
+            <Button variant="danger" loading={isRejecting} onClick={handleReject}>
+              <XCircle className="w-4 h-4 mr-1.5" /> Reject Leave
             </Button>
           </div>
         </div>
       </Modal>
 
-      {/* ─── Revoke Modal ─────────────────────────────────────────────── */}
+      {/* ─── Revoke Modal ─────────────────────────────────────────────────── */}
       <Modal
         isOpen={revokeModalOpen}
-        onClose={() => {
-          if (!isRevoking) {
-            setRevokeModalOpen(false);
-            setRevokeReason('');
-          }
-        }}
+        onClose={() => { if (!isRevoking) { setRevokeModalOpen(false); setRevokeReason(''); } }}
         title="Revoke Approved Leave"
-        subtitle={`This will revert the leave to Pending and delete substitute assignments`}
+        subtitle="This will revert the leave to Pending and delete substitute assignments"
         size="sm"
       >
         <div className="space-y-4">
@@ -1186,43 +585,25 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                 <div>
-                  <p className="font-bold text-amber-900">
-                    Revoking leave for {selectedLeave.teacherName}
-                  </p>
-                  <p className="text-amber-700 mt-0.5 text-xs">
-                    All substitute assignments and attendance records created for this leave will be
-                    deleted. The leave will be returned to Pending status.
-                  </p>
+                  <p className="font-bold text-amber-900">Revoking leave for {selectedLeave.teacherName}</p>
+                  <p className="text-amber-700 mt-0.5 text-xs">All substitute assignments and attendance records created for this leave will be deleted. The leave will be returned to Pending status.</p>
                 </div>
               </div>
             </div>
           )}
           <FormField label="Reason for Revocation (Optional)">
-            <Textarea
+            <textarea
               placeholder="e.g. Leave cancelled by teacher, emergency staffing requirement..."
               value={revokeReason}
-              onChange={(e) => setRevokeReason(e.target.value)}
+              onChange={e => setRevokeReason(e.target.value)}
               rows={3}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 resize-none"
             />
           </FormField>
           <div className="flex justify-end gap-3 pt-1">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setRevokeModalOpen(false);
-                setRevokeReason('');
-              }}
-              disabled={isRevoking}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              loading={isRevoking}
-              onClick={handleRevoke}
-            >
-              <RotateCcw className="w-4 h-4 mr-1.5" />
-              Revoke Approval
+            <Button variant="secondary" onClick={() => { setRevokeModalOpen(false); setRevokeReason(''); }} disabled={isRevoking}>Cancel</Button>
+            <Button variant="danger" loading={isRevoking} onClick={handleRevoke}>
+              <RotateCcw className="w-4 h-4 mr-1.5" /> Revoke Approval
             </Button>
           </div>
         </div>

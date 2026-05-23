@@ -1,8 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import PortalLayout from '../../components/PortalLayout';
-import { auth, db } from '../../firebase';
-import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import AdminShell from '../../components/AdminShell';
 import { UserProfile } from '../../types';
 import AdminDashboard from './AdminDashboard';
 import StudentManagement from './StudentManagement';
@@ -42,7 +39,7 @@ import BroadcastCenter from '../grievance/BroadcastCenter';
 
 export default function AdminPortal({ user }: { user: UserProfile }) {
   return (
-    <PortalLayout user={user}>
+    <AdminShell user={user}>
       <Routes>
         <Route path="/" element={<AdminDashboard user={user} />} />
         <Route path="/students" element={<StudentManagement user={user} />} />
@@ -81,6 +78,6 @@ export default function AdminPortal({ user }: { user: UserProfile }) {
         <Route path="/profile" element={<ProfileSettings user={user} />} />
         <Route path="*" element={<Navigate to="/superadmin" />} />
       </Routes>
-    </PortalLayout>
+    </AdminShell>
   );
 }

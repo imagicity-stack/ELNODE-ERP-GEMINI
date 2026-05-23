@@ -4,21 +4,6 @@ import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { UserProfile, FeePayment, FeeRequest, Student } from '../../types';
 import { fmtDate } from '../../lib/utils';
 import { AlertTriangle, CheckCircle2, RefreshCcw, FileWarning, Copy, Scale, GitBranch } from 'lucide-react';
-import {
-  PageHeader,
-  Card,
-  StatCard,
-  Button,
-  Badge,
-  Table,
-  Thead,
-  Th,
-  Tbody,
-  Tr,
-  Td,
-  EmptyState,
-  Spinner,
-} from '../../components/ui';
 import { useData } from '../../contexts/DataContext';
 import { fmtMonthYear } from '../../lib/utils';
 
@@ -162,7 +147,6 @@ export default function PaymentReconciliation({ user: _user }: Props) {
       if (paid <= 0.001) expected = 'pending';
       else if (paid + 0.001 >= totalRequired) expected = 'paid';
       else expected = 'partially_paid';
-      // "overdue" is a separate concept tied to dueDate — leave alone if recorded
       if (r.status === 'overdue') continue;
       if (r.status !== expected) {
         rows.push({
@@ -181,251 +165,223 @@ export default function PaymentReconciliation({ user: _user }: Props) {
     drift.length === 0 &&
     statusMismatches.length === 0;
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <PageHeader
-        title="Payment Reconciliation"
-        subtitle="Audit ledger integrity: orphaned payments, duplicates, sum drift, and status mismatches"
-        icon={Scale}
-        actions={
-          <Button variant="secondary" onClick={fetchData} loading={loading}>
-            <RefreshCcw className="w-4 h-4" /> Refresh
-          </Button>
-        }
-      />
+  const totalIssues = orphans.length + duplicates.length + drift.length + statusMismatches.length;
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          label="Orphaned Payments"
-          value={orphans.length}
-          icon={FileWarning}
-          gradient={orphans.length ? 'bg-gradient-to-br from-rose-500 to-red-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}
-        />
-        <StatCard
-          label="Duplicate Txns"
-          value={duplicates.length}
-          icon={Copy}
-          gradient={duplicates.length ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}
-        />
-        <StatCard
-          label="Sum Drift Requests"
-          value={drift.length}
-          icon={Scale}
-          gradient={drift.length ? 'bg-gradient-to-br from-rose-500 to-pink-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}
-        />
-        <StatCard
-          label="Status Mismatches"
-          value={statusMismatches.length}
-          icon={GitBranch}
-          gradient={statusMismatches.length ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}
-        />
+  return (
+    <div className="pad stack" style={{ gap: 'var(--space-5)' }}>
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">Ledger Audit</div>
+          <h1>Reconciliation</h1>
+        </div>
+        <div>
+          <button
+            className="btn ghost"
+            onClick={fetchData}
+            disabled={loading}
+          >
+            <RefreshCcw style={{ width: 14, height: 14 }} className={loading ? 'animate-spin' : ''} />
+            Re-run
+          </button>
+        </div>
       </div>
 
+      {/* Stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+        <div className="card">
+          <p className="eyebrow" style={{ marginBottom: 4 }}>Orphaned</p>
+          <p className="t-num" style={{ fontSize: 28, fontWeight: 800, color: orphans.length ? 'var(--coral)' : 'var(--leaf)' }}>
+            {orphans.length}
+          </p>
+          <p className="tiny muted">missing-request or wrong-student</p>
+        </div>
+        <div className="card">
+          <p className="eyebrow" style={{ marginBottom: 4 }}>Duplicates</p>
+          <p className="t-num" style={{ fontSize: 28, fontWeight: 800, color: duplicates.length ? 'var(--coral)' : 'var(--leaf)' }}>
+            {duplicates.length}
+          </p>
+          <p className="tiny muted">same transaction ID used twice</p>
+        </div>
+        <div className="card">
+          <p className="eyebrow" style={{ marginBottom: 4 }}>Sum Drift</p>
+          <p className="t-num" style={{ fontSize: 28, fontWeight: 800, color: drift.length ? 'var(--accent)' : 'var(--leaf)' }}>
+            {drift.length}
+          </p>
+          <p className="tiny muted">paidAmount ≠ payments sum</p>
+        </div>
+        <div className="card">
+          <p className="eyebrow" style={{ marginBottom: 4 }}>Status Mismatch</p>
+          <p className="t-num" style={{ fontSize: 28, fontWeight: 800, color: statusMismatches.length ? 'var(--accent)' : 'var(--leaf)' }}>
+            {statusMismatches.length}
+          </p>
+          <p className="tiny muted">stored vs computed status differs</p>
+        </div>
+      </div>
+
+      {/* Loading */}
       {loading && (
-        <Card className="p-12 flex items-center justify-center">
-          <Spinner />
-        </Card>
+        <div style={{ textAlign: 'center', padding: '3rem 0' }}>
+          <div className="animate-spin" style={{ width: 28, height: 28, borderRadius: '50%', border: '3px solid var(--line)', borderTopColor: 'var(--accent)', margin: '0 auto' }} />
+        </div>
       )}
 
+      {/* Healthy state */}
       {!loading && healthy && (
-        <Card className="p-8">
-          <EmptyState
-            icon={CheckCircle2}
-            title="Ledger is clean"
-            description="No orphaned payments, duplicate transactions, sum drift, or status mismatches found."
-          />
-        </Card>
+        <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
+          <CheckCircle2 style={{ width: 40, height: 40, margin: '0 auto 12px', color: 'var(--leaf)' }} />
+          <p style={{ fontWeight: 700, fontSize: 16, color: 'var(--ink)', marginBottom: 4 }}>Ledger is clean</p>
+          <p className="muted">No orphaned payments, duplicate transactions, sum drift, or status mismatches found.</p>
+        </div>
       )}
 
-      {/* ─── Orphaned payments ────────────────────────────────────────────── */}
+      {/* ─── Orphaned payments ─── */}
       {!loading && orphans.length > 0 && (
-        <Card className="mb-6">
-          <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-rose-100"><FileWarning className="w-4 h-4 text-rose-600" /></div>
-              <div>
-                <h2 className="text-base font-bold text-slate-800">Orphaned payments</h2>
-                <p className="text-xs text-slate-500">Payments referencing a missing fee request or wrong student</p>
+        <div>
+          <div className="section-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FileWarning style={{ width: 14, height: 14, color: 'var(--coral)' }} />
+            Orphaned Payments
+            <span className="chip" style={{ background: 'var(--coral)', color: '#fff', fontSize: 11, marginLeft: 4 }}>{orphans.length}</span>
+          </div>
+          <div className="stack" style={{ gap: 'var(--space-2)' }}>
+            {orphans.map(({ payment, reason }) => (
+              <div key={payment.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p className="mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 2 }}>
+                    {payment.receiptNumber || payment.id}
+                  </p>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span className="mono tiny muted">{fmtDate(payment.date)}</span>
+                    <span className="chip" style={{ fontSize: 11, background: 'color-mix(in srgb, var(--coral) 15%, transparent)', color: 'var(--coral)' }}>
+                      {reason === 'missing-request' ? 'Missing fee request' : 'Wrong student'}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <p className="t-num" style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
+                    ₹{(payment.amount || 0).toLocaleString('en-IN')}
+                  </p>
+                  <p className="tiny muted capitalize">{(payment.method || '').replace(/_/g, ' ')}</p>
+                </div>
               </div>
-            </div>
-            <Badge variant="error">{orphans.length}</Badge>
+            ))}
           </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Receipt</Th>
-                  <Th>Date</Th>
-                  <Th>Student</Th>
-                  <Th>Amount</Th>
-                  <Th>Method</Th>
-                  <Th>Reason</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {orphans.map(({ payment, reason }) => (
-                  <Tr key={payment.id}>
-                    <Td className="font-mono text-xs">{payment.receiptNumber}</Td>
-                    <Td>{fmtDate(payment.date)}</Td>
-                    <Td>{studentMap.get(payment.studentId)?.name || payment.studentId}</Td>
-                    <Td>₹{(payment.amount || 0).toLocaleString('en-IN')}</Td>
-                    <Td className="capitalize">{(payment.method || '').replace(/_/g, ' ')}</Td>
-                    <Td>
-                      <Badge variant="error">
-                        {reason === 'missing-request' ? 'Missing fee request' : 'Wrong student'}
-                      </Badge>
-                    </Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </div>
-        </Card>
+        </div>
       )}
 
-      {/* ─── Duplicate transactions ───────────────────────────────────────── */}
+      {/* ─── Duplicate transactions ─── */}
       {!loading && duplicates.length > 0 && (
-        <Card className="mb-6">
-          <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-100"><Copy className="w-4 h-4 text-amber-600" /></div>
-              <div>
-                <h2 className="text-base font-bold text-slate-800">Duplicate transaction IDs</h2>
-                <p className="text-xs text-slate-500">Same gateway transactionId recorded against multiple payment docs</p>
+        <div>
+          <div className="section-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Copy style={{ width: 14, height: 14, color: 'var(--coral)' }} />
+            Duplicate Transaction IDs
+            <span className="chip" style={{ background: 'var(--coral)', color: '#fff', fontSize: 11, marginLeft: 4 }}>{duplicates.length}</span>
+          </div>
+          <div className="stack" style={{ gap: 'var(--space-2)' }}>
+            {duplicates.map(d => (
+              <div key={d.transactionId} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p className="mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 2 }}>
+                    {d.transactionId}
+                  </p>
+                  <p className="mono tiny muted">
+                    Receipts: {d.payments.map(p => p.receiptNumber).join(', ')}
+                  </p>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <p className="t-num" style={{ fontSize: 14, fontWeight: 700, color: 'var(--coral)' }}>
+                    ₹{d.payments.reduce((s, p) => s + (p.amount || 0), 0).toLocaleString('en-IN')}
+                  </p>
+                  <span className="chip" style={{ fontSize: 11, background: 'color-mix(in srgb, var(--coral) 15%, transparent)', color: 'var(--coral)' }}>
+                    {d.payments.length} dupes
+                  </span>
+                </div>
               </div>
-            </div>
-            <Badge variant="warning">{duplicates.length}</Badge>
+            ))}
           </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Transaction ID</Th>
-                  <Th>Receipts</Th>
-                  <Th>Total ₹</Th>
-                  <Th>Count</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {duplicates.map(d => (
-                  <Tr key={d.transactionId}>
-                    <Td className="font-mono text-xs">{d.transactionId}</Td>
-                    <Td className="font-mono text-xs">
-                      {d.payments.map(p => p.receiptNumber).join(', ')}
-                    </Td>
-                    <Td>₹{d.payments.reduce((s, p) => s + (p.amount || 0), 0).toLocaleString('en-IN')}</Td>
-                    <Td>
-                      <Badge variant="warning">{d.payments.length}</Badge>
-                    </Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </div>
-        </Card>
+        </div>
       )}
 
-      {/* ─── Sum drift ────────────────────────────────────────────────────── */}
+      {/* ─── Sum drift ─── */}
       {!loading && drift.length > 0 && (
-        <Card className="mb-6">
-          <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-rose-100"><Scale className="w-4 h-4 text-rose-600" /></div>
-              <div>
-                <h2 className="text-base font-bold text-slate-800">Paid-amount drift</h2>
-                <p className="text-xs text-slate-500">Fee request paidAmount does not match the sum of its payments</p>
+        <div>
+          <div className="section-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Scale style={{ width: 14, height: 14, color: 'var(--accent)' }} />
+            Paid-Amount Drift
+            <span className="chip" style={{ background: 'var(--accent)', color: '#fff', fontSize: 11, marginLeft: 4 }}>{drift.length}</span>
+          </div>
+          <div className="stack" style={{ gap: 'var(--space-2)' }}>
+            {drift.map(d => (
+              <div key={d.request.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)', marginBottom: 2 }}>
+                    {d.studentName || d.request.studentId}
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span className="mono tiny muted">{fmtMonthYear(d.request.month)}</span>
+                    <span className="tiny muted">Recorded ₹{d.recordedPaid.toLocaleString('en-IN')} · Sum ₹{d.paymentsSum.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <p className="t-num" style={{ fontSize: 15, fontWeight: 700, color: d.delta > 0 ? 'var(--coral)' : 'var(--accent)' }}>
+                    {d.delta > 0 ? '+' : ''}₹{d.delta.toLocaleString('en-IN')}
+                  </p>
+                  <p className="tiny muted capitalize">{d.request.status.replace(/_/g, ' ')}</p>
+                </div>
               </div>
-            </div>
-            <Badge variant="error">{drift.length}</Badge>
+            ))}
           </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Student</Th>
-                  <Th>Month</Th>
-                  <Th>Recorded Paid</Th>
-                  <Th>Payments Sum</Th>
-                  <Th>Δ</Th>
-                  <Th>Status</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {drift.map(d => (
-                  <Tr key={d.request.id}>
-                    <Td>{d.studentName || d.request.studentId}</Td>
-                    <Td>{fmtMonthYear(d.request.month)}</Td>
-                    <Td>₹{d.recordedPaid.toLocaleString('en-IN')}</Td>
-                    <Td>₹{d.paymentsSum.toLocaleString('en-IN')}</Td>
-                    <Td className={d.delta > 0 ? 'text-rose-600 font-bold' : 'text-amber-600 font-bold'}>
-                      {d.delta > 0 ? '+' : ''}
-                      ₹{d.delta.toLocaleString('en-IN')}
-                    </Td>
-                    <Td className="capitalize text-xs">{d.request.status.replace(/_/g, ' ')}</Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </div>
-        </Card>
+        </div>
       )}
 
-      {/* ─── Status mismatches ────────────────────────────────────────────── */}
+      {/* ─── Status mismatches ─── */}
       {!loading && statusMismatches.length > 0 && (
-        <Card className="mb-6">
-          <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-100"><GitBranch className="w-4 h-4 text-amber-600" /></div>
-              <div>
-                <h2 className="text-base font-bold text-slate-800">Status mismatches</h2>
-                <p className="text-xs text-slate-500">Stored status doesn't match the computed status from paidAmount / total</p>
-              </div>
-            </div>
-            <Badge variant="warning">{statusMismatches.length}</Badge>
+        <div>
+          <div className="section-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <GitBranch style={{ width: 14, height: 14, color: 'var(--accent)' }} />
+            Status Mismatches
+            <span className="chip" style={{ background: 'var(--accent)', color: '#fff', fontSize: 11, marginLeft: 4 }}>{statusMismatches.length}</span>
           </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <Thead>
-                <Tr>
-                  <Th>Student</Th>
-                  <Th>Month</Th>
-                  <Th>Stored</Th>
-                  <Th>Expected</Th>
-                  <Th>Paid / Total</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {statusMismatches.map(m => {
-                  const total = (m.request.totalAmount || 0) + (m.request.fineAmount || 0) - (m.request.waivedAmount || 0);
-                  return (
-                    <Tr key={m.request.id}>
-                      <Td>{m.studentName || m.request.studentId}</Td>
-                      <Td>{fmtMonthYear(m.request.month)}</Td>
-                      <Td className="capitalize">
-                        <Badge variant="warning">{m.request.status.replace(/_/g, ' ')}</Badge>
-                      </Td>
-                      <Td className="capitalize">
-                        <Badge variant="success">{m.expectedStatus.replace(/_/g, ' ')}</Badge>
-                      </Td>
-                      <Td>
-                        ₹{(m.request.paidAmount || 0).toLocaleString('en-IN')} / ₹{total.toLocaleString('en-IN')}
-                      </Td>
-                    </Tr>
-                  );
-                })}
-              </Tbody>
-            </Table>
+          <div className="stack" style={{ gap: 'var(--space-2)' }}>
+            {statusMismatches.map(m => {
+              const total = (m.request.totalAmount || 0) + (m.request.fineAmount || 0) - (m.request.waivedAmount || 0);
+              return (
+                <div key={m.request.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)', marginBottom: 2 }}>
+                      {m.studentName || m.request.studentId}
+                    </p>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span className="mono tiny muted">{fmtMonthYear(m.request.month)}</span>
+                      <span className="chip" style={{ fontSize: 11, background: '#fef3c7', color: '#92400e' }}>
+                        {m.request.status.replace(/_/g, ' ')}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>→</span>
+                      <span className="chip" style={{ fontSize: 11, background: 'color-mix(in srgb, var(--leaf) 15%, transparent)', color: 'var(--leaf)' }}>
+                        {m.expectedStatus.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <p className="tiny muted">
+                      ₹{(m.request.paidAmount || 0).toLocaleString('en-IN')} / ₹{total.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </Card>
+        </div>
       )}
 
-      {!loading && (orphans.length + duplicates.length + drift.length + statusMismatches.length > 0) && (
-        <Card className="p-5 bg-amber-50 border border-amber-200">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-amber-900">
-              <p className="font-semibold mb-1">How to resolve</p>
-              <ul className="list-disc ml-5 space-y-1 text-amber-800">
+      {/* How to resolve */}
+      {!loading && totalIssues > 0 && (
+        <div className="card" style={{ background: 'color-mix(in srgb, #f59e0b 8%, transparent)', border: '1px solid color-mix(in srgb, #f59e0b 30%, transparent)' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <AlertTriangle style={{ width: 16, height: 16, color: '#92400e', flexShrink: 0, marginTop: 2 }} />
+            <div style={{ fontSize: 13, color: '#78350f' }}>
+              <p style={{ fontWeight: 700, marginBottom: 6 }}>How to resolve</p>
+              <ul style={{ paddingLeft: 16, lineHeight: 1.7 }}>
                 <li><b>Orphaned payments</b>: re-link to the correct fee request, or delete if accidental.</li>
                 <li><b>Duplicate txns</b>: review receipts and remove the duplicate from the Payments page.</li>
                 <li><b>Sum drift</b>: edit the fee request's paidAmount to match the sum of its payments (or rollback the stray payment).</li>
@@ -433,7 +389,7 @@ export default function PaymentReconciliation({ user: _user }: Props) {
               </ul>
             </div>
           </div>
-        </Card>
+        </div>
       )}
     </div>
   );

@@ -1,8 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import PortalLayout from '../../components/PortalLayout';
-import { auth, db } from '../../firebase';
-import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import AccountsShell from '../../components/AccountsShell';
 import { UserProfile } from '../../types';
 import AccountsDashboard from './AccountsDashboard';
 import FeeCollection from './FeeCollection';
@@ -17,7 +14,7 @@ import WhatsAppNotifications from '../admin/WhatsAppNotifications';
 
 export default function AccountsPortal({ user }: { user: UserProfile }) {
   return (
-    <PortalLayout user={user}>
+    <AccountsShell user={user}>
       <Routes>
         <Route path="/" element={<AccountsDashboard user={user} />} />
         <Route path="/fee-collection" element={<FeeCollection user={user} />} />
@@ -31,6 +28,6 @@ export default function AccountsPortal({ user }: { user: UserProfile }) {
         <Route path="/whatsapp" element={<WhatsAppNotifications user={user} />} />
         <Route path="*" element={<Navigate to="/accounts" />} />
       </Routes>
-    </PortalLayout>
+    </AccountsShell>
   );
 }

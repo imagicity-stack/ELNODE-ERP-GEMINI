@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Users, GraduationCap, Briefcase, ClipboardCheck, Zap } from 'lucide-react';
-import { collection, query, getDocs, where } from 'firebase/firestore';
+import { Users, GraduationCap, Clock, Megaphone, BookOpen, CreditCard, Sparkles } from 'lucide-react';
+import { collection, query, getDocs, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { UserProfile } from '../../types';
-import UpdatesSection from '../../components/UpdatesSection';
+import { Link } from 'react-router-dom';
+import AIInsightsPanel from '../../components/AIInsightsPanel';
 
 export default function PrincipalDashboard({ user }: { user: UserProfile }) {
   const [stats, setStats] = useState({
@@ -12,17 +13,22 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
     classes: 0,
     attendanceToday: '—',
   });
+  const [pendingLeaves, setPendingLeaves] = useState(0);
+  const [notices, setNotices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
         const today = new Date().toISOString().split('T')[0];
-        const [studentSnap, teacherSnap, classSnap, attendanceSnap] = await Promise.all([
+        const [studentSnap, teacherSnap, classSnap, attendanceSnap, leaveSnap, noticesSnap] = await Promise.all([
           getDocs(collection(db, 'students')),
           getDocs(collection(db, 'teachers')),
           getDocs(collection(db, 'classes')),
           getDocs(query(collection(db, 'attendance'), where('date', '==', today))),
+          getDocs(query(collection(db, 'studentLeaves'), where('status', 'in', ['submitted', 'pending']))),
+          getDocs(query(collection(db, 'notices'), orderBy('createdAt', 'desc'), limit(3))),
         ]);
 
         const totalStudents = studentSnap.size;
@@ -35,6 +41,8 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
           classes: classSnap.size,
           attendanceToday: `${pct}%`,
         });
+        setPendingLeaves(leaveSnap.size || 0);
+        setNotices(noticesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error('PrincipalDashboard stats error:', err);
       } finally {
@@ -43,95 +51,113 @@ export default function PrincipalDashboard({ user }: { user: UserProfile }) {
     })();
   }, []);
 
-  const statCards = [
-    { label: 'Total Students',    value: stats.students,       icon: Users,          color: 'bg-indigo-600' },
-    { label: 'Faculty',           value: stats.teachers,       icon: Briefcase,      color: 'bg-violet-600' },
-    { label: 'Classes',           value: stats.classes,        icon: GraduationCap,  color: 'bg-emerald-600' },
-    { label: "Today's Attendance", value: stats.attendanceToday, icon: ClipboardCheck, color: 'bg-amber-500' },
+  const todayLabel = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  const quickActions = [
+    { label: 'Students', icon: Users, to: '/principal/students' },
+    { label: 'Teachers', icon: GraduationCap, to: '/principal/teachers' },
+    { label: 'Leaves', icon: Clock, to: '/principal/leaves' },
+    { label: 'Exams', icon: BookOpen, to: '/principal/exams' },
+    { label: 'Notices', icon: Megaphone, to: '/principal/notices' },
+    { label: 'Fees', icon: CreditCard, to: '/principal/fees' },
   ];
 
   return (
-    <>
-      {/* ── Mobile ── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        {/* Header */}
-        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 px-4 pt-5 pb-6 text-white">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-6 h-6 rounded-md bg-indigo-500/30 flex items-center justify-center">
-              <Zap className="w-3.5 h-3.5 text-indigo-200 fill-indigo-300" />
-            </div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Principal Portal</p>
-          </div>
-          <h1 className="text-xl font-bold">Welcome, {(user.name || user.email || 'User').split(' ')[0]}</h1>
-          <p className="text-xs text-indigo-100 mt-0.5">
-            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
-          </p>
-
-          {/* Stat tiles */}
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            {statCards.map(({ label, value, icon: Icon, color }) => (
-              <div key={label} className="bg-white/10 backdrop-blur rounded-xl p-3 border border-white/10">
-                <Icon className="w-4 h-4 text-white/60 mb-1" />
-                <p className="text-lg font-bold leading-tight">
-                  {loading ? '…' : value}
-                </p>
-                <p className="text-[10px] text-white/70 uppercase tracking-wide">{label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Updates feed */}
-        <div className="px-4 pt-4">
-          <UpdatesSection user={user} />
-        </div>
-
-        {loading && (
-          <div className="fixed top-0 left-0 right-0 h-0.5 bg-indigo-500 animate-pulse z-50" />
-        )}
-      </div>
-
-      {/* ── Desktop ── */}
-      <div className="hidden md:block space-y-8 pb-12">
-        {/* Header */}
+    <div className="eh-app" style={{ paddingBottom: '80px' }}>
+      <div className="topbar">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-indigo-600 fill-indigo-600" />
-            </div>
-            <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Principal Dashboard</span>
-          </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">
-            Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">{(user.name || user.email || 'User').split(' ')[0]}</span>
-          </h1>
-          <p className="text-slate-500 mt-1 font-medium">
-            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-          </p>
+          <p className="eyebrow">{todayLabel}</p>
+          <h1>Principal Dashboard</h1>
         </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-          {statCards.map(({ label, value, icon: Icon, color }) => (
-            <div
-              key={label}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex items-center gap-4"
-            >
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-md ${color}`}>
-                <Icon className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-500 mb-0.5">{label}</p>
-                <p className="text-3xl font-black text-slate-900 tracking-tight">
-                  {loading ? '…' : value}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Updates feed */}
-        <UpdatesSection user={user} className="rounded-[2rem]" />
       </div>
-    </>
+
+      <div className="pad">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 12 }}>
+          <div className="card" style={{ padding: '16px 18px' }}>
+            <p className="eyebrow">Students</p>
+            <p className="t-num" style={{ fontSize: '2.8rem', lineHeight: 1 }}>
+              {loading ? '—' : stats.students.toLocaleString()}
+            </p>
+          </div>
+          <div className="card" style={{ padding: '16px 18px' }}>
+            <p className="eyebrow">Teachers</p>
+            <p className="t-num" style={{ fontSize: '2.8rem', lineHeight: 1 }}>
+              {loading ? '—' : stats.teachers.toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 20 }}>
+          <div className="card" style={{ padding: '16px 18px' }}>
+            <p className="eyebrow">Pending Leaves</p>
+            <p className="t-num" style={{ fontSize: '2.4rem', lineHeight: 1, color: 'var(--coral)' }}>
+              {loading ? '—' : pendingLeaves}
+            </p>
+          </div>
+          <div className="card" style={{ padding: '16px 18px' }}>
+            <p className="eyebrow">Today's Attendance</p>
+            <p className="t-num" style={{ fontSize: '2.4rem', lineHeight: 1, color: 'var(--leaf)' }}>
+              {loading ? '—' : stats.attendanceToday}
+            </p>
+          </div>
+        </div>
+
+        <div className="section-head">
+          <h2>Notices</h2>
+          <Link to="/principal/notices">View all</Link>
+        </div>
+        <div className="stack" style={{ marginBottom: 20 }}>
+          {notices.length > 0 ? notices.slice(0, 3).map((n) => (
+            <div key={n.id} style={{
+              borderLeft: '3px solid var(--coral)',
+              paddingLeft: 14,
+              paddingTop: 4,
+              paddingBottom: 4,
+            }}>
+              <p style={{ fontWeight: 600, fontSize: 14, margin: '0 0 2px' }}>{n.title}</p>
+              <p className="muted tiny" style={{ margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{n.content}</p>
+            </div>
+          )) : (
+            <p className="muted" style={{ textAlign: 'center', padding: '16px 0', fontSize: 14 }}>No recent notices</p>
+          )}
+        </div>
+
+        <div className="section-head">
+          <h2>Quick Actions</h2>
+        </div>
+      </div>
+
+      <div className="hscroll" style={{ paddingBottom: 8, marginBottom: 20 }}>
+        {quickActions.map((a) => (
+          <Link key={a.label} to={a.to} style={{ textDecoration: 'none' }}>
+            <div className="card" style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              gap: 8, padding: '14px 16px', minWidth: 80, cursor: 'pointer',
+            }}>
+              <a.icon size={20} color="var(--ink-2)" />
+              <p className="eyebrow" style={{ margin: 0 }}>{a.label}</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      <button
+        onClick={() => setAiOpen(true)}
+        style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 30,
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: 'var(--ink)', color: 'var(--cream)',
+          border: 'none', borderRadius: 999,
+          padding: '10px 16px', cursor: 'pointer',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
+        }}
+        aria-label="Open AI insights"
+      >
+        <Sparkles size={18} color="var(--accent)" />
+        <span style={{ fontSize: 13, fontWeight: 600 }}>Ask AI</span>
+      </button>
+
+      <AIInsightsPanel open={aiOpen} onClose={() => setAiOpen(false)} period="This Month" />
+    </div>
   );
 }

@@ -38,14 +38,15 @@ import {
   Check,
   ImageIcon,
   Filter as FilterIcon,
+  Search,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
-  PageHeader, Card, Badge, Button, IconButton, Modal, SearchInput,
-  FormField, Input, Select, Textarea, Table, Thead, Th, Tbody, Tr, Td,
+  Modal, FormField, Input, Select, Textarea,
   EmptyState, Avatar,
+  Button, IconButton, Badge,
 } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { StaggeredList } from '../../components/animations';
@@ -223,7 +224,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             photoURL: formData.photoURL,
           }, { merge: true });
         }
-        
+
         await logActivity(
           user,
           'UPDATE_STUDENT',
@@ -246,7 +247,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       const studentEmail = `${schoolNumber}@${SCHOOL_DOMAIN}`;
       const parentEmail = `p${schoolNumber}@${SCHOOL_DOMAIN}`;
       const defaultPassword = 'password123';
-      
+
       // Initialize secondary app for user creation without signing out admin
       let secondaryApp;
       try {
@@ -354,7 +355,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
       setIsModalOpen(false);
       fetchStudents();
-      
+
       await logActivity(
         user,
         'ADMIT_STUDENT',
@@ -615,7 +616,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const handleEdit = (student: Student) => {
     setEditingStudent(student);
     setIsEditMode(true);
-    
+
     // Find IDs if they were stored as names
     const classObj = classes.find(c => c.id === student.classId || c.name === student.classId);
     const houseObj = houses.find(h => h.id === student.houseId || h.name === student.houseId);
@@ -757,7 +758,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   }) => {
     if (!deletingStudent) return;
     setLoading(true);
-    
+
     try {
       if (options.downloadFirst) {
         await generateStudentPDF(deletingStudent);
@@ -766,7 +767,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       // 1. Delete Student Document
       if (options.deleteStudent || options.deleteEverything) {
         await deleteDoc(doc(db, 'students', deletingStudent.id));
-        
+
         await logActivity(
           user,
           'DELETE_STUDENT',
@@ -800,7 +801,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         // Check if other students use this parent
         const otherStudentsQuery = query(collection(db, 'students'), where('parentId', '==', deletingStudent.parentId));
         const otherStudentsDocs = await getDocs(otherStudentsQuery);
-        
+
         // If deleting everything, we don't care about other students unless we want to keep parent for them
         // But usually "delete parent" means delete that parent profile
         if (otherStudentsDocs.size <= 1 || options.deleteParent) {
@@ -930,43 +931,60 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     }
   };
 
+  // ─── initials helper ──────────────────────────────────────────────────────
+  const getInitials = (name: string) =>
+    name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Students</h1>
-          <p className="text-xs text-indigo-100 mt-0.5">{students.length} enrolled · {classes.length} classes</p>
-          <div className="mt-3">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search name or admission no..."
-              className="w-full px-4 py-2.5 rounded-xl bg-white/15 backdrop-blur border border-white/20 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20"
-            />
-          </div>
+      {/* ─── Topbar ─────────────────────────────────────────────────────── */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">{filteredStudents.length} students</div>
+          <h1>Students</h1>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="icon-btn" title="Export CSV" onClick={() => setExportModalOpen(true)}>
+            <Download size={16} />
+          </button>
+          {!readOnly && (
+            <button className="icon-btn" title="Import CSV" onClick={() => { setImportRows([]); setImportErrors([]); setImportProgress(null); setImportResults([]); setImportModalOpen(true); }}>
+              <Upload size={16} />
+            </button>
+          )}
+          {!readOnly && (
+            <button className="btn accent" style={{ width: 'auto', padding: '8px 16px', fontSize: 13 }} onClick={openAddModal}>
+              <Plus size={14} /> Add Student
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="pad" style={{ paddingBottom: 24 }}>
+        {/* ─── Search ─────────────────────────────────────────────────────── */}
+        <div className="card flex center" style={{ gap: 10, padding: '10px 14px', marginBottom: 12 }}>
+          <Search size={16} className="muted" style={{ flexShrink: 0 }} />
+          <input
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            placeholder="Search name, admission no., parent…"
+            style={{ border: 0, outline: 'none', background: 'transparent', flex: 1, fontSize: 14, fontFamily: 'var(--body)', color: 'var(--ink)' }}
+          />
         </div>
 
-        <div className="px-4 pt-3 overflow-x-auto flex gap-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {/* ─── Filter chips ────────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
           <button
+            className={cn('chip', activeFilterCount === 0 && 'solid')}
             onClick={clearFilters}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
-              activeFilterCount === 0 ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
-            )}
           >
             All
           </button>
           {classes.map(cls => (
             <button
               key={cls.id}
+              className={cn('chip', filterClass.includes(cls.id) && 'solid')}
               onClick={() => setFilterClass(toggleArrayValue(filterClass, cls.id))}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
-                filterClass.includes(cls.id) ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
-              )}
             >
               Class {cls.name}
             </button>
@@ -974,11 +992,8 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           {houses.map(h => (
             <button
               key={h.id}
+              className={cn('chip', filterHouse.includes(h.id) && 'accent')}
               onClick={() => setFilterHouse(toggleArrayValue(filterHouse, h.id))}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform",
-                filterHouse.includes(h.id) ? 'bg-amber-500 text-white' : 'bg-white text-slate-600 border border-slate-200'
-              )}
             >
               {h.name}
             </button>
@@ -986,383 +1001,163 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           {(['male', 'female'] as const).map(g => (
             <button
               key={g}
+              className={cn('chip', filterGender.includes(g) && 'solid')}
               onClick={() => setFilterGender(toggleArrayValue(filterGender, g))}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition-transform capitalize",
-                filterGender.includes(g) ? 'bg-violet-500 text-white' : 'bg-white text-slate-600 border border-slate-200'
-              )}
+              style={{ textTransform: 'capitalize' }}
             >
               {g}
             </button>
           ))}
         </div>
 
-        <div className="px-4 pt-4">
+        {/* ─── Mobile card list ────────────────────────────────────────────── */}
+        <div className="stack mobile-only">
           {filteredStudents.length === 0 ? (
-            <div className="py-12 text-center">
-              <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No students found</p>
-              <p className="text-xs text-slate-500 mt-1">Try adjusting filters or add a student</p>
+            <div style={{ textAlign: 'center', padding: '48px 0' }}>
+              <Users size={40} style={{ color: 'var(--line)', margin: '0 auto 12px' }} />
+              <p style={{ fontWeight: 700, color: 'var(--ink)' }}>No students found</p>
+              <p className="tiny muted" style={{ marginTop: 4 }}>Try adjusting filters or add a student</p>
             </div>
           ) : (
-            <StaggeredList className="space-y-2.5">
-              {filteredStudents.map((student) => (
-                <button
-                  key={student.id}
-                  onClick={() => !readOnly && handleEdit(student)}
-                  className="w-full bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex items-center gap-3 active:scale-[0.98] transition-transform text-left"
-                >
-                  <Avatar name={student.name} src={student.photoURL} size="md" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">{student.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md">
-                        {getClassName(student.classId)}{student.section ? ` - ${student.section}` : ''}
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-mono">{student.admissionNumber}</span>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </StaggeredList>
-          )}
-        </div>
-
-        {!readOnly && (
-          <button
-            onClick={openAddModal}
-            className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-          >
-            <Plus className="w-6 h-6" strokeWidth={2.5} />
-          </button>
-        )}
-      </div>
-
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-6">
-      <PageHeader
-        title="Student Management"
-        subtitle={`${filteredStudents.length} students`}
-        icon={Users}
-        iconColor="gradient-indigo"
-        actions={
-          <>
-            <button
-              onClick={() => setExportModalOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:border-indigo-300 hover:text-indigo-700 transition-all"
-            >
-              <Download className="w-4 h-4" />
-              Export CSV
-              {activeFilterCount > 0 && (
-                <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-md">
-                  {filteredStudents.length}
-                </span>
-              )}
-            </button>
-            {!readOnly && (
-              <Button variant="secondary" size="sm" icon={Upload} onClick={() => { setImportRows([]); setImportErrors([]); setImportProgress(null); setImportResults([]); setImportModalOpen(true); }}>
-                Import CSV
-              </Button>
-            )}
-            {!readOnly && <Button size="sm" icon={UserPlus} onClick={openAddModal}>Add Student</Button>}
-          </>
-        }
-      />
-
-      {/* Filters */}
-      <Card padding="sm">
-        <div className="flex flex-col gap-3">
-          {/* Search + filter toggle row */}
-          <div className="flex gap-3">
-            <SearchInput
-              value={searchTerm}
-              onChange={setSearchTerm}
-              placeholder="Search name, admission no., parent…"
-              className="flex-1"
-            />
-            <button
-              onClick={() => setShowFilters(v => !v)}
-              className={cn(
-                'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all',
-                showFilters || activeFilterCount > 0
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-              )}
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-              Filters
-              {activeFilterCount > 0 && (
-                <span className="w-5 h-5 rounded-full bg-white text-indigo-700 text-[10px] font-black flex items-center justify-center">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* Expanded filter panel — multi-select dropdowns + presence toggles */}
-          {showFilters && (
-            <div className="pt-3 border-t border-slate-100 space-y-4">
-              {/* Multi-select dropdowns */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                <MultiSelectDropdown
-                  label="Classes"
-                  options={classes.map(c => ({ value: c.id, label: `Class ${c.name}` }))}
-                  selected={filterClass}
-                  onChange={(next) => {
-                    setFilterClass(next);
-                    // prune sections that no longer exist for selected classes
-                    if (next.length > 0) {
-                      const valid = new Set(next.flatMap(cid => (classes.find(c => c.id === cid)?.sections.map(s => s.name || 'A')) ?? []));
-                      setFilterSection(prev => prev.filter(s => valid.has(s)));
-                    }
-                  }}
-                  color="indigo"
-                />
-                <MultiSelectDropdown
-                  label="Sections"
-                  options={availableSections.map(s => ({ value: s, label: `Section ${s}` }))}
-                  selected={filterSection}
-                  onChange={setFilterSection}
-                  disabled={availableSections.length === 0}
-                  color="indigo"
-                />
-                <MultiSelectDropdown
-                  label="Houses"
-                  options={houses.map(h => ({ value: h.id, label: h.name }))}
-                  selected={filterHouse}
-                  onChange={setFilterHouse}
-                  color="amber"
-                />
-                <MultiSelectDropdown
-                  label="Gender"
-                  options={[
-                    { value: 'male', label: 'Male' },
-                    { value: 'female', label: 'Female' },
-                    { value: 'other', label: 'Other' },
-                  ]}
-                  selected={filterGender}
-                  onChange={setFilterGender}
-                  color="violet"
-                />
-                <MultiSelectDropdown
-                  label="Transport"
-                  options={[
-                    { value: 'School', label: 'School' },
-                    { value: 'Private', label: 'Private' },
-                    { value: '', label: 'None' },
-                  ]}
-                  selected={filterTransport}
-                  onChange={setFilterTransport}
-                  color="emerald"
-                />
-              </div>
-
-              {/* Presence filters */}
-              <div>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Has Information</div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                  <TriStateFilter label="Photo" icon={ImageIcon} value={filterPhoto} onChange={setFilterPhoto} />
-                  <TriStateFilter label="Address" icon={MapPin} value={filterAddress} onChange={setFilterAddress} />
-                  <TriStateFilter label="Medical Notes" icon={Heart} value={filterMedical} onChange={setFilterMedical} />
-                  <TriStateFilter label="Academic History" icon={FileText} value={filterAcademic} onChange={setFilterAcademic} />
-                  <TriStateFilter label="Student Email" icon={Mail} value={filterStudentEmail} onChange={setFilterStudentEmail} />
-                  <TriStateFilter label="Parent Email" icon={Mail} value={filterParentEmail} onChange={setFilterParentEmail} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Active filter chips */}
-          {activeFilterCount > 0 && (
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              {filterClass.map(cid => (
-                <FilterChip key={cid} color="indigo" onRemove={() => setFilterClass(filterClass.filter(v => v !== cid))}>
-                  Class {classes.find(c => c.id === cid)?.name}
-                </FilterChip>
-              ))}
-              {filterSection.map(sec => (
-                <FilterChip key={sec} color="indigo" onRemove={() => setFilterSection(filterSection.filter(v => v !== sec))}>
-                  Section {sec}
-                </FilterChip>
-              ))}
-              {filterHouse.map(hid => (
-                <FilterChip key={hid} color="amber" onRemove={() => setFilterHouse(filterHouse.filter(v => v !== hid))}>
-                  {houses.find(h => h.id === hid)?.name}
-                </FilterChip>
-              ))}
-              {filterGender.map(g => (
-                <FilterChip key={g} color="violet" onRemove={() => setFilterGender(filterGender.filter(v => v !== g))}>
-                  <span className="capitalize">{g}</span>
-                </FilterChip>
-              ))}
-              {filterTransport.map(t => (
-                <FilterChip key={t} color="emerald" onRemove={() => setFilterTransport(filterTransport.filter(v => v !== t))}>
-                  Transport: {t || 'None'}
-                </FilterChip>
-              ))}
-              {filterPhoto !== 'any' && (
-                <FilterChip color="slate" onRemove={() => setFilterPhoto('any')}>
-                  {filterPhoto === 'yes' ? 'Has photo' : 'No photo'}
-                </FilterChip>
-              )}
-              {filterAddress !== 'any' && (
-                <FilterChip color="slate" onRemove={() => setFilterAddress('any')}>
-                  {filterAddress === 'yes' ? 'Has address' : 'No address'}
-                </FilterChip>
-              )}
-              {filterMedical !== 'any' && (
-                <FilterChip color="slate" onRemove={() => setFilterMedical('any')}>
-                  {filterMedical === 'yes' ? 'Has medical notes' : 'No medical notes'}
-                </FilterChip>
-              )}
-              {filterAcademic !== 'any' && (
-                <FilterChip color="slate" onRemove={() => setFilterAcademic('any')}>
-                  {filterAcademic === 'yes' ? 'Has academic history' : 'No academic history'}
-                </FilterChip>
-              )}
-              {filterStudentEmail !== 'any' && (
-                <FilterChip color="slate" onRemove={() => setFilterStudentEmail('any')}>
-                  {filterStudentEmail === 'yes' ? 'Has student email' : 'No student email'}
-                </FilterChip>
-              )}
-              {filterParentEmail !== 'any' && (
-                <FilterChip color="slate" onRemove={() => setFilterParentEmail('any')}>
-                  {filterParentEmail === 'yes' ? 'Has parent email' : 'No parent email'}
-                </FilterChip>
-              )}
+            filteredStudents.map(student => (
               <button
-                onClick={clearFilters}
-                className="px-2.5 py-1 text-xs font-semibold text-slate-500 hover:text-rose-600 transition-colors"
+                key={student.id}
+                className="card flex center"
+                style={{ gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer' }}
+                onClick={() => !readOnly && handleEdit(student)}
               >
-                Clear all
+                {student.photoURL ? (
+                  <img src={student.photoURL} alt={student.name} style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                ) : (
+                  <div className="avatar" style={{ flexShrink: 0 }}>{getInitials(student.name)}</div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)', marginBottom: 2 }}>{student.name}</p>
+                  <p className="eyebrow" style={{ marginBottom: 4 }}>{student.admissionNumber}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span className="chip" style={{ padding: '2px 8px', fontSize: 11 }}>
+                      {getClassName(student.classId)}{student.section ? ` · ${student.section}` : ''}
+                    </span>
+                    {student.parentDetails?.phone && (
+                      <span className="tiny muted">{student.parentDetails.phone}</span>
+                    )}
+                  </div>
+                </div>
+                <ChevronRight size={16} style={{ color: 'var(--ink-3)', flexShrink: 0 }} />
               </button>
-              <span className="ml-auto text-xs text-slate-400 font-medium">{filteredStudents.length} result{filteredStudents.length !== 1 ? 's' : ''}</span>
-            </div>
+            ))
           )}
         </div>
-      </Card>
 
-      {/* Table */}
-      <Card padding="none">
-        <Table>
-          <Thead>
-            <tr>
-              <Th className="w-8"></Th>
-              <Th>Student</Th>
-              <Th className="hidden sm:table-cell">Admission / School No.</Th>
-              <Th className="hidden md:table-cell">Class & Section</Th>
-              <Th className="hidden md:table-cell">House</Th>
-              <Th className="hidden lg:table-cell">Parent Details</Th>
-              <Th className="text-right">Actions</Th>
-            </tr>
-          </Thead>
-          <Tbody>
-            {filteredStudents.length > 0 ? filteredStudents.map((student) => {
-              const isExpanded = expandedStudentId === student.id;
-              const houseName = getHouseName(student.houseId);
-              return (
-              <React.Fragment key={student.id}>
-                <Tr
-                  className={cn(
-                    'cursor-pointer transition-colors',
-                    isExpanded ? 'bg-indigo-50/40' : 'hover:bg-slate-50'
-                  )}
-                  onClick={() => setExpandedStudentId(isExpanded ? null : student.id)}
-                >
-                  <Td>
-                    {isExpanded
-                      ? <ChevronDown className="w-4 h-4 text-indigo-600" />
-                      : <ChevronRight className="w-4 h-4 text-slate-400" />}
-                  </Td>
-                  <Td>
-                    <div className="flex items-center gap-3">
-                      <Avatar name={student.name} src={student.photoURL} size="sm" />
-                      <div>
-                        <span className="font-semibold text-slate-900 block">{student.name}</span>
-                        <span className="text-[10px] text-slate-400 sm:hidden">{student.admissionNumber}</span>
-                        <span className="text-[10px] text-slate-400 md:hidden block">{getClassName(student.classId)}</span>
-                      </div>
-                    </div>
-                  </Td>
-                  <Td className="hidden sm:table-cell"><span className="font-mono text-slate-600">{student.admissionNumber}</span></Td>
-                  <Td className="hidden md:table-cell text-slate-600">{getClassName(student.classId)} {student.section && `- ${student.section}`}</Td>
-                  <Td className="hidden md:table-cell">
-                    {houseName ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 text-xs font-semibold rounded-md border border-amber-100">
-                        <HomeIcon className="w-3 h-3" />{houseName}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400">—</span>
-                    )}
-                  </Td>
-                  <Td className="hidden lg:table-cell">
-                    <div className="space-y-0.5">
-                      <p className="text-sm font-medium text-slate-900">{student.parentDetails?.fatherName || 'N/A'}</p>
-                      <p className="text-xs text-slate-400 flex items-center gap-1">
-                        <Phone className="w-3 h-3" />{student.parentDetails?.phone || 'N/A'}
-                      </p>
-                    </div>
-                  </Td>
-                  <Td onClick={(e: any) => e.stopPropagation()}>
-                    {!readOnly && (
-                      <div className="flex items-center justify-end gap-1">
-                        <IconButton icon={Edit2} variant="ghost" size="sm" onClick={() => handleEdit(student)} title="Edit" />
-                        <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => { setDeletingStudent(student); setIsDeleteModalOpen(true); }} title="Delete" />
-                      </div>
-                    )}
-                  </Td>
-                </Tr>
-                {isExpanded && (
-                  <tr className="bg-slate-50/60">
-                    <td colSpan={7} className="px-6 py-5">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {/* Student Identity */}
-                        <div className="space-y-3">
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Student</p>
-                          <DetailRow icon={Hash} label="Admission No." value={student.admissionNumber} />
-                          <DetailRow icon={Hash} label="School No." value={student.schoolNumber} />
-                          <DetailRow icon={GraduationCap} label="Class & Section" value={`${getClassName(student.classId)}${student.section ? ` - ${student.section}` : ''}`} />
-                          <DetailRow icon={HomeIcon} label="House" value={houseName || 'Not Assigned'} />
-                          <DetailRow icon={Users} label="Gender" value={student.gender ? student.gender.charAt(0).toUpperCase() + student.gender.slice(1) : 'Not specified'} />
-                          <DetailRow icon={Mail} label="Student Email" value={(student as any).email || '—'} />
-                        </div>
-
-                        {/* Parents */}
-                        <div className="space-y-3">
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Parents & Contact</p>
-                          <DetailRow icon={UserPlus} label="Father" value={student.parentDetails?.fatherName || '—'} />
-                          <DetailRow icon={UserPlus} label="Mother" value={student.parentDetails?.motherName || '—'} />
-                          <DetailRow icon={Phone} label="Phone" value={student.parentDetails?.phone || '—'} />
-                          <DetailRow icon={Mail} label="Parent Email" value={student.parentDetails?.email || '—'} />
-                        </div>
-
-                        {/* Additional */}
-                        <div className="space-y-3">
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Additional</p>
-                          <DetailRow icon={Bus} label="Transport" value={student.transportDetails || '—'} />
-                          <DetailRow icon={Heart} label="Medical Notes" value={student.medicalNotes || '—'} />
-                          <DetailRow icon={FileText} label="Academic History" value={student.academicHistory || '—'} multiline />
-                          <DetailRow icon={MapPin} label="Address" value={(student as any).address || '—'} multiline />
-                        </div>
-                      </div>
+        {/* ─── Desktop table ───────────────────────────────────────────────── */}
+        <div className="hidden lg:block overflow-x-auto">
+          <div className="card flush">
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                  <th style={thStyle}>Student</th>
+                  <th style={thStyle}>Admission / School No.</th>
+                  <th style={thStyle}>Class &amp; Section</th>
+                  <th style={thStyle}>House</th>
+                  <th style={thStyle}>Parent Details</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '40px 16px', textAlign: 'center' }}>
+                      <Users size={32} style={{ color: 'var(--line)', margin: '0 auto 8px' }} />
+                      <p style={{ color: 'var(--ink-3)', fontSize: 13 }}>No students found</p>
                     </td>
                   </tr>
+                ) : (
+                  filteredStudents.map(student => {
+                    const houseName = getHouseName(student.houseId);
+                    const isExpanded = expandedStudentId === student.id;
+                    return (
+                      <React.Fragment key={student.id}>
+                        <tr
+                          style={{ borderBottom: '1px solid var(--line-2)', cursor: 'pointer', background: isExpanded ? 'var(--cream-2)' : 'transparent' }}
+                          onClick={() => setExpandedStudentId(isExpanded ? null : student.id)}
+                        >
+                          <td style={tdStyle}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              {student.photoURL ? (
+                                <img src={student.photoURL} alt={student.name} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
+                              ) : (
+                                <div className="avatar" style={{ width: 32, height: 32, fontSize: 11 }}>{getInitials(student.name)}</div>
+                              )}
+                              <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{student.name}</span>
+                            </div>
+                          </td>
+                          <td style={tdStyle}><span className="mono" style={{ fontSize: 13, color: 'var(--ink-2)' }}>{student.admissionNumber}</span></td>
+                          <td style={tdStyle}><span style={{ color: 'var(--ink-2)', fontSize: 13 }}>{getClassName(student.classId)}{student.section ? ` · ${student.section}` : ''}</span></td>
+                          <td style={tdStyle}>
+                            {houseName ? (
+                              <span className="chip" style={{ padding: '2px 8px', fontSize: 11 }}>{houseName}</span>
+                            ) : (
+                              <span className="muted">—</span>
+                            )}
+                          </td>
+                          <td style={tdStyle}>
+                            <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>{student.parentDetails?.fatherName || 'N/A'}</p>
+                            <p className="tiny muted">{student.parentDetails?.phone || ''}</p>
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                            {!readOnly && (
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+                                <button className="icon-btn" title="Edit" onClick={() => handleEdit(student)}>
+                                  <Edit2 size={14} />
+                                </button>
+                                <button className="icon-btn" title="Delete" style={{ borderColor: 'var(--coral)', color: 'var(--coral)' }} onClick={() => { setDeletingStudent(student); setIsDeleteModalOpen(true); }}>
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr style={{ background: 'var(--cream-2)' }}>
+                            <td colSpan={6} style={{ padding: '16px 20px' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+                                <div>
+                                  <p className="eyebrow" style={{ marginBottom: 10 }}>Student</p>
+                                  <DetailRow icon={Hash} label="Admission No." value={student.admissionNumber} />
+                                  <DetailRow icon={Hash} label="School No." value={student.schoolNumber} />
+                                  <DetailRow icon={GraduationCap} label="Class &amp; Section" value={`${getClassName(student.classId)}${student.section ? ` · ${student.section}` : ''}`} />
+                                  <DetailRow icon={HomeIcon} label="House" value={houseName || 'Not Assigned'} />
+                                  <DetailRow icon={Mail} label="Student Email" value={(student as any).email || '—'} />
+                                </div>
+                                <div>
+                                  <p className="eyebrow" style={{ marginBottom: 10 }}>Parents &amp; Contact</p>
+                                  <DetailRow icon={UserPlus} label="Father" value={student.parentDetails?.fatherName || '—'} />
+                                  <DetailRow icon={UserPlus} label="Mother" value={student.parentDetails?.motherName || '—'} />
+                                  <DetailRow icon={Phone} label="Phone" value={student.parentDetails?.phone || '—'} />
+                                  <DetailRow icon={Mail} label="Parent Email" value={student.parentDetails?.email || '—'} />
+                                </div>
+                                <div>
+                                  <p className="eyebrow" style={{ marginBottom: 10 }}>Additional</p>
+                                  <DetailRow icon={Bus} label="Transport" value={student.transportDetails || '—'} />
+                                  <DetailRow icon={Heart} label="Medical Notes" value={student.medicalNotes || '—'} />
+                                  <DetailRow icon={FileText} label="Academic History" value={student.academicHistory || '—'} multiline />
+                                  <DetailRow icon={MapPin} label="Address" value={(student as any).address || '—'} multiline />
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
                 )}
-              </React.Fragment>
-              );
-            }) : (
-              <Tr>
-                <td colSpan={7}>
-                  <EmptyState icon={Users} title="No students found" description="Try adjusting your search or filter" />
-                </td>
-              </Tr>
-            )}
-          </Tbody>
-        </Table>
-      </Card>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
-      {/* Add / Edit Modal */}
+      {/* ─── Add / Edit Modal ─────────────────────────────────────────────── */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setIsEditMode(false); setEditingStudent(null); }}
@@ -1385,7 +1180,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
               <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2">
                 <UserPlus className="w-3.5 h-3.5" /> Basic Information
               </p>
-              
+
               <div className="flex items-center gap-6 mb-6">
                 <div className="relative group">
                   <Avatar name={formData.name || 'S'} src={formData.photoURL} size="lg" className="w-20 h-20 shadow-lg" />
@@ -1654,7 +1449,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             </button>
             <button onClick={() => performDelete({ deleteStudent: true, deleteParent: true, deleteEverything: true, downloadFirst: true })} disabled={loading}
               className="w-full flex items-center justify-between p-4 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all group text-left">
-              <div><p className="font-semibold text-indigo-900 text-sm">Download & Delete Everything</p><p className="text-xs text-indigo-500 mt-0.5">Generates PDF record before deletion</p></div>
+              <div><p className="font-semibold text-indigo-900 text-sm">Download &amp; Delete Everything</p><p className="text-xs text-indigo-500 mt-0.5">Generates PDF record before deletion</p></div>
               <Download className="w-4 h-4 text-indigo-500 shrink-0" />
             </button>
             <div className="grid grid-cols-2 gap-3">
@@ -1677,7 +1472,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         )}
       </Modal>
 
-      {/* ─── Export CSV Modal ──────────────────────────────────────────────── */}
+      {/* ─── Export CSV Modal ─────────────────────────────────────────────── */}
       <Modal
         isOpen={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
@@ -1770,190 +1565,37 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   );
 }
 
+// ─── Table styles ─────────────────────────────────────────────────────────────
+const thStyle: React.CSSProperties = {
+  padding: '10px 14px',
+  textAlign: 'left',
+  fontSize: 11,
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'var(--ink-3)',
+  whiteSpace: 'nowrap',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '12px 14px',
+  fontSize: 13,
+  verticalAlign: 'middle',
+};
+
+// ─── Detail row ───────────────────────────────────────────────────────────────
 function DetailRow({ icon: Icon, label, value, multiline = false }: { icon: any; label: string; value: string; multiline?: boolean }) {
   return (
-    <div className="flex items-start gap-2.5">
-      <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0 mt-0.5">
-        <Icon className="w-3.5 h-3.5 text-slate-500" />
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+      <div style={{ width: 26, height: 26, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+        <Icon size={12} style={{ color: 'var(--ink-3)' }} />
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
-        <p className={`text-sm font-semibold text-slate-800 ${multiline ? 'whitespace-pre-wrap break-words' : 'truncate'}`}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p className="eyebrow" style={{ marginBottom: 2 }}>{label}</p>
+        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', ...(multiline ? { whiteSpace: 'pre-wrap', wordBreak: 'break-word' } : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }) }}>
           {value}
         </p>
       </div>
     </div>
-  );
-}
-
-// ─── Multi-select dropdown ────────────────────────────────────────────────────
-type ChipColor = 'indigo' | 'amber' | 'violet' | 'emerald' | 'slate';
-
-const colorRing: Record<ChipColor, string> = {
-  indigo: 'ring-indigo-500/20 border-indigo-400',
-  amber: 'ring-amber-500/20 border-amber-400',
-  violet: 'ring-violet-500/20 border-violet-400',
-  emerald: 'ring-emerald-500/20 border-emerald-400',
-  slate: 'ring-slate-500/20 border-slate-400',
-};
-
-function MultiSelectDropdown({
-  label, options, selected, onChange, disabled = false, color = 'indigo',
-}: {
-  label: string;
-  options: { value: string; label: string }[];
-  selected: string[];
-  onChange: (next: string[]) => void;
-  disabled?: boolean;
-  color?: ChipColor;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [open]);
-
-  const toggle = (v: string) =>
-    onChange(selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v]);
-
-  const summary = selected.length === 0
-    ? `All ${label}`
-    : selected.length === 1
-      ? (options.find(o => o.value === selected[0])?.label || selected[0])
-      : `${selected.length} ${label} selected`;
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen(v => !v)}
-        className={cn(
-          'w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-slate-50 border rounded-xl text-sm text-left transition-all',
-          'focus:outline-none focus:ring-2',
-          selected.length > 0 ? cn('bg-white', colorRing[color]) : 'border-slate-200',
-          disabled && 'opacity-40 cursor-not-allowed'
-        )}
-      >
-        <span className={cn('truncate', selected.length === 0 ? 'text-slate-500' : 'text-slate-900 font-semibold')}>
-          {summary}
-        </span>
-        <ChevronDown className={cn('w-4 h-4 text-slate-400 shrink-0 transition-transform', open && 'rotate-180')} />
-      </button>
-
-      {open && !disabled && (
-        <div className="absolute z-30 mt-1.5 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-64 overflow-y-auto py-1.5">
-          {options.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-slate-400">No options available</div>
-          ) : (
-            <>
-              <div className="px-3 py-1 flex items-center justify-between border-b border-slate-100 mb-1">
-                <button
-                  type="button"
-                  onClick={() => onChange(options.map(o => o.value))}
-                  className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
-                >
-                  Select all
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onChange([])}
-                  className="text-[11px] font-semibold text-slate-500 hover:text-rose-600"
-                >
-                  Clear
-                </button>
-              </div>
-              {options.map(opt => {
-                const isSelected = selected.includes(opt.value);
-                return (
-                  <button
-                    type="button"
-                    key={opt.value}
-                    onClick={() => toggle(opt.value)}
-                    className={cn(
-                      'w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors',
-                      isSelected ? 'bg-indigo-50 text-indigo-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'
-                    )}
-                  >
-                    <div className={cn(
-                      'w-4 h-4 rounded border flex items-center justify-center shrink-0',
-                      isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'
-                    )}>
-                      {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
-                    </div>
-                    <span className="truncate">{opt.label}</span>
-                  </button>
-                );
-              })}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Tri-state presence filter ────────────────────────────────────────────────
-function TriStateFilter({
-  label, icon: Icon, value, onChange,
-}: {
-  label: string;
-  icon: any;
-  value: 'any' | 'yes' | 'no';
-  onChange: (v: 'any' | 'yes' | 'no') => void;
-}) {
-  return (
-    <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <Icon className="w-3.5 h-3.5 text-slate-500" />
-        <p className="text-[11px] font-semibold text-slate-600 truncate">{label}</p>
-      </div>
-      <div className="grid grid-cols-3 gap-1">
-        {(['any', 'yes', 'no'] as const).map(v => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => onChange(v)}
-            className={cn(
-              'px-1 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all',
-              value === v
-                ? v === 'yes' ? 'bg-emerald-600 text-white' : v === 'no' ? 'bg-rose-600 text-white' : 'bg-slate-700 text-white'
-                : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'
-            )}
-          >
-            {v}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Filter chip ──────────────────────────────────────────────────────────────
-function FilterChip({
-  children, color, onRemove,
-}: {
-  children: React.ReactNode;
-  color: ChipColor;
-  onRemove: () => void;
-}) {
-  const colorClasses: Record<ChipColor, string> = {
-    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100',
-    violet: 'bg-violet-50 text-violet-700 border-violet-100',
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    slate: 'bg-slate-100 text-slate-700 border-slate-200',
-  };
-  return (
-    <span className={cn('flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full border', colorClasses[color])}>
-      {children}
-      <button onClick={onRemove} className="hover:opacity-70"><X className="w-3 h-3" /></button>
-    </span>
   );
 }

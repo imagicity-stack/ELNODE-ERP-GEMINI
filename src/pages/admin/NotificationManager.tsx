@@ -6,7 +6,7 @@ import {
   Trash2, Globe, UserCheck, Layers, AlertTriangle,
 } from 'lucide-react';
 import {
-  PageHeader, Button, FormField, Input, Textarea, Select, EmptyState, ConfirmModal, Avatar,
+  FormField, Input, Textarea, Select, ConfirmModal, Avatar,
 } from '../../components/ui';
 import { AppNotification, NotificationCategory, NotificationTargetType, UserProfile, Class } from '../../types';
 import {
@@ -161,21 +161,27 @@ export default function NotificationManager({ user }: { user: UserProfile }) {
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Notification Center"
-        subtitle="Compose and broadcast notifications to any audience"
-        icon={Bell}
-        iconColor="bg-indigo-500"
-      />
+    <div className="pad stack" style={{ gap: 24 }}>
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">Admin Portal</div>
+          <h1>Notifications</h1>
+        </div>
+        <button className="btn accent" onClick={handleSend} disabled={sending || !canSend}>
+          <Send size={15} />
+          {sending ? 'Sending…' : 'Send Notification'}
+        </button>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* ── Composer ───────────────────────────────────────────────── */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-5">
-          {/* Category */}
-          <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Category</p>
-            <div className="flex flex-wrap gap-2">
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 24, alignItems: 'start' }}>
+        {/* Composer */}
+        <div className="card stack" style={{ gap: 20 }}>
+          <div className="eyebrow">Compose</div>
+
+          {/* Category chips */}
+          <div className="stack" style={{ gap: 8 }}>
+            <p className="tiny muted" style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Category</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {(Object.keys(NOTIFICATION_CATEGORIES) as NotificationCategory[]).map((key) => {
                 const cat = NOTIFICATION_CATEGORIES[key];
                 const Icon = CATEGORY_ICON[cat.icon] || Bell;
@@ -184,12 +190,9 @@ export default function NotificationManager({ user }: { user: UserProfile }) {
                   <button
                     key={key}
                     onClick={() => setCategory(key)}
-                    className={cn(
-                      'flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all',
-                      active ? `${cat.bg} ${cat.color} border-current` : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                    )}
+                    className={cn('chip', active ? 'solid' : '')}
                   >
-                    <Icon className="w-3.5 h-3.5" /> {cat.label}
+                    <Icon size={13} /> {cat.label}
                   </button>
                 );
               })}
@@ -204,7 +207,7 @@ export default function NotificationManager({ user }: { user: UserProfile }) {
             <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} placeholder="Write the notification message…" maxLength={1000} />
           </FormField>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <FormField label="Priority">
               <Select value={priority} onChange={(e) => setPriority(e.target.value as any)}>
                 <option value="normal">Normal</option>
@@ -217,9 +220,9 @@ export default function NotificationManager({ user }: { user: UserProfile }) {
           </div>
 
           {/* Target type */}
-          <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Send to</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="stack" style={{ gap: 8 }}>
+            <p className="tiny muted" style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Send to</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
               {TARGET_OPTIONS.map((opt) => {
                 const active = targetType === opt.value;
                 const Icon = opt.icon;
@@ -227,13 +230,15 @@ export default function NotificationManager({ user }: { user: UserProfile }) {
                   <button
                     key={opt.value}
                     onClick={() => setTargetType(opt.value)}
-                    className={cn(
-                      'flex flex-col items-center gap-1 px-2 py-3 rounded-xl border text-center transition-all',
-                      active ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
-                    )}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                      padding: '10px 8px', borderRadius: 12, border: `1.5px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+                      background: active ? 'rgba(99,102,241,.07)' : 'transparent',
+                      color: active ? 'var(--accent)' : 'var(--ink)', cursor: 'pointer', transition: 'all .15s',
+                    }}
                   >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-xs font-bold">{opt.label}</span>
+                    <Icon size={18} />
+                    <span style={{ fontSize: 11, fontWeight: 700 }}>{opt.label}</span>
                   </button>
                 );
               })}
@@ -242,15 +247,12 @@ export default function NotificationManager({ user }: { user: UserProfile }) {
 
           {/* Target detail */}
           {targetType === 'role' && (
-            <div className="flex flex-wrap gap-2">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {ROLE_OPTIONS.map((r) => (
                 <button
                   key={r.value}
                   onClick={() => toggleRole(r.value)}
-                  className={cn(
-                    'px-3 py-2 rounded-xl text-xs font-semibold border transition-all',
-                    roles.includes(r.value) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
-                  )}
+                  className={cn('chip', roles.includes(r.value) ? 'solid' : '')}
                 >
                   {r.label}
                 </button>
@@ -259,7 +261,7 @@ export default function NotificationManager({ user }: { user: UserProfile }) {
           )}
 
           {targetType === 'class' && (
-            <div className="grid grid-cols-2 gap-4">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <FormField label="Class" required>
                 <Select value={classId} onChange={(e) => { setClassId(e.target.value); setSection(''); }}>
                   <option value="">Select class</option>
@@ -276,40 +278,46 @@ export default function NotificationManager({ user }: { user: UserProfile }) {
           )}
 
           {targetType === 'individual' && (
-            <div>
+            <div className="stack" style={{ gap: 8 }}>
               {selectedUsers.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {selectedUsers.map((u) => (
-                    <span key={u.uid} className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg">
+                    <span key={u.uid} className="chip solid" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       {u.name}
-                      <button onClick={() => setSelectedUsers((prev) => prev.filter((x) => x.uid !== u.uid))}>
-                        <X className="w-3 h-3" />
+                      <button onClick={() => setSelectedUsers((prev) => prev.filter((x) => x.uid !== u.uid))} style={{ lineHeight: 0 }}>
+                        <X size={11} />
                       </button>
                     </span>
                   ))}
                 </div>
               )}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <div style={{ position: 'relative' }}>
+                <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--line)' }} />
                 <input
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
                   placeholder={usersLoaded ? 'Search by name or email…' : 'Loading users…'}
                   disabled={!usersLoaded}
-                  className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                  style={{
+                    width: '100%', paddingLeft: 34, paddingRight: 12, height: 40, border: '1.5px solid var(--line)',
+                    borderRadius: 10, fontSize: 14, outline: 'none', background: 'var(--cream)',
+                  }}
                 />
                 {userResults.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden">
+                  <div style={{
+                    position: 'absolute', zIndex: 10, marginTop: 4, width: '100%', background: '#fff',
+                    borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.12)', border: '1px solid var(--line)', overflow: 'hidden',
+                  }}>
                     {userResults.map((u) => (
                       <button
                         key={u.uid}
                         onClick={() => { setSelectedUsers((prev) => [...prev, u]); setUserSearch(''); }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 text-left"
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left' }}
                       >
                         <Avatar name={u.name} size="sm" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 truncate">{u.name}</p>
-                          <p className="text-[11px] text-slate-400 truncate">{u.email} · {u.role}</p>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>{u.name}</p>
+                          <p className="tiny muted" style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email} · {u.role}</p>
                         </div>
                       </button>
                     ))}
@@ -319,47 +327,57 @@ export default function NotificationManager({ user }: { user: UserProfile }) {
             </div>
           )}
 
-          {/* Recipient summary + send */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-            <p className="text-xs text-slate-500">
-              Sending to <span className="font-bold text-slate-700">{audiencePreview.summary}</span>
+          {/* Summary bar */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+            <p className="tiny muted">
+              Sending to <strong style={{ color: 'var(--ink)' }}>{audiencePreview.summary}</strong>
             </p>
-            <Button icon={Send} onClick={handleSend} loading={sending} disabled={!canSend}>
-              Send Notification
-            </Button>
           </div>
         </div>
 
-        {/* ── History ────────────────────────────────────────────────── */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-          <p className="text-sm font-bold text-slate-900 mb-3">Recently sent</p>
+        {/* History */}
+        <div className="card stack" style={{ gap: 12 }}>
+          <div className="eyebrow">Recently Sent</div>
           {history.length === 0 ? (
-            <EmptyState icon={Megaphone} title="No notifications yet" description="Sent notifications will appear here." />
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <Megaphone size={28} style={{ color: 'var(--line)', margin: '0 auto 8px' }} />
+              <p className="muted tiny">No notifications yet</p>
+            </div>
           ) : (
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+            <div className="stack" style={{ gap: 8, maxHeight: '60vh', overflowY: 'auto' }}>
               {history.map((n) => {
                 const cat = NOTIFICATION_CATEGORIES[n.category] || NOTIFICATION_CATEGORIES.general;
                 const Icon = CATEGORY_ICON[cat.icon] || Bell;
                 return (
-                  <div key={n.id} className="flex gap-3 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 group">
-                    <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0', cat.bg)}>
-                      <Icon className={cn('w-4 h-4', cat.color)} />
+                  <div key={n.id} style={{
+                    display: 'flex', gap: 10, padding: 12, borderRadius: 12,
+                    border: '1px solid var(--line)', background: 'var(--cream)',
+                    position: 'relative',
+                  }}
+                    className="group"
+                  >
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', flexShrink: 0, background: 'var(--cream-2)',
+                    }}>
+                      <Icon size={16} style={{ color: 'var(--accent)' }} />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold text-slate-900 truncate flex-1">{n.title}</p>
-                        {n.priority === 'high' && <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <p style={{ fontSize: 13, fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{n.title}</p>
+                        {n.priority === 'high' && <AlertTriangle size={12} style={{ color: 'var(--coral)', flexShrink: 0 }} />}
                       </div>
-                      <p className="text-xs text-slate-500 line-clamp-1">{n.body}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
+                      <p className="tiny muted" style={{ margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.body}</p>
+                      <p className="tiny muted" style={{ margin: '2px 0 0' }}>
                         {n.targetSummary} · {new Date(n.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
                     <button
                       onClick={() => setDeleteId(n.id)}
-                      className="self-start p-1.5 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="icon-btn"
+                      style={{ alignSelf: 'flex-start', color: 'var(--coral)' }}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 size={13} />
                     </button>
                   </div>
                 );
