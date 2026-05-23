@@ -961,54 +961,140 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       </div>
 
       <div className="pad" style={{ paddingBottom: 24 }}>
-        {/* ─── Search ─────────────────────────────────────────────────────── */}
-        <div className="card flex center" style={{ gap: 10, padding: '10px 14px', marginBottom: 12 }}>
-          <Search size={16} className="muted" style={{ flexShrink: 0 }} />
-          <input
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Search name, admission no., parent…"
-            style={{ border: 0, outline: 'none', background: 'transparent', flex: 1, fontSize: 14, fontFamily: 'var(--body)', color: 'var(--ink)' }}
-          />
+        {/* ─── Search + filter toggle ──────────────────────────────────────── */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <div className="card flex center" style={{ gap: 10, padding: '10px 14px', flex: 1 }}>
+            <Search size={16} className="muted" style={{ flexShrink: 0 }} />
+            <input
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Search name, admission no., parent…"
+              style={{ border: 0, outline: 'none', background: 'transparent', flex: 1, fontSize: 14, fontFamily: 'var(--body)', color: 'var(--ink)' }}
+            />
+            {searchTerm && (
+              <button onClick={() => setSearchTerm('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 0 }}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <button
+            className={cn('btn', showFilters || activeFilterCount > 0 ? 'accent' : 'ghost')}
+            style={{ gap: 6, flexShrink: 0 }}
+            onClick={() => setShowFilters(v => !v)}
+          >
+            <FilterIcon size={14} />
+            Filters
+            {activeFilterCount > 0 && (
+              <span style={{ background: 'var(--ink)', color: 'var(--cream)', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px', marginLeft: 2 }}>
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
         </div>
 
-        {/* ─── Filter chips ────────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-          <button
-            className={cn('chip', activeFilterCount === 0 && 'solid')}
-            onClick={clearFilters}
-          >
-            All
-          </button>
-          {classes.map(cls => (
-            <button
-              key={cls.id}
-              className={cn('chip', filterClass.includes(cls.id) && 'solid')}
-              onClick={() => setFilterClass(toggleArrayValue(filterClass, cls.id))}
-            >
-              Class {cls.name}
-            </button>
-          ))}
-          {houses.map(h => (
-            <button
-              key={h.id}
-              className={cn('chip', filterHouse.includes(h.id) && 'accent')}
-              onClick={() => setFilterHouse(toggleArrayValue(filterHouse, h.id))}
-            >
-              {h.name}
-            </button>
-          ))}
-          {(['male', 'female'] as const).map(g => (
-            <button
-              key={g}
-              className={cn('chip', filterGender.includes(g) && 'solid')}
-              onClick={() => setFilterGender(toggleArrayValue(filterGender, g))}
-              style={{ textTransform: 'capitalize' }}
-            >
-              {g}
-            </button>
-          ))}
-        </div>
+        {/* ─── Advanced filter panel ───────────────────────────────────────── */}
+        {showFilters && (
+          <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <span style={{ fontWeight: 700, fontSize: 13 }}>Filters</span>
+              {activeFilterCount > 0 && (
+                <button className="btn ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={clearFilters}>
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Class */}
+              <div>
+                <div className="eyebrow" style={{ marginBottom: 6 }}>Class</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {classes.map(cls => (
+                    <button key={cls.id} className={cn('chip', filterClass.includes(cls.id) && 'solid')}
+                      onClick={() => setFilterClass(toggleArrayValue(filterClass, cls.id))}>
+                      Class {cls.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Section — only shown when classes are selected */}
+              {filterClass.length > 0 && availableSections.length > 0 && (
+                <div>
+                  <div className="eyebrow" style={{ marginBottom: 6 }}>Section</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {availableSections.map(sec => (
+                      <button key={sec} className={cn('chip', filterSection.includes(sec) && 'solid')}
+                        onClick={() => setFilterSection(toggleArrayValue(filterSection, sec!))}>
+                        {sec}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* House + Gender in one row on desktop */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+                <div>
+                  <div className="eyebrow" style={{ marginBottom: 6 }}>House</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {houses.map(h => (
+                      <button key={h.id} className={cn('chip', filterHouse.includes(h.id) && 'accent')}
+                        onClick={() => setFilterHouse(toggleArrayValue(filterHouse, h.id))}>
+                        {h.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="eyebrow" style={{ marginBottom: 6 }}>Gender</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {(['male', 'female'] as const).map(g => (
+                      <button key={g} className={cn('chip', filterGender.includes(g) && 'solid')}
+                        onClick={() => setFilterGender(toggleArrayValue(filterGender, g))}
+                        style={{ textTransform: 'capitalize' }}>
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Profile completeness — tri-state */}
+              <div>
+                <div className="eyebrow" style={{ marginBottom: 8 }}>Profile Completeness</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+                  {([
+                    { label: 'Photo', state: filterPhoto, set: setFilterPhoto },
+                    { label: 'Medical Notes', state: filterMedical, set: setFilterMedical },
+                    { label: 'Academic History', state: filterAcademic, set: setFilterAcademic },
+                    { label: 'Address', state: filterAddress, set: setFilterAddress },
+                    { label: 'Student Email', state: filterStudentEmail, set: setFilterStudentEmail },
+                    { label: 'Parent Email', state: filterParentEmail, set: setFilterParentEmail },
+                  ] as { label: string; state: TriState; set: (v: TriState) => void }[]).map(({ label, state, set }) => (
+                    <div key={label} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {(['any', 'yes', 'no'] as TriState[]).map(opt => (
+                          <button key={opt} onClick={() => set(opt)}
+                            style={{
+                              flex: 1, padding: '4px 0', borderRadius: 6, border: '1px solid',
+                              fontSize: 11, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize',
+                              background: state === opt ? (opt === 'yes' ? 'var(--leaf)' : opt === 'no' ? 'var(--coral)' : 'var(--ink)') : 'transparent',
+                              borderColor: state === opt ? 'transparent' : 'var(--line)',
+                              color: state === opt ? (opt === 'any' ? 'var(--cream)' : 'white') : 'var(--ink-3)',
+                            }}>
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ─── Mobile card list ────────────────────────────────────────────── */}
         <div className="stack mobile-only">
