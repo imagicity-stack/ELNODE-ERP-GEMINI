@@ -137,7 +137,7 @@ export default function StudentProfile({ user, student }: StudentProfileProps) {
                 { label: 'Admission No.', value: student?.admissionNumber || student?.schoolNumber || '—' },
                 { label: 'Class', value: className ? `Class ${className}` : '—' },
                 { label: 'Section', value: student?.section || '—' },
-                ...(student?.house ? [{ label: 'House', value: student.house }] : []),
+                ...(student?.houseId ? [{ label: 'House', value: student.houseId }] : []),
                 { label: 'Email', value: user.email },
               ].map((row, i, arr) => (
                 <div
