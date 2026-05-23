@@ -11,6 +11,12 @@ import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { UserProfile, ActivitySection } from './types';
 import { SCHOOL_DOMAIN, LEGACY_DOMAIN, SUPER_ADMIN_UIDS } from './constants';
 import { logActivity } from './services/activityService';
+import {
+  syncAudienceTokens,
+  getPushPermissionStatus,
+  registerForPush,
+} from './services/pushNotificationService';
+import PushOnboarding, { shouldShowPushOnboarding } from './components/PushOnboarding';
 
 // Guard so login is logged once per browser session — onAuthStateChanged
 // fires on token refresh too, and we don't want a log on every refresh.
@@ -58,6 +64,7 @@ const normalizeUserProfile = (profile: UserProfile): UserProfile => ({
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showPushOnboarding, setShowPushOnboarding] = useState(false);
   // Splash plays once per browser session, before the auth screen appears.
   const [showSplash, setShowSplash] = useState(() => !sessionStorage.getItem('elnode_splashed'));
 
@@ -307,6 +314,40 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Push notification init — runs whenever the user changes (login / logout)
+  useEffect(() => {
+    if (!user) return;
+
+    // Sync audience tokens so the send-push API can query users by audience
+    syncAudienceTokens(user);
+
+    // Initialize push notifications (native only)
+    (async () => {
+      try {
+        const status = await getPushPermissionStatus();
+        if (status === 'granted') {
+          await registerForPush(user);
+        } else if (status === 'prompt' && shouldShowPushOnboarding()) {
+          // Small delay so the portal renders first
+          setTimeout(() => setShowPushOnboarding(true), 1500);
+        }
+      } catch (e) {
+        console.warn('Push init failed:', e);
+      }
+    })();
+
+    // Handle navigation from a push notification tap (background/quit state)
+    const handlePushNav = (e: Event) => {
+      const link = (e as CustomEvent).detail?.link || sessionStorage.getItem('push_nav_link');
+      if (link) {
+        sessionStorage.removeItem('push_nav_link');
+        window.location.hash = link.startsWith('/') ? link : `/${link}`;
+      }
+    };
+    window.addEventListener('push_navigate', handlePushNav);
+    return () => window.removeEventListener('push_navigate', handlePushNav);
+  }, [user?.uid]);
+
   const getPortalPath = (role: string) => {
     switch (role) {
       case 'super_admin': return '/superadmin';
@@ -347,7 +388,7 @@ export default function App() {
           <Router>
             <Routes>
               <Route path="/login" element={user ? <Navigate to={getPortalPath(user.role)} /> : <Login />} />
-              
+
               <Route path="/superadmin/*" element={user?.role === 'super_admin' ? <AdminPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/staff/*" element={user?.role === 'office_staff' ? <AdminPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/student/*" element={user?.role === 'student' ? <StudentPortal user={user} /> : <Navigate to="/login" />} />
@@ -356,11 +397,16 @@ export default function App() {
               <Route path="/teacher/*" element={user?.role === 'teacher' ? <TeacherPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/principal/*" element={user?.role === 'principal' ? <PrincipalPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/grievance/*" element={user?.role === 'grievance_officer' || user?.role === 'super_admin' || user?.role === 'principal' ? <GrievancePortal user={user} /> : <Navigate to="/login" />} />
-              
+
               <Route path="/" element={<Navigate to={user ? getPortalPath(user.role) : "/login"} />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Router>
+
+          {/* Push notification permission onboarding (shown once on native platforms) */}
+          {showPushOnboarding && user && (
+            <PushOnboarding user={user} onDone={() => setShowPushOnboarding(false)} />
+          )}
         </DataProvider>
       </ToastProvider>
     </ErrorBoundary>

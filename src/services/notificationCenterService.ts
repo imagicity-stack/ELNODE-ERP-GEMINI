@@ -113,7 +113,7 @@ export async function sendNotification(payload: {
   link?: string;
   sender: { uid: string; name: string };
 }): Promise<void> {
-  const doc: Omit<AppNotification, 'id'> = {
+  const notifDoc: Omit<AppNotification, 'id'> = {
     title: payload.title.trim(),
     body: payload.body.trim(),
     category: payload.category,
@@ -125,7 +125,27 @@ export async function sendNotification(payload: {
     createdBy: payload.sender,
     ...(payload.link ? { link: payload.link } : {}),
   };
-  await addDoc(collection(db, 'notifications'), doc);
+  const ref = await addDoc(collection(db, 'notifications'), notifDoc);
+
+  // Phase 2: fire-and-forget push notification via Vercel API
+  try {
+    await fetch('/api/notifications/send-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        notificationId: ref.id,
+        audience: payload.audience,
+        title: payload.title.trim(),
+        body: payload.body.trim(),
+        category: payload.category,
+        priority: payload.priority,
+        link: payload.link,
+      }),
+    });
+  } catch (e) {
+    // Push delivery failure must not block the in-app notification
+    console.warn('Push API call failed (non-critical):', e);
+  }
 }
 
 export async function deleteNotification(id: string): Promise<void> {
