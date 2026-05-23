@@ -11,6 +11,7 @@ import {
 import { cn } from '../../lib/utils';
 import { motion } from 'motion/react';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
+import { savePdf } from '../../lib/download';
 import {
   PageHeader,
   Card,
@@ -147,7 +148,7 @@ export default function ResultView({ student }: ResultViewProps) {
     );
 
     addFooter(doc);
-    doc.save(`${student.name}_${exam.name}_Report.pdf`);
+    await savePdf(doc, `${student.name}_${exam.name}_Report.pdf`);
   };
 
   if (loading) {

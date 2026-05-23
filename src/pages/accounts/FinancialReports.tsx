@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
+import { savePdf } from '../../lib/download';
 import { useToast } from '../../components/Toast';
 import { fmtMonthYear } from '../../lib/utils';
 import {
@@ -112,7 +113,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
     });
 
     addFooter(doc);
-    doc.save(`fee_collection_${range.from}_${range.to}.pdf`);
+    await savePdf(doc, `fee_collection_${range.from}_${range.to}.pdf`);
   };
 
   const generateExpenseReport = async () => {
@@ -148,7 +149,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
     });
 
     addFooter(doc);
-    doc.save(`expense_statement_${range.from}_${range.to}.pdf`);
+    await savePdf(doc, `expense_statement_${range.from}_${range.to}.pdf`);
   };
 
   const generatePayrollReport = async () => {
@@ -192,7 +193,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
     });
 
     addFooter(doc);
-    doc.save(`payroll_summary_${monthPrefix}.pdf`);
+    await savePdf(doc, `payroll_summary_${monthPrefix}.pdf`);
   };
 
   const generatePLReport = async () => {
@@ -238,7 +239,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
     });
 
     addFooter(doc);
-    doc.save(`profit_loss_${range.from}_${range.to}.pdf`);
+    await savePdf(doc, `profit_loss_${range.from}_${range.to}.pdf`);
   };
 
   const handleGenerate = async (type: ReportType) => {

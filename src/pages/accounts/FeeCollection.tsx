@@ -16,6 +16,7 @@ import {
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
+import { savePdf } from '../../lib/download';
 import { fmtMonthYear, fmtDate } from '../../lib/utils';
 import { useToast } from '../../components/Toast';
 import { PaymentSuccess, StaggeredList } from '../../components/animations';
@@ -192,7 +193,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     });
 
     addFooter(doc);
-    doc.save(`fee_collection_${new Date().toISOString().slice(0, 10)}.pdf`);
+    await savePdf(doc, `fee_collection_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   const handleDownloadReceipt = (payment: FeePayment) => {

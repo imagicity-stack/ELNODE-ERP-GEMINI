@@ -20,6 +20,7 @@ import { UserProfile, Expense, FeePayment, Fee, Student, FeeRequest, Class } fro
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
+import { savePdf } from '../../lib/download';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -162,7 +163,7 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
     });
 
     addFooter(doc);
-    doc.save(`financial_overview_${new Date().toISOString().slice(0, 10)}.pdf`);
+    await savePdf(doc, `financial_overview_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   // Prepare chart data (last 7 days)
@@ -305,10 +306,10 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
 
         <button
           onClick={exportReport}
-          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
+          className="fixed bottom-24 right-5 w-12 h-12 bg-white border border-slate-200 text-emerald-600 rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform z-40 md:hidden"
           aria-label="Export report"
         >
-          <Download className="w-6 h-6" strokeWidth={2.5} />
+          <Download className="w-5 h-5" strokeWidth={2.5} />
         </button>
       </div>
 

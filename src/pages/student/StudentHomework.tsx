@@ -1,5 +1,6 @@
 import { UserProfile, Homework } from '../../types';
 import { fmtDate } from '../../lib/utils';
+import { openExternalUrl } from '../../lib/download';
 import { CheckSquare, Download, Upload, Clock, ExternalLink, BookOpen } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy, updateDoc, doc, arrayUnion } from 'firebase/firestore';
@@ -55,9 +56,9 @@ export default function StudentHomework({ user }: StudentHomeworkProps) {
   const isSubmitted = (hw: Homework) =>
     hw.submissions?.some(s => s.studentId === user.studentId);
 
-  const handleDownload = (hw: Homework) => {
+  const handleDownload = async (hw: Homework) => {
     if (hw.attachmentUrl) {
-      window.open(hw.attachmentUrl, '_blank', 'noopener,noreferrer');
+      await openExternalUrl(hw.attachmentUrl);
     } else {
       showToast('No attachment available for this assignment.', 'info');
     }

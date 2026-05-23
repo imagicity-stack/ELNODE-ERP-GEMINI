@@ -39,6 +39,7 @@ import {
 } from '../../components/ui';
 import { ActivityLog, ActivitySection, UserProfile } from '../../types';
 import { subscribeActivityLogs } from '../../services/activityService';
+import { saveText } from '../../lib/download';
 import { format, isAfter, isBefore, startOfDay, endOfDay, isToday } from 'date-fns';
 
 const toDate = (ts: any): Date | null => {
@@ -181,7 +182,7 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
     return { total: logs.length, today: todayLogs.length, uniqueUsers, sectionsUsed, uniqueIPs };
   }, [logs]);
 
-  const exportCSV = () => {
+  const exportCSV = async () => {
     const headers = ['Timestamp', 'User', 'Role', 'Section', 'Action', 'Details', 'IP', 'Location', 'ISP'];
     const rows = filteredLogs.map(log => [
       safeFormat(log.timestamp, 'dd/MM/yyyy HH:mm:ss'),
@@ -195,13 +196,7 @@ export default function ActivityTracker({ user }: { user: UserProfile }) {
       log.isp || '',
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `activity_log_${format(new Date(), 'yyyy-MM-dd_HHmm')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await saveText(csv, `activity_log_${format(new Date(), 'yyyy-MM-dd_HHmm')}.csv`);
   };
 
   const clearFilters = () => {
