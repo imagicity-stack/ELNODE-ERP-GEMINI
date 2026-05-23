@@ -1,24 +1,13 @@
 import { UserProfile, Homework } from '../../types';
 import { fmtDate } from '../../lib/utils';
 import { openExternalUrl } from '../../lib/download';
-import { CheckSquare, Download, Upload, Clock, ExternalLink, BookOpen } from 'lucide-react';
+import { CheckSquare, Download, Upload } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy, updateDoc, doc, arrayUnion } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
-import {
-  PageHeader,
-  Card,
-  Badge,
-  Button,
-  Avatar,
-  EmptyState,
-  Spinner,
-  Modal,
-  FormField,
-  Textarea,
-} from '../../components/ui';
+import { Button, Modal, FormField, Textarea } from '../../components/ui';
 
 interface StudentHomeworkProps {
   user: UserProfile;
@@ -30,6 +19,7 @@ export default function StudentHomework({ user }: StudentHomeworkProps) {
   const [submitting, setSubmitting] = useState(false);
   const [selectedHw, setSelectedHw] = useState<Homework | null>(null);
   const [submitText, setSubmitText] = useState('');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'done'>('all');
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -53,52 +43,30 @@ export default function StudentHomework({ user }: StudentHomeworkProps) {
     fetchHomework();
   }, [user.classId]);
 
-  const isSubmitted = (hw: Homework) =>
-    hw.submissions?.some(s => s.studentId === user.studentId);
+  const isSubmitted = (hw: Homework) => hw.submissions?.some(s => s.studentId === user.studentId);
 
   const handleDownload = async (hw: Homework) => {
-    if (hw.attachmentUrl) {
-      await openExternalUrl(hw.attachmentUrl);
-    } else {
-      showToast('No attachment available for this assignment.', 'info');
-    }
+    if (hw.attachmentUrl) await openExternalUrl(hw.attachmentUrl);
+    else showToast('No attachment available for this assignment.', 'info');
   };
 
   const handleSubmit = async () => {
-    if (!selectedHw || !submitText.trim()) {
-      showToast('Please write your submission before submitting.', 'error');
-      return;
-    }
-    if (!user.studentId) {
-      showToast('Student ID not found. Please contact admin.', 'error');
-      return;
-    }
+    if (!selectedHw || !submitText.trim()) { showToast('Please write your submission before submitting.', 'error'); return; }
+    if (!user.studentId) { showToast('Student ID not found. Please contact admin.', 'error'); return; }
     setSubmitting(true);
     try {
       await updateDoc(doc(db, 'homework', selectedHw.id), {
-        submissions: arrayUnion({
-          studentId: user.studentId,
-          content: submitText.trim(),
-          submittedAt: new Date().toISOString(),
-        }),
+        submissions: arrayUnion({ studentId: user.studentId, content: submitText.trim(), submittedAt: new Date().toISOString() }),
       });
-      logActivity(
-        user,
-        'Homework Submitted',
-        'Students',
-        `Submitted homework for ${selectedHw.subjectId}`,
-        { homeworkId: selectedHw.id, subject: selectedHw.subjectId }
-      );
+      logActivity(user, 'Homework Submitted', 'Students', `Submitted homework for ${selectedHw.subjectId}`, { homeworkId: selectedHw.id, subject: selectedHw.subjectId });
       showToast('Homework submitted successfully!', 'success');
+      setHomework(prev => prev.map(hw =>
+        hw.id === selectedHw.id
+          ? { ...hw, submissions: [...(hw.submissions || []), { studentId: user.studentId!, content: submitText.trim(), submittedAt: new Date().toISOString() }] }
+          : hw
+      ));
       setSelectedHw(null);
       setSubmitText('');
-      setHomework(prev =>
-        prev.map(hw =>
-          hw.id === selectedHw.id
-            ? { ...hw, submissions: [...(hw.submissions || []), { studentId: user.studentId!, content: submitText.trim(), submittedAt: new Date().toISOString() }] }
-            : hw
-        )
-      );
     } catch (err) {
       showToast('Failed to submit homework. Please try again.', 'error');
     } finally {
@@ -107,156 +75,92 @@ export default function StudentHomework({ user }: StudentHomeworkProps) {
   };
 
   const pendingCount = homework.filter(hw => !isSubmitted(hw)).length;
-  const submittedCount = homework.filter(hw => isSubmitted(hw)).length;
+  const visible = homework.filter(hw => {
+    if (filter === 'pending') return !isSubmitted(hw);
+    if (filter === 'done') return isSubmitted(hw);
+    return true;
+  });
+
+  const isOverdue = (hw: Homework) => !isSubmitted(hw) && hw.dueDate && new Date(hw.dueDate) < new Date();
 
   return (
-    <>
-      {/* Mobile UI */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className="bg-gradient-to-br from-amber-500 to-orange-600 px-4 pt-5 pb-6 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-amber-100">Student Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Homework</h1>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{homework.length}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Total</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black text-red-200">{pendingCount}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Pending</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black text-green-200">{submittedCount}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Done</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-4 pt-4 pb-24 space-y-3">
-          {loading ? (
-            <div className="flex justify-center py-12"><Spinner /></div>
-          ) : homework.length === 0 ? (
-            <EmptyState
-              icon={CheckSquare}
-              title="No assignments"
-              description="You have no pending homework assignments."
-            />
-          ) : (
-            homework.map((hw) => {
-              const submitted = isSubmitted(hw);
-              return (
-                <div key={hw.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-                        <BookOpen className="w-5 h-5 text-amber-600" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-bold text-slate-900">{hw.subjectId}</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${submitted ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {submitted ? 'Submitted' : 'Pending'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase mt-0.5">
-                          <Clock className="w-3 h-3" />
-                          Due: {fmtDate(hw.dueDate)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <p className="text-sm text-slate-600 leading-relaxed mb-3">{hw.content}</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleDownload(hw)}
-                      disabled={!hw.attachmentUrl}
-                      className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 flex items-center justify-center gap-1.5 disabled:opacity-40 active:scale-95 transition-transform"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      Download
-                    </button>
-                    {!submitted && (
-                      <button
-                        onClick={() => { setSelectedHw(hw); setSubmitText(''); }}
-                        className="flex-1 py-2.5 rounded-xl bg-amber-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-                      >
-                        <Upload className="w-3.5 h-3.5" />
-                        Submit
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
+    <div className="pb-2">
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">{pendingCount} pending</div>
+          <h1>Homework</h1>
         </div>
       </div>
 
-      {/* Desktop UI */}
-      <div className="hidden md:block space-y-6">
-        <PageHeader
-          title="Homework Tracking"
-          subtitle="Manage and view your assignments."
-          icon={CheckSquare}
-          iconColor="gradient-emerald"
-          actions={<Badge variant="success">{homework.length} Assignments</Badge>}
-        />
+      {/* Filter chips */}
+      <div className="hscroll" style={{ paddingTop: 4 }}>
+        {([['all', 'All'], ['pending', 'Pending'], ['done', 'Done']] as const).map(([k, label]) => (
+          <button key={k} className={'chip' + (filter === k ? ' solid' : '')} onClick={() => setFilter(k)}>{label}</button>
+        ))}
+      </div>
 
+      <div className="pad stack" style={{ marginTop: 14 }}>
         {loading ? (
-          <Spinner />
-        ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {homework.map((hw) => {
-              const submitted = isSubmitted(hw);
-              return (
-                <Card key={hw.id} hover className="transition-all">
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                    <div className="flex items-start gap-4">
-                      <Avatar name={hw.subjectId} size="md" />
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-bold text-slate-900">{hw.subjectId} Assignment</h3>
-                          <Badge variant={submitted ? 'success' : 'warning'}>
-                            {submitted ? 'Submitted' : 'Pending'}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-4 mb-3">
-                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                            <Clock className="w-3 h-3" />
-                            Due: {fmtDate(hw.dueDate)}
-                          </div>
-                          {hw.attachmentName && (
-                            <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                              <ExternalLink className="w-3 h-3" />
-                              {hw.attachmentName}
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-sm text-slate-600 leading-relaxed">{hw.content}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Button variant="secondary" size="sm" icon={Download} onClick={() => handleDownload(hw)} disabled={!hw.attachmentUrl}>
-                        Download
-                      </Button>
-                      {!submitted && (
-                        <Button variant="primary" size="sm" icon={Upload} onClick={() => { setSelectedHw(hw); setSubmitText(''); }}>
-                          Submit
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-            {homework.length === 0 && (
-              <EmptyState icon={CheckSquare} title="No assignments" description="You have no pending homework assignments." />
-            )}
+          <div className="card muted small" style={{ textAlign: 'center', padding: 24 }}>Loading…</div>
+        ) : visible.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 28 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--cream-2)', display: 'grid', placeItems: 'center', margin: '0 auto 10px' }}>
+              <CheckSquare size={22} className="muted" />
+            </div>
+            <div className="bold">Nothing here</div>
+            <div className="small muted" style={{ marginTop: 2 }}>No assignments match this filter.</div>
           </div>
+        ) : (
+          visible.map((hw) => {
+            const submitted = isSubmitted(hw);
+            const overdue = isOverdue(hw);
+            return (
+              <div key={hw.id} className="card" style={{ padding: 16, position: 'relative' }}>
+                {overdue && (
+                  <span style={{ position: 'absolute', top: 12, right: 12, background: 'var(--coral)', color: '#fff', borderRadius: 999, padding: '2px 8px', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>DUE</span>
+                )}
+                <div className="eyebrow">{hw.subjectId} · Due {fmtDate(hw.dueDate)}</div>
+                <div style={{ fontFamily: 'var(--display)', fontWeight: 700, fontSize: 17, marginTop: 6, letterSpacing: '-0.01em', textDecoration: submitted ? 'line-through' : 'none', textDecorationColor: 'var(--ink-3)' }}>
+                  {hw.content}
+                </div>
+
+                <div className="flex between center" style={{ marginTop: 12, gap: 12 }}>
+                  <div className="bar" style={{ flex: 1 }}>
+                    <i style={{ width: submitted ? '100%' : '8%', background: submitted ? 'var(--leaf)' : overdue ? 'var(--coral)' : 'var(--ink)' }} />
+                  </div>
+                  <span className="mono tiny" style={{ color: submitted ? 'var(--leaf)' : 'var(--ink-3)', textTransform: 'uppercase' }}>
+                    {submitted ? 'Submitted' : 'Pending'}
+                  </span>
+                </div>
+
+                <div className="flex gap-8" style={{ marginTop: 14 }}>
+                  <button
+                    onClick={() => handleDownload(hw)}
+                    disabled={!hw.attachmentUrl}
+                    className="btn ghost"
+                    style={{ flex: 1, padding: '10px 12px', fontSize: 13, opacity: hw.attachmentUrl ? 1 : 0.4 }}
+                  >
+                    <Download size={15} /> Download
+                  </button>
+                  {!submitted && (
+                    <button
+                      onClick={() => { setSelectedHw(hw); setSubmitText(''); }}
+                      className="btn accent"
+                      style={{ flex: 1, padding: '10px 12px', fontSize: 13 }}
+                    >
+                      <Upload size={15} /> Submit
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
 
-      {/* Shared Submit Modal */}
+      <div style={{ height: 16 }} />
+
+      {/* Submit modal (legacy UI component, functional) */}
       <Modal
         isOpen={!!selectedHw}
         onClose={() => setSelectedHw(null)}
@@ -265,9 +169,7 @@ export default function StudentHomework({ user }: StudentHomeworkProps) {
         footer={
           <div className="flex gap-3 justify-end">
             <Button variant="secondary" onClick={() => setSelectedHw(null)}>Cancel</Button>
-            <Button variant="primary" icon={Upload} loading={submitting} onClick={handleSubmit}>
-              Submit Homework
-            </Button>
+            <Button variant="primary" icon={Upload} loading={submitting} onClick={handleSubmit}>Submit Homework</Button>
           </div>
         }
       >
@@ -276,15 +178,10 @@ export default function StudentHomework({ user }: StudentHomeworkProps) {
             <strong>Assignment:</strong> {selectedHw?.content}
           </div>
           <FormField label="Your Submission" required>
-            <Textarea
-              rows={5}
-              value={submitText}
-              onChange={e => setSubmitText(e.target.value)}
-              placeholder="Write your answer or describe what you've done..."
-            />
+            <Textarea rows={5} value={submitText} onChange={e => setSubmitText(e.target.value)} placeholder="Write your answer or describe what you've done..." />
           </FormField>
         </div>
       </Modal>
-    </>
+    </div>
   );
 }
