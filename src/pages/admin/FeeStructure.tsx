@@ -6,19 +6,13 @@ import {
   IndianRupee,
   Trash2,
   Save,
-  Wallet,
   Receipt,
-  AlertCircle,
-  ChevronRight,
-  Settings
+  Settings,
 } from 'lucide-react';
 import { Class, FeeStructure as IFeeStructure, FeeHead, UserProfile } from '../../types';
 import { logActivity } from '../../services/activityService';
 import { useToast } from '../../components/Toast';
-import {
-  PageHeader, Card, Button, IconButton, FormField, Input, Select,
-  Table, Thead, Th, Tbody, Tr, Td, EmptyState, Alert, Modal
-} from '../../components/ui';
+import { Modal, FormField, Input, Button, IconButton } from '../../components/ui';
 
 export default function FeeStructure({ user }: { user: UserProfile }) {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -30,24 +24,18 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
   const [isHeadModalOpen, setIsHeadModalOpen] = useState(false);
   const { showToast } = useToast();
 
-  const [newHead, setNewHead] = useState<Omit<FeeHead, 'id'>>({
-    name: '',
-    amount: 0,
-    description: '',
-  });
+  const [newHead, setNewHead] = useState<Omit<FeeHead, 'id'>>({ name: '', amount: 0, description: '' });
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const [classesSnap, headsSnap] = await Promise.all([
         getDocs(collection(db, 'classes')),
-        getDocs(collection(db, 'feeHeads'))
+        getDocs(collection(db, 'feeHeads')),
       ]);
-
       const classesList = classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class));
       setClasses(classesList);
       setGlobalHeads(headsSnap.docs.map(doc => ({ ...doc.data() } as FeeHead)));
-
       if (classesList.length > 0 && !selectedClassId) {
         setSelectedClassId(classesList[0].id);
       }
@@ -94,12 +82,7 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
       if (!snap.empty) {
         setFeeStructure({ id: snap.docs[0].id, ...snap.docs[0].data() } as IFeeStructure);
       } else {
-        setFeeStructure({
-          id: '',
-          classId,
-          heads: [],
-          updatedAt: new Date().toISOString(),
-        });
+        setFeeStructure({ id: '', classId, heads: [], updatedAt: new Date().toISOString() });
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, `feeStructures/${classId}`);
@@ -108,41 +91,26 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  useEffect(() => {
-    if (selectedClassId) {
-      fetchFeeStructure(selectedClassId);
-    }
-  }, [selectedClassId]);
+  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { if (selectedClassId) fetchFeeStructure(selectedClassId); }, [selectedClassId]);
 
   const handleAddHead = () => {
     if (!newHead.name || newHead.amount <= 0) return;
     if (!feeStructure) return;
-
-    const updatedHeads = [...feeStructure.heads, { ...newHead }];
-    setFeeStructure({ ...feeStructure, heads: updatedHeads });
+    setFeeStructure({ ...feeStructure, heads: [...feeStructure.heads, { ...newHead }] });
     setNewHead({ name: '', amount: 0, description: '' });
   };
 
   const handleRemoveHead = (index: number) => {
     if (!feeStructure) return;
-    const updatedHeads = feeStructure.heads.filter((_, i) => i !== index);
-    setFeeStructure({ ...feeStructure, heads: updatedHeads });
+    setFeeStructure({ ...feeStructure, heads: feeStructure.heads.filter((_, i) => i !== index) });
   };
 
   const handleSaveStructure = async () => {
     if (!feeStructure || !selectedClassId) return;
     setSaving(true);
     try {
-      const structureData = {
-        ...feeStructure,
-        classId: selectedClassId,
-        updatedAt: new Date().toISOString(),
-      };
-
+      const structureData = { ...feeStructure, classId: selectedClassId, updatedAt: new Date().toISOString() };
       const className = classes.find(c => c.id === selectedClassId)?.name || selectedClassId;
       if (feeStructure.id) {
         await setDoc(doc(db, 'feeStructures', feeStructure.id), structureData);
@@ -160,278 +128,189 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
   };
 
   const totalAmount = feeStructure?.heads.reduce((acc, curr) => acc + curr.amount, 0) || 0;
+  const selectedClass = classes.find(c => c.id === selectedClassId);
 
   return (
     <>
-      {/* Mobile UI */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Fee Structure</h1>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">₹{totalAmount.toLocaleString()}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Total Fee</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{feeStructure?.heads.length || 0}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Fee Heads</p>
-            </div>
-          </div>
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">fee configuration</div>
+          <h1>Fee Structure</h1>
         </div>
-
-        <div className="px-4 pt-3 pb-2 bg-white border-b border-slate-100 space-y-3">
-          <select
-            value={selectedClassId}
-            onChange={(e) => setSelectedClassId(e.target.value)}
-            className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none"
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            className="icon-btn"
+            onClick={() => setIsHeadModalOpen(true)}
+            title="Manage global fee heads"
           >
-            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <div className="flex gap-2">
+            <Settings size={15} />
+          </button>
+        </div>
+      </div>
+
+      <div className="pad stack" style={{ paddingBottom: 32 }}>
+        {/* Class selector chips */}
+        <div className="hscroll" style={{ padding: 0 }}>
+          {classes.map(cls => (
             <button
-              onClick={() => setIsHeadModalOpen(true)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold active:scale-95 transition-transform"
+              key={cls.id}
+              onClick={() => setSelectedClassId(cls.id)}
+              className={selectedClassId === cls.id ? 'chip solid' : 'chip'}
             >
-              <Settings className="w-3.5 h-3.5" /> Fee Heads
+              {cls.name}
             </button>
-            <button
-              onClick={handleSaveStructure}
-              disabled={saving || !feeStructure}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold active:scale-95 transition-transform disabled:opacity-50"
-            >
-              <Save className="w-3.5 h-3.5" /> {saving ? 'Saving…' : 'Save'}
-            </button>
-          </div>
+          ))}
         </div>
 
-        <div className="px-4 pt-3 pb-5 space-y-3">
-          <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 space-y-3">
-            <p className="text-xs font-bold text-indigo-700">Add Fee Head</p>
-            <input
-              type="text"
-              placeholder="Head name (e.g. Tuition Fee)"
-              value={newHead.name}
-              onChange={(e) => setNewHead({ ...newHead, name: e.target.value })}
-              className="w-full h-10 px-3 bg-white border border-indigo-100 rounded-xl text-sm outline-none"
-            />
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                <input
-                  type="number"
-                  placeholder="Amount"
-                  value={newHead.amount || ''}
-                  onChange={(e) => setNewHead({ ...newHead, amount: Number(e.target.value) })}
-                  className="w-full h-10 pl-8 pr-3 bg-white border border-indigo-100 rounded-xl text-sm outline-none"
-                />
-              </div>
-              <button
-                onClick={handleAddHead}
-                className="px-4 bg-indigo-600 text-white rounded-xl text-xs font-bold active:scale-95 transition-transform"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+        {/* Selected class summary */}
+        {selectedClass && (
+          <div className="card flex" style={{ alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: 16 }}>
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 2 }}>Selected class</div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{selectedClass.name}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div className="eyebrow" style={{ marginBottom: 2 }}>Total fee</div>
+              <div className="t-num" style={{ fontSize: 22 }}>₹{totalAmount.toLocaleString()}</div>
             </div>
           </div>
+        )}
 
-          {feeStructure?.heads.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-sm text-slate-400 font-medium">No fee heads yet. Add one above.</p>
+        {/* Global fee heads */}
+        <div className="card flush">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Receipt size={16} style={{ color: 'var(--ink-3)' }} />
+              <span style={{ fontWeight: 700, fontSize: 14 }}>Global Fee Heads</span>
+            </div>
+            <span className="eyebrow">{globalHeads.length} heads</span>
+          </div>
+          {globalHeads.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center' }}>
+              <p className="muted tiny">No global fee heads. Use the settings icon to add some.</p>
             </div>
           ) : (
-            feeStructure?.heads.map((head, index) => (
-              <div key={index} className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
-                    <IndianRupee className="w-4 h-4 text-indigo-600" />
+            globalHeads.map((head, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--line-2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--cream-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <IndianRupee size={14} style={{ color: 'var(--ink-2)' }} />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-900">{head.name}</p>
-                    <p className="text-xs text-slate-400">₹{(head.amount || 0).toLocaleString()}</p>
+                    <p style={{ fontWeight: 700, fontSize: 13 }}>{head.name}</p>
+                    {head.description && <p className="muted tiny">{head.description}</p>}
                   </div>
                 </div>
-                <button
-                  onClick={() => handleRemoveHead(index)}
-                  className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className="t-num" style={{ fontSize: 15 }}>₹{(head.amount || 0).toLocaleString()}</span>
+                  <button
+                    onClick={() => handleDeleteGlobalHead(head.name)}
+                    className="icon-btn"
+                    style={{ color: 'var(--coral)' }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               </div>
             ))
           )}
         </div>
-      </div>
 
-      {/* Desktop UI */}
-      <div className="hidden md:block space-y-8">
-        <PageHeader
-          title="Fee Structure Management"
-          subtitle="Define class-wise fee heads and amounts."
-          icon={Receipt}
-          iconColor="gradient-emerald"
-          actions={
-            <div className="flex items-center gap-3">
-              <Button
-                variant="secondary"
-                icon={Settings}
-                onClick={() => setIsHeadModalOpen(true)}
-              >
-                Fee Heads
-              </Button>
-              <div className="w-px h-8 bg-slate-200 mx-2" />
-              <Select
-                value={selectedClassId}
-                onChange={(e) => setSelectedClassId(e.target.value)}
-                className="w-40"
-              >
-                {classes.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </Select>
-              <Button
-                icon={Save}
+        {/* Class-specific overrides */}
+        {selectedClass && (
+          <div className="card flush">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Receipt size={16} style={{ color: 'var(--ink-3)' }} />
+                <span style={{ fontWeight: 700, fontSize: 14 }}>Class {selectedClass.name} — Fee Heads</span>
+              </div>
+              <span className="eyebrow">{feeStructure?.heads.length || 0} heads</span>
+            </div>
+
+            {/* Add fee head inline form */}
+            <div style={{ padding: 14, borderBottom: '1px solid var(--line-2)', background: 'var(--cream-2)' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                <div style={{ flex: 2 }}>
+                  <div className="eyebrow" style={{ marginBottom: 6 }}>Head name</div>
+                  <input
+                    type="text"
+                    placeholder="e.g. Tuition Fee"
+                    value={newHead.name}
+                    onChange={e => setNewHead({ ...newHead, name: e.target.value })}
+                    style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 10, padding: '9px 12px', fontSize: 13, fontFamily: 'var(--body)', color: 'var(--ink)', background: 'var(--paper)', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div className="eyebrow" style={{ marginBottom: 6 }}>Amount ₹</div>
+                  <div style={{ position: 'relative' }}>
+                    <IndianRupee size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)' }} />
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={newHead.amount || ''}
+                      onChange={e => setNewHead({ ...newHead, amount: Number(e.target.value) })}
+                      style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 10, padding: '9px 12px 9px 28px', fontSize: 13, fontFamily: 'var(--body)', color: 'var(--ink)', background: 'var(--paper)', outline: 'none' }}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={handleAddHead}
+                  className="btn accent"
+                  style={{ width: 'auto', padding: '10px 14px', fontSize: 13, flexShrink: 0 }}
+                >
+                  <Plus size={14} /> Add Fee Head
+                </button>
+              </div>
+            </div>
+
+            {/* Heads list */}
+            {feeStructure?.heads.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center' }}>
+                <p className="muted tiny">No fee heads yet. Add one above.</p>
+              </div>
+            ) : (
+              feeStructure?.heads.map((head, index) => (
+                <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--line-2)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--cream-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <IndianRupee size={14} style={{ color: 'var(--ink-2)' }} />
+                    </div>
+                    <div>
+                      <p style={{ fontWeight: 700, fontSize: 13 }}>{head.name}</p>
+                      {head.description && <p className="muted tiny">{head.description}</p>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span className="t-num" style={{ fontSize: 15 }}>₹{(head.amount || 0).toLocaleString()}</span>
+                    <button onClick={() => handleRemoveHead(index)} className="icon-btn" style={{ color: 'var(--coral)' }}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+
+            {/* Total + Save */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--cream-2)' }}>
+              <div>
+                <div className="eyebrow" style={{ marginBottom: 2 }}>Total class fee</div>
+                <div className="t-num" style={{ fontSize: 20 }}>₹{totalAmount.toLocaleString()}</div>
+              </div>
+              <button
+                className="btn accent"
+                style={{ width: 'auto', padding: '10px 18px', fontSize: 13 }}
                 onClick={handleSaveStructure}
                 disabled={saving || !feeStructure}
-                loading={saving}
               >
-                Save Structure
-              </Button>
+                <Save size={14} /> {saving ? 'Saving…' : 'Save'}
+              </button>
             </div>
-          }
-        />
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <Card padding="none">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <Receipt className="w-5 h-5 text-emerald-600" />
-                  Fee Heads for {classes.find(c => c.id === selectedClassId)?.name || 'Class'}
-                </h3>
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                  {feeStructure?.heads.length || 0} Heads
-                </span>
-              </div>
-
-              <div className="p-5 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-4 bg-emerald-50/60 rounded-2xl border border-emerald-100">
-                  <div className="sm:col-span-5">
-                    <FormField label="Head Name">
-                      <Input
-                        type="text"
-                        placeholder="e.g. Tuition Fee"
-                        value={newHead.name}
-                        onChange={(e) => setNewHead({ ...newHead, name: e.target.value })}
-                      />
-                    </FormField>
-                  </div>
-                  <div className="sm:col-span-4">
-                    <FormField label="Amount (₹)">
-                      <div className="relative">
-                        <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                        <Input
-                          type="number"
-                          placeholder="0"
-                          value={newHead.amount || ''}
-                          onChange={(e) => setNewHead({ ...newHead, amount: Number(e.target.value) })}
-                          className="pl-9"
-                        />
-                      </div>
-                    </FormField>
-                  </div>
-                  <div className="sm:col-span-3 flex items-end">
-                    <Button icon={Plus} onClick={handleAddHead} className="w-full">
-                      Add
-                    </Button>
-                  </div>
-                </div>
-
-                <Table>
-                  <Thead>
-                    <Tr>
-                      <Th>Fee Head</Th>
-                      <Th>Description</Th>
-                      <Th className="text-right">Amount</Th>
-                      <Th className="text-right">Remove</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {feeStructure?.heads.map((head, index) => (
-                      <Tr key={index}>
-                        <Td>
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg gradient-emerald flex items-center justify-center text-white">
-                              <IndianRupee className="w-4 h-4" />
-                            </div>
-                            <span className="font-semibold text-slate-900">{head.name}</span>
-                          </div>
-                        </Td>
-                        <Td className="text-slate-500">{head.description || '—'}</Td>
-                        <Td className="text-right font-bold text-slate-900">₹{(head.amount || 0).toLocaleString()}</Td>
-                        <Td className="text-right">
-                          <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleRemoveHead(index)} />
-                        </Td>
-                      </Tr>
-                    ))}
-                  </Tbody>
-                </Table>
-                {(!feeStructure?.heads.length) && (
-                  <EmptyState
-                    icon={Receipt}
-                    title="No fee heads defined"
-                    description="Start by adding heads using the form above."
-                  />
-                )}
-              </div>
-            </Card>
           </div>
-
-          <div className="space-y-6">
-            <Card padding="none">
-              <div className="p-6 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-t-2xl">
-                <div className="flex items-center justify-between mb-8">
-                  <Wallet className="w-8 h-8 opacity-50" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Structure Summary</span>
-                </div>
-                <p className="text-xs opacity-80 font-bold uppercase tracking-wider">Total Class Fee</p>
-                <h2 className="text-4xl font-black mt-1">₹{(totalAmount || 0).toLocaleString()}</h2>
-              </div>
-              <div className="p-5 space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500 font-medium">Total Heads</span>
-                  <span className="font-bold text-slate-900">{feeStructure?.heads.length || 0}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500 font-medium">Last Updated</span>
-                  <span className="font-bold text-slate-900">
-                    {feeStructure?.updatedAt ? new Date(feeStructure.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Never'}
-                  </span>
-                </div>
-              </div>
-            </Card>
-
-            <Alert variant="warning" title="Important Note">
-              <ul className="space-y-2 mt-1">
-                <li className="flex gap-2 items-start">
-                  <ChevronRight className="w-3 h-3 mt-0.5 shrink-0" />
-                  Fee structures defined here will be used as templates by the accountant.
-                </li>
-                <li className="flex gap-2 items-start">
-                  <ChevronRight className="w-3 h-3 mt-0.5 shrink-0" />
-                  Changes here will not affect already generated fee requests.
-                </li>
-                <li className="flex gap-2 items-start">
-                  <ChevronRight className="w-3 h-3 mt-0.5 shrink-0" />
-                  You can add custom heads or discounts while generating individual requests.
-                </li>
-              </ul>
-            </Alert>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Global Fee Heads Modal — shared */}
+      {/* Global Fee Heads Modal */}
       <Modal
         isOpen={isHeadModalOpen}
         onClose={() => setIsHeadModalOpen(false)}
@@ -443,22 +322,14 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
             <div className="sm:col-span-5">
               <FormField label="Head Name">
-                <Input
-                  type="text"
-                  placeholder="e.g. Activity Fee"
-                  value={newHead.name}
-                  onChange={(e) => setNewHead({ ...newHead, name: e.target.value })}
-                />
+                <Input type="text" placeholder="e.g. Activity Fee" value={newHead.name}
+                  onChange={e => setNewHead({ ...newHead, name: e.target.value })} />
               </FormField>
             </div>
             <div className="sm:col-span-4">
               <FormField label="Default Amount (₹)">
-                <Input
-                  type="number"
-                  placeholder="0"
-                  value={newHead.amount || ''}
-                  onChange={(e) => setNewHead({ ...newHead, amount: Number(e.target.value) })}
-                />
+                <Input type="number" placeholder="0" value={newHead.amount || ''}
+                  onChange={e => setNewHead({ ...newHead, amount: Number(e.target.value) })} />
               </FormField>
             </div>
             <div className="sm:col-span-3 flex items-end">
@@ -468,36 +339,33 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
             </div>
           </div>
 
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>Name</Th>
-                <Th>Default Amount</Th>
-                <Th className="text-right">Action</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                {['Name', 'Default Amount', ''].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--ink-3)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
               {globalHeads.map((head, index) => (
-                <Tr key={index}>
-                  <Td className="font-bold text-slate-900">{head.name}</Td>
-                  <Td className="font-bold text-slate-500">₹{(head.amount || 0).toLocaleString()}</Td>
-                  <Td className="text-right">
-                    <IconButton
-                      icon={Trash2}
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleDeleteGlobalHead(head.name)}
-                    />
-                  </Td>
-                </Tr>
+                <tr key={index} style={{ borderBottom: '1px solid var(--line-2)' }}>
+                  <td style={{ padding: '10px 12px', fontWeight: 700 }}>{head.name}</td>
+                  <td style={{ padding: '10px 12px', color: 'var(--ink-2)' }}>₹{(head.amount || 0).toLocaleString()}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                    <IconButton icon={Trash2} variant="danger" size="sm" onClick={() => handleDeleteGlobalHead(head.name)} />
+                  </td>
+                </tr>
               ))}
               {globalHeads.length === 0 && (
-                <Tr>
-                  <Td colSpan={3} className="text-center py-8 text-slate-400">No global fee heads defined.</Td>
-                </Tr>
+                <tr>
+                  <td colSpan={3} style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13 }}>
+                    No global fee heads defined.
+                  </td>
+                </tr>
               )}
-            </Tbody>
-          </Table>
+            </tbody>
+          </table>
         </div>
       </Modal>
     </>
