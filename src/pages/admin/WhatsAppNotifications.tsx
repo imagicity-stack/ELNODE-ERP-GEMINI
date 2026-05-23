@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  MessageSquare, Send, Users, AlertCircle, CheckCircle2,
-  Clock, Filter, RefreshCw, Phone, Search, X, CheckSquare, Square,
+  Send, AlertCircle, CheckCircle2,
+  RefreshCw, Phone, Search, X, CheckSquare, Square,
 } from 'lucide-react';
 import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { UserProfile, Student, FeeRequest, Class } from '../../types';
 import { useToast } from '../../components/Toast';
-import { PageHeader, Card, Button, StatCard } from '../../components/ui';
 import { logActivity } from '../../services/activityService';
 import { fmtDate } from '../../lib/utils';
 
@@ -27,14 +26,14 @@ interface RecipientRow {
 const TEMPLATES = [
   {
     id: 'fees_due_reminder',
-    label: 'Fee Due Reminder',
+    label: 'Fee Reminder',
     description: 'For pending / partially paid fees — sent before or on the due date',
     statuses: ['pending', 'partially_paid'],
     includeOverdue: false,
   },
   {
     id: 'fees_overdue_notice',
-    label: 'Overdue Fee Notice',
+    label: 'Overdue Notice',
     description: 'Stronger reminder for fees past the due date',
     statuses: ['pending', 'partially_paid', 'overdue'],
     includeOverdue: true,
@@ -48,39 +47,6 @@ function buildParams(template: typeof TEMPLATES[number]['id'], r: RecipientRow):
   return [r.parentName, r.amount, r.studentName, r.classSection, r.month, r.dueDate, PAYMENT_LINK];
 }
 
-function ChipGroup({
-  label, options, selected, onToggle,
-}: {
-  label: string;
-  options: { value: string; label: string }[];
-  selected: string[];
-  onToggle: (value: string) => void;
-}) {
-  if (options.length === 0) return null;
-  return (
-    <div>
-      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {options.map(o => {
-          const active = selected.includes(o.value);
-          return (
-            <button
-              key={o.value}
-              type="button"
-              onClick={() => onToggle(o.value)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
-                active ? 'bg-green-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:border-green-300'
-              }`}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
   const [students, setStudents] = useState<Student[]>([]);
   const [requests, setRequests] = useState<FeeRequest[]>([]);
@@ -89,14 +55,12 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
 
   const [template, setTemplate] = useState<typeof TEMPLATES[number]['id']>('fees_due_reminder');
 
-  // Advanced filters (empty array = no constraint)
   const [classFilter, setClassFilter] = useState<string[]>([]);
   const [sectionFilter, setSectionFilter] = useState<string[]>([]);
   const [genderFilter, setGenderFilter] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [minAmount, setMinAmount] = useState('');
 
-  // Explicit per-parent selection, keyed by fee requestId
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [sending, setSending] = useState(false);
@@ -126,8 +90,6 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
   const today = new Date().toISOString().split('T')[0];
   const selectedTemplate = TEMPLATES.find(t => t.id === template)!;
 
-  // Sections available for the currently chosen classes (union). When no class
-  // is chosen, offer sections across all classes.
   const availableSections = useMemo(() => {
     const pool = classFilter.length > 0 ? classes.filter(c => classFilter.includes(c.id)) : classes;
     const set = new Set<string>();
@@ -182,9 +144,6 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
       });
   }, [requests, students, classes, template, classFilter, sectionFilter, genderFilter, minAmount, search, today]);
 
-  // When the filtered set changes, default to "all selected" so the prior
-  // send-to-everyone behaviour is preserved; manual checkbox edits persist
-  // as long as the filtered set is unchanged.
   const recipientKey = recipients.map(r => r.requestId).join('|');
   useEffect(() => {
     setSelectedIds(new Set(recipients.map(r => r.requestId)));
@@ -289,414 +248,324 @@ export default function WhatsAppNotifications({ user }: { user: UserProfile }) {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-8 w-64 bg-slate-100 rounded" />
-        <div className="grid grid-cols-3 gap-4">
-          {[1, 2, 3].map(i => <div key={i} className="h-24 bg-slate-100 rounded-2xl" />)}
+      <div className="pad stack" style={{ paddingTop: 24 }}>
+        <div style={{ height: 32, width: 200, background: 'var(--line)', borderRadius: 8, animation: 'pulse 1.5s infinite' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+          {[1, 2, 3].map(i => <div key={i} style={{ height: 80, background: 'var(--line)', borderRadius: 12 }} />)}
         </div>
-        <div className="h-64 bg-slate-100 rounded-2xl" />
+        <div style={{ height: 200, background: 'var(--line)', borderRadius: 12 }} />
       </div>
     );
   }
 
   return (
     <>
-      {/* Mobile UI */}
-      <div className="md:hidden -mx-4 -mt-4">
-        <div className="bg-gradient-to-br from-green-600 to-emerald-700 px-4 pt-5 pb-5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-green-200">Admin Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">WhatsApp Blast</h1>
-          <p className="text-xs text-green-200 mt-0.5">Send fee reminders to parents</p>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black text-amber-300">{pendingCount}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Pending</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black text-rose-300">{overdueCount}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Overdue</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-xl font-black">{sendList.length}</p>
-              <p className="text-[9px] text-white/70 mt-0.5 uppercase font-bold">Selected</p>
-            </div>
-          </div>
+      {/* Topbar */}
+      <div className="topbar pad">
+        <div>
+          <div className="eyebrow">Fee notifications</div>
+          <h1>WhatsApp</h1>
         </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            className="btn accent"
+            style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, opacity: (sending || sendList.length === 0) ? 0.5 : 1 }}
+            onClick={handleSend}
+            disabled={sending || sendList.length === 0}
+          >
+            {sending
+              ? <><RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</>
+              : <><Send size={14} /> Send to {sendList.length}</>}
+          </button>
+        </div>
+      </div>
 
-        <div className="px-4 pt-4 pb-24 space-y-4">
-          {/* Template picker */}
-          <div className="space-y-2">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Select Template</p>
+      {/* Stats row */}
+      <div className="hscroll" style={{ paddingTop: 10, paddingBottom: 4 }}>
+        <div className="card" style={{ padding: '10px 16px', minWidth: 120, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div className="t-num" style={{ fontSize: 22, color: 'var(--coral)' }}>{pendingCount}</div>
+          <div className="eyebrow" style={{ fontSize: 10 }}>Pending</div>
+        </div>
+        <div className="card" style={{ padding: '10px 16px', minWidth: 120, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div className="t-num" style={{ fontSize: 22, color: 'var(--coral)' }}>{overdueCount}</div>
+          <div className="eyebrow" style={{ fontSize: 10 }}>Overdue</div>
+        </div>
+        <div className="card" style={{ padding: '10px 16px', minWidth: 120, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div className="t-num" style={{ fontSize: 22 }}>{noPhoneCount}</div>
+          <div className="eyebrow" style={{ fontSize: 10 }}>No Phone</div>
+        </div>
+        <div className="card" style={{ padding: '10px 16px', minWidth: 120, display: 'flex', flexDirection: 'column', gap: 2, background: sendList.length > 0 ? 'var(--accent)' : undefined }}>
+          <div className="t-num" style={{ fontSize: 22 }}>{sendList.length}</div>
+          <div className="eyebrow" style={{ fontSize: 10 }}>Selected</div>
+        </div>
+      </div>
+
+      <div className="pad stack" style={{ paddingTop: 16, paddingBottom: 80 }}>
+
+        {/* Template selector */}
+        <div>
+          <div className="section-head" style={{ padding: '0 0 10px' }}>
+            <h2 style={{ fontSize: 14 }}>Template</h2>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
             {TEMPLATES.map(t => (
               <button
                 key={t.id}
+                className={`chip${template === t.id ? ' solid' : ''}`}
+                style={{ padding: '8px 16px', fontSize: 13 }}
                 onClick={() => setTemplate(t.id)}
-                className={`w-full text-left p-4 rounded-2xl border-2 transition-all active:scale-98 ${template === t.id ? 'border-green-500 bg-green-50' : 'border-slate-100 bg-white'}`}
               >
-                <p className="text-sm font-bold text-slate-800">{t.label}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{t.description}</p>
+                {t.label}
               </button>
             ))}
           </div>
+          {selectedTemplate && (
+            <p className="muted tiny" style={{ marginTop: 6 }}>{selectedTemplate.description}</p>
+          )}
+        </div>
 
-          {/* Advanced filters */}
-          <div className="space-y-3 bg-white rounded-2xl border border-slate-100 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1">
-                <Filter className="w-3 h-3" /> Filter Recipients
-              </p>
-              {activeFilterCount > 0 && (
-                <button onClick={clearFilters} className="text-[11px] font-bold text-rose-600 flex items-center gap-0.5 active:scale-95">
-                  <X className="w-3 h-3" /> Clear ({activeFilterCount})
-                </button>
-              )}
-            </div>
-
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search parent, student or phone…"
-                className="w-full h-10 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-green-400"
-              />
-            </div>
-
-            <ChipGroup
-              label="Class"
-              options={classes.map(c => ({ value: c.id, label: c.name }))}
-              selected={classFilter}
-              onToggle={v => toggleArr(setClassFilter, v)}
-            />
-            <ChipGroup
-              label="Section"
-              options={availableSections.map(s => ({ value: s, label: s }))}
-              selected={sectionFilter}
-              onToggle={v => toggleArr(setSectionFilter, v)}
-            />
-            <ChipGroup
-              label="Gender"
-              options={GENDERS}
-              selected={genderFilter}
-              onToggle={v => toggleArr(setGenderFilter, v)}
-            />
-
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Min. Outstanding (₹)</p>
-              <input
-                type="number"
-                min={0}
-                value={minAmount}
-                onChange={e => setMinAmount(e.target.value)}
-                placeholder="e.g. 5000"
-                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-green-400"
-              />
-            </div>
+        {/* Filters */}
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div className="eyebrow" style={{ fontSize: 11 }}>Filter Recipients</div>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={clearFilters}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--coral)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+              >
+                <X size={12} /> Clear ({activeFilterCount})
+              </button>
+            )}
           </div>
 
-          {/* Recipients summary */}
-          <div className={`flex items-center gap-3 p-4 rounded-2xl ${sendList.length > 0 ? 'bg-green-50 border border-green-100' : 'bg-slate-50 border border-slate-100'}`}>
-            <Users className={`w-5 h-5 ${sendList.length > 0 ? 'text-green-600' : 'text-slate-400'}`} />
-            <div>
-              <p className="text-sm font-bold text-slate-800">
-                {sendList.length} of {recipients.length} selected
-              </p>
-              {noPhoneCount > 0 && (
-                <p className="text-xs text-amber-600 mt-0.5">{noPhoneCount} student(s) skipped — no phone number</p>
-              )}
-            </div>
+          {/* Search */}
+          <div style={{ position: 'relative', marginBottom: 12 }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-4)' }} />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search parent, student or phone…"
+              style={{
+                width: '100%', height: 38, paddingLeft: 32, paddingRight: 12,
+                border: '1px solid var(--line)', borderRadius: 10, background: 'var(--cream)',
+                fontSize: 13, outline: 'none', boxSizing: 'border-box', color: 'var(--ink)',
+              }}
+            />
           </div>
 
-          {/* Progress */}
-          {progress && (
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs text-slate-500">
-                <span>{progress.done} / {progress.total} sent</span>
-                {progress.failed > 0 && <span className="text-rose-500">{progress.failed} failed</span>}
-              </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-2 bg-green-500 rounded-full transition-all duration-300"
-                  style={{ width: `${(progress.done / progress.total) * 100}%` }}
-                />
+          {/* Min amount */}
+          <div style={{ marginBottom: 12 }}>
+            <input
+              type="number"
+              min={0}
+              value={minAmount}
+              onChange={e => setMinAmount(e.target.value)}
+              placeholder="Min. outstanding (₹)"
+              style={{
+                width: '100%', height: 38, padding: '0 12px',
+                border: '1px solid var(--line)', borderRadius: 10, background: 'var(--cream)',
+                fontSize: 13, outline: 'none', boxSizing: 'border-box', color: 'var(--ink)',
+              }}
+            />
+          </div>
+
+          {/* Class chips */}
+          {classes.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>Class</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {classes.map(c => (
+                  <button
+                    key={c.id}
+                    className={`chip${classFilter.includes(c.id) ? ' solid' : ''}`}
+                    style={{ fontSize: 12, padding: '5px 12px' }}
+                    onClick={() => toggleArr(setClassFilter, c.id)}
+                  >
+                    {c.name}
+                  </button>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Selectable recipients list on mobile */}
-          {recipients.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Select Parents</p>
-                <button
-                  onClick={allSelected ? clearAll : selectAll}
-                  className="text-[11px] font-bold text-green-700 flex items-center gap-1 active:scale-95"
-                >
-                  {allSelected ? <Square className="w-3.5 h-3.5" /> : <CheckSquare className="w-3.5 h-3.5" />}
-                  {allSelected ? 'Clear all' : 'Select all'}
-                </button>
+          {/* Section chips */}
+          {availableSections.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>Section</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {availableSections.map(s => (
+                  <button
+                    key={s}
+                    className={`chip${sectionFilter.includes(s) ? ' solid' : ''}`}
+                    style={{ fontSize: 12, padding: '5px 12px' }}
+                    onClick={() => toggleArr(setSectionFilter, s)}
+                  >
+                    {s}
+                  </button>
+                ))}
               </div>
-              {recipients.map((r) => {
+            </div>
+          )}
+
+          {/* Gender chips */}
+          <div>
+            <div className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>Gender</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {GENDERS.map(g => (
+                <button
+                  key={g.value}
+                  className={`chip${genderFilter.includes(g.value) ? ' solid' : ''}`}
+                  style={{ fontSize: 12, padding: '5px 12px' }}
+                  onClick={() => toggleArr(setGenderFilter, g.value)}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        {progress && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span className="tiny muted">{progress.done} / {progress.total} sent</span>
+              {progress.failed > 0 && <span className="tiny" style={{ color: 'var(--coral)' }}>{progress.failed} failed</span>}
+            </div>
+            <div style={{ height: 6, borderRadius: 999, background: 'var(--line)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  borderRadius: 999,
+                  background: 'var(--leaf)',
+                  width: `${(progress.done / progress.total) * 100}%`,
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Recipient list */}
+        {recipients.length > 0 && (
+          <div>
+            <div className="section-head" style={{ padding: '0 0 10px' }}>
+              <h2 style={{ fontSize: 14 }}>
+                Recipients
+                <span className="muted" style={{ fontWeight: 400, fontSize: 13, marginLeft: 6 }}>
+                  {sendList.length} of {recipients.length}
+                </span>
+              </h2>
+              <button
+                onClick={allSelected ? clearAll : selectAll}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  fontSize: 12, fontWeight: 600, color: 'var(--ink-2)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                }}
+              >
+                {allSelected ? <Square size={14} /> : <CheckSquare size={14} />}
+                {allSelected ? 'Clear all' : 'Select all'}
+              </button>
+            </div>
+
+            <div className="stack">
+              {recipients.map(r => {
                 const checked = selectedIds.has(r.requestId);
                 return (
                   <button
                     key={r.requestId}
                     onClick={() => toggleSelect(r.requestId)}
-                    className={`w-full text-left rounded-xl border px-4 py-3 flex items-center gap-3 transition-all active:scale-98 ${
-                      checked ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100'
-                    }`}
+                    className="card"
+                    style={{
+                      padding: '12px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      width: '100%',
+                      background: checked ? 'var(--accent)' : undefined,
+                      borderColor: checked ? 'transparent' : undefined,
+                      transition: 'background 0.12s, border-color 0.12s',
+                    }}
                   >
-                    <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
-                      checked ? 'bg-green-600 border-green-600' : 'border-slate-300 bg-white'
-                    }`}>
-                      {checked && <CheckCircle2 className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
+                    {/* Checkbox */}
+                    <div
+                      style={{
+                        width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                        border: checked ? '2px solid var(--ink)' : '2px solid var(--line)',
+                        background: checked ? 'var(--ink)' : 'transparent',
+                        display: 'grid', placeItems: 'center',
+                      }}
+                    >
+                      {checked && <CheckCircle2 size={12} color="var(--cream)" strokeWidth={3} />}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-800 truncate">{r.parentName}</p>
-                      <p className="text-xs text-slate-500 truncate">{r.studentName} · {r.classSection}</p>
+
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {r.parentName}
+                      </div>
+                      <div className="muted tiny" style={{ marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {r.studentName} · {r.classSection}
+                      </div>
+                      <div className="tiny" style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--ink-3)' }}>
+                        <Phone size={10} />
+                        {r.phone}
+                      </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-black text-slate-800">{r.amount}</p>
-                      <p className="text-[10px] text-slate-400">Due {fmtDate(r.dueDate)}</p>
+
+                    {/* Amount + due */}
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div className="t-num" style={{ fontSize: 15 }}>{r.amount}</div>
+                      <div className="tiny muted" style={{ marginTop: 2 }}>Due {fmtDate(r.dueDate)}</div>
                     </div>
                   </button>
                 );
               })}
             </div>
-          )}
-        </div>
-
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 p-4 safe-area-bottom">
-          <button
-            onClick={handleSend}
-            disabled={sending || sendList.length === 0}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-2xl font-bold text-sm active:scale-95 transition-transform disabled:opacity-50"
-          >
-            {sending
-              ? <><RefreshCw className="w-4 h-4 animate-spin" /> Sending…</>
-              : <><Send className="w-4 h-4" /> Send to {sendList.length} Parent{sendList.length !== 1 ? 's' : ''}</>}
-          </button>
-        </div>
-      </div>
-
-      {/* Desktop UI */}
-      <div className="hidden md:block p-6 space-y-6 max-w-3xl">
-        <PageHeader
-          title="WhatsApp Notifications"
-          subtitle="Send fee reminders and notices to parents via WhatsApp"
-          icon={MessageSquare}
-        />
-
-        <div className="grid grid-cols-3 gap-4">
-          <StatCard
-            label="Pending Fees"
-            value={pendingCount}
-            icon={Clock}
-            gradient="bg-gradient-to-br from-amber-500 to-amber-600"
-          />
-          <StatCard
-            label="Overdue"
-            value={overdueCount}
-            icon={AlertCircle}
-            gradient="bg-gradient-to-br from-rose-500 to-rose-600"
-          />
-          <StatCard
-            label="No Phone on Record"
-            value={noPhoneCount}
-            icon={Phone}
-            gradient="bg-gradient-to-br from-slate-500 to-slate-600"
-          />
-        </div>
-
-        <Card className="p-6 space-y-5">
-          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-            <Send className="w-4 h-4 text-green-600" />
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Compose Blast</h3>
           </div>
+        )}
 
-          <div className="space-y-3">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Select Template</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {TEMPLATES.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setTemplate(t.id)}
-                  className={`text-left p-4 rounded-xl border-2 transition-all ${
-                    template === t.id
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-slate-100 hover:border-slate-200 bg-white'
-                  }`}
-                >
-                  <p className="text-sm font-bold text-slate-800">{t.label}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{t.description}</p>
-                </button>
-              ))}
-            </div>
+        {recipients.length === 0 && !loading && (
+          <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
+            <AlertCircle size={28} style={{ margin: '0 auto 10px', color: 'var(--ink-4)' }} />
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>No recipients found</div>
+            <div className="muted tiny">Adjust your filters or template selection.</div>
           </div>
-
-          <div className="space-y-4 rounded-xl border border-slate-100 p-4 bg-slate-50/50">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-                <Filter className="w-3.5 h-3.5" /> Filter Recipients
-              </p>
-              {activeFilterCount > 0 && (
-                <button onClick={clearFilters} className="text-xs font-bold text-rose-600 flex items-center gap-1 hover:text-rose-700">
-                  <X className="w-3.5 h-3.5" /> Clear filters ({activeFilterCount})
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Search parent, student or phone…"
-                  className="w-full h-10 pl-9 pr-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-green-400"
-                />
-              </div>
-              <div>
-                <input
-                  type="number"
-                  min={0}
-                  value={minAmount}
-                  onChange={e => setMinAmount(e.target.value)}
-                  placeholder="Min. outstanding (₹)"
-                  className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-green-400"
-                />
-              </div>
-            </div>
-
-            <ChipGroup
-              label="Class"
-              options={classes.map(c => ({ value: c.id, label: c.name }))}
-              selected={classFilter}
-              onToggle={v => toggleArr(setClassFilter, v)}
-            />
-            <ChipGroup
-              label="Section"
-              options={availableSections.map(s => ({ value: s, label: s }))}
-              selected={sectionFilter}
-              onToggle={v => toggleArr(setSectionFilter, v)}
-            />
-            <ChipGroup
-              label="Gender"
-              options={GENDERS}
-              selected={genderFilter}
-              onToggle={v => toggleArr(setGenderFilter, v)}
-            />
-          </div>
-
-          <div className={`flex items-center gap-3 p-4 rounded-xl ${
-            sendList.length > 0 ? 'bg-green-50 border border-green-100' : 'bg-slate-50 border border-slate-100'
-          }`}>
-            <Users className={`w-5 h-5 ${sendList.length > 0 ? 'text-green-600' : 'text-slate-400'}`} />
-            <div>
-              <p className="text-sm font-bold text-slate-800">
-                {sendList.length} of {recipients.length} parent{recipients.length !== 1 ? 's' : ''} selected to receive this message
-              </p>
-              {noPhoneCount > 0 && (
-                <p className="text-xs text-amber-600 mt-0.5">
-                  {noPhoneCount} student(s) skipped — no phone number on record
-                </p>
-              )}
-            </div>
-          </div>
-
-          {progress && (
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs text-slate-500">
-                <span>{progress.done} / {progress.total} sent</span>
-                {progress.failed > 0 && <span className="text-rose-500">{progress.failed} failed</span>}
-              </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-2 bg-green-500 rounded-full transition-all duration-300"
-                  style={{ width: `${(progress.done / progress.total) * 100}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          <Button
-            onClick={handleSend}
-            disabled={sending || sendList.length === 0}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
-          >
-            {sending
-              ? <><RefreshCw className="w-4 h-4 animate-spin" /> Sending…</>
-              : <><Send className="w-4 h-4" /> Send to {sendList.length} Parent{sendList.length !== 1 ? 's' : ''}</>}
-          </Button>
-        </Card>
-
-        {recipients.length > 0 && (
-          <Card className="p-0 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-800">
-                Select Recipients <span className="text-slate-400 font-medium">({sendList.length} of {recipients.length})</span>
-              </h3>
-              <button
-                onClick={allSelected ? clearAll : selectAll}
-                className="text-xs font-bold text-green-700 flex items-center gap-1.5 hover:text-green-800"
-              >
-                {allSelected ? <Square className="w-4 h-4" /> : <CheckSquare className="w-4 h-4" />}
-                {allSelected ? 'Clear all' : 'Select all'}
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-100">
-                  <tr>
-                    <th className="px-4 py-3 w-10">
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={allSelected ? clearAll : selectAll}
-                        className="w-4 h-4 rounded text-green-600 focus:ring-green-500/30 cursor-pointer"
-                      />
-                    </th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Parent</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Student</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Class</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Outstanding</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Due</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {recipients.map((r) => {
-                    const checked = selectedIds.has(r.requestId);
-                    return (
-                      <tr
-                        key={r.requestId}
-                        onClick={() => toggleSelect(r.requestId)}
-                        className={`cursor-pointer ${checked ? 'bg-green-50/50 hover:bg-green-50' : 'hover:bg-slate-50/50'}`}
-                      >
-                        <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleSelect(r.requestId)}
-                            onClick={e => e.stopPropagation()}
-                            className="w-4 h-4 rounded text-green-600 focus:ring-green-500/30 cursor-pointer"
-                          />
-                        </td>
-                        <td className="px-4 py-3 font-medium text-slate-800">{r.parentName}</td>
-                        <td className="px-4 py-3 text-slate-600">{r.studentName}</td>
-                        <td className="px-4 py-3 text-slate-500 text-xs">{r.classSection}</td>
-                        <td className="px-4 py-3 text-right font-bold text-slate-800">{r.amount}</td>
-                        <td className="px-4 py-3 text-slate-500 text-xs">{fmtDate(r.dueDate)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
         )}
       </div>
+
+      {/* Sticky send bar when items selected */}
+      {sendList.length > 0 && (
+        <div
+          style={{
+            position: 'fixed', bottom: 0, left: 0, right: 0,
+            background: 'var(--paper)', borderTop: '1px solid var(--line)',
+            padding: '12px 16px', zIndex: 50,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>
+              {sendList.length} parent{sendList.length !== 1 ? 's' : ''} selected
+            </div>
+            <div className="muted tiny">{selectedTemplate.label}</div>
+          </div>
+          <button
+            className="btn accent"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', opacity: sending ? 0.6 : 1 }}
+            onClick={handleSend}
+            disabled={sending}
+          >
+            {sending
+              ? <><RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</>
+              : <><Send size={14} /> Send to {sendList.length}</>}
+          </button>
+        </div>
+      )}
     </>
   );
 }

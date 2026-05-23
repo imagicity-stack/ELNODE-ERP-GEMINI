@@ -1,38 +1,35 @@
 import { UserProfile, Expense } from '../../types';
 import { generateExpenseAcknowledgement } from '../../lib/expenseReceipt';
 import { saveText } from '../../lib/download';
-import { Plus, Download, Receipt, Wallet, TrendingDown, Edit2, FileText, FileDown } from 'lucide-react';
+import { Plus, Receipt, TrendingDown, Edit2, FileText, FileDown, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, orderBy, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, doc, deleteDoc, updateDoc, query, orderBy, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { logActivity } from '../../services/activityService';
 import {
-  PageHeader,
-  Card,
-  Badge,
-  Button,
-  IconButton,
   Modal,
   ConfirmModal,
-  SearchInput,
   FormField,
   Input,
   Select,
-  Table,
-  Thead,
-  Th,
-  Tbody,
-  Tr,
-  Td,
-  EmptyState,
-  StatCard,
+  Button,
 } from '../../components/ui';
-import { Trash2 } from 'lucide-react';
 
 interface ExpenseManagementProps {
   user: UserProfile;
 }
+
+const CATEGORIES = ['all', 'utilities', 'maintenance', 'stationery', 'events', 'salary', 'other'];
+
+const CATEGORY_COLORS: Record<string, string> = {
+  utilities: 'var(--accent)',
+  maintenance: 'var(--leaf)',
+  stationery: '#8b5cf6',
+  events: '#f59e0b',
+  salary: 'var(--coral)',
+  other: 'var(--ink-3)',
+};
 
 export default function ExpenseManagement({ user }: ExpenseManagementProps) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -43,7 +40,7 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
-  const [mobileCategoryFilter, setMobileCategoryFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
@@ -104,8 +101,6 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
         );
       }
 
-      // Fire WhatsApp confirmation to vendor — only for non-salary expenses
-      // (salary disbursements have their own salary_disbursed template fired from SalaryManagement)
       if (!isEditMode && data.status === 'paid' && data.phone && data.category !== 'salary') {
         try {
           await fetch('/api/whatsapp/send-template', {
@@ -178,8 +173,6 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
   const performDelete = async () => {
     if (!deletingId) return;
     try {
-      // If this expense was created from a salary payment, reverse the salary record
-      // so the salary section reflects the deletion.
       const expense = expenses.find(e => e.id === deletingId) as any;
       if (expense?.salaryId) {
         try {
@@ -253,231 +246,154 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
     await saveText(csv, `expenses_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
-  const filteredExpenses = expenses.filter(e =>
-    e.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.biller.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredExpenses = expenses.filter(e => {
+    const matchesSearch =
+      e.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.biller.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCat = categoryFilter === 'all' || e.category === categoryFilter;
+    return matchesSearch && matchesCat;
+  });
 
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const pendingBills = expenses.filter(e => e.status === 'pending').reduce((sum, e) => sum + e.amount, 0);
-
-  const monthPrefix = new Date().toISOString().slice(0, 7);
-  const monthExpenses = expenses.filter(e => e.date && e.date.startsWith(monthPrefix));
-  const monthTotal = monthExpenses.reduce((s, e) => s + (e.amount || 0), 0);
-  const categories = ['all', 'utilities', 'maintenance', 'stationery', 'events', 'salary', 'other'];
-  const mobileFilteredExpenses = filteredExpenses.filter(e => mobileCategoryFilter === 'all' || e.category === mobileCategoryFilter);
+  const filteredTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   return (
     <>
-      {/* ─── Mobile UI ────────────────────────────────────────────────────── */}
-      <div className="md:hidden -mx-4 -mt-4 pb-24 min-h-screen bg-slate-50">
-        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 px-4 pt-5 pb-6 text-white rounded-b-3xl">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Accountant Portal</p>
-          <h1 className="text-xl font-bold mt-0.5">Expenses</h1>
-
-          <div className="mt-4 bg-white/15 backdrop-blur rounded-2xl p-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">This Month</p>
-            <p className="text-3xl font-black mt-1">₹{monthTotal.toLocaleString('en-IN')}</p>
-            <p className="text-[11px] text-emerald-100/90 mt-1">{monthExpenses.length} expense{monthExpenses.length === 1 ? '' : 's'} recorded</p>
+      <div className="pad stack" style={{ gap: 'var(--space-5)' }}>
+        {/* Topbar */}
+        <div className="topbar">
+          <div>
+            <div className="eyebrow">
+              Total ₹{totalExpenses.toLocaleString('en-IN')}
+            </div>
+            <h1>Expenses</h1>
           </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">₹{((totalExpenses/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">All Time</p>
-            </div>
-            <div className="bg-white/15 rounded-xl p-2.5 text-center">
-              <p className="text-sm font-bold">₹{((pendingBills/1000)|0).toLocaleString()}k</p>
-              <p className="text-[9px] text-white/80">Pending</p>
-            </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn ghost icon-btn" onClick={handleDownloadCSV} title="Export CSV">
+              <FileDown style={{ width: 16, height: 16 }} />
+            </button>
+            <button className="btn accent" onClick={() => { resetForm(); setIsModalOpen(true); }}>
+              <Plus style={{ width: 14, height: 14 }} />
+              Add Expense
+            </button>
           </div>
         </div>
 
-        <div className="px-4 pt-4 pb-2 flex items-center gap-2">
-          <div className="flex-1">
-            <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search category or biller..." />
-          </div>
-          <button
-            onClick={handleDownloadCSV}
-            className="p-2.5 bg-white rounded-xl border border-slate-200 text-slate-600 active:scale-90 transition-transform shrink-0"
-            aria-label="Export CSV"
-          >
-            <FileDown className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="px-4 overflow-x-auto flex gap-2 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {categories.map(c => (
+        {/* Category filter chips */}
+        <div className="hscroll" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {CATEGORIES.map(c => (
             <button
               key={c}
-              onClick={() => setMobileCategoryFilter(c)}
-              className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap capitalize active:scale-95 transition-transform ${mobileCategoryFilter === c ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200'}`}
+              onClick={() => setCategoryFilter(c)}
+              className={cn('chip', categoryFilter === c ? 'solid' : '')}
+              style={{
+                cursor: 'pointer',
+                ...(c !== 'all' && categoryFilter === c ? { background: CATEGORY_COLORS[c] || 'var(--accent)' } : {}),
+              }}
             >
-              {c === 'all' ? 'All' : c}
+              {c === 'all' ? 'All' : c.charAt(0).toUpperCase() + c.slice(1)}
             </button>
           ))}
         </div>
 
-        <div className="px-4 pt-2 space-y-2.5">
-          {mobileFilteredExpenses.length === 0 ? (
-            <div className="py-12 text-center">
-              <Receipt className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">No expenses</p>
-              <p className="text-xs text-slate-500 mt-1">Tap + to add an expense</p>
-            </div>
-          ) : (
-            mobileFilteredExpenses.map((exp) => (
-              <div key={exp.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-sm uppercase shrink-0">
-                    {exp.category.charAt(0)}
+        {/* Search */}
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          placeholder="Search category or biller..."
+          style={{
+            width: '100%', height: 40, border: '1px solid var(--line)', borderRadius: 10,
+            padding: '0 14px', fontSize: 13, outline: 'none',
+            background: 'var(--cream-2)', color: 'var(--ink)', boxSizing: 'border-box',
+          }}
+        />
+
+        {/* Expense cards */}
+        {filteredExpenses.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
+            <Receipt style={{ width: 36, height: 36, margin: '0 auto 8px', color: 'var(--line)' }} />
+            <p className="muted">No expenses found</p>
+            <p className="tiny muted">Add your first expense to get started</p>
+          </div>
+        ) : (
+          <div className="stack" style={{ gap: 'var(--space-2)' }}>
+            {filteredExpenses.map(exp => (
+              <div key={exp.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {/* Category chip + info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span
+                      className="chip"
+                      style={{
+                        fontSize: 11,
+                        background: CATEGORY_COLORS[exp.category] ? `color-mix(in srgb, ${CATEGORY_COLORS[exp.category]} 15%, transparent)` : 'var(--cream-2)',
+                        color: CATEGORY_COLORS[exp.category] || 'var(--ink)',
+                        border: `1px solid ${CATEGORY_COLORS[exp.category] ? `color-mix(in srgb, ${CATEGORY_COLORS[exp.category]} 30%, transparent)` : 'var(--line)'}`,
+                      }}
+                    >
+                      {exp.category}
+                    </span>
+                    <span className={cn('chip', '')} style={{
+                      fontSize: 11,
+                      background: exp.status === 'paid' ? 'color-mix(in srgb, var(--leaf) 15%, transparent)' : '#fef3c7',
+                      color: exp.status === 'paid' ? 'var(--leaf)' : '#92400e',
+                    }}>
+                      {exp.status}
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-bold text-slate-900 capitalize truncate">{exp.category}</p>
-                      <p className="text-sm font-black text-rose-600 shrink-0">-₹{(exp.amount || 0).toLocaleString()}</p>
-                    </div>
-                    <p className="text-[11px] text-slate-600 truncate">{exp.biller}</p>
-                    <div className="mt-2 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant={exp.status === 'paid' ? 'success' : 'warning'} className="text-[9px]">
-                          {exp.status}
-                        </Badge>
-                        <span className="text-[10px] text-slate-400">{new Date(exp.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleDownloadReceipt(exp)}
-                          disabled={downloadingReceiptId === exp.id}
-                          className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 active:scale-90 transition-transform disabled:opacity-50"
-                          aria-label="Download acknowledgement"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleEdit(exp)}
-                          className="p-1.5 rounded-lg bg-slate-50 text-slate-600 active:scale-90 transition-transform"
-                          aria-label="Edit"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(exp.id)}
-                          className="p-1.5 rounded-lg bg-rose-50 text-rose-600 active:scale-90 transition-transform"
-                          aria-label="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <p style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)', marginBottom: 2 }}>{exp.biller}</p>
+                  {exp.description && <p className="tiny muted">{exp.description}</p>}
+                </div>
+                {/* Amount + date */}
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <p className="t-num" style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>
+                    ₹{(exp.amount || 0).toLocaleString('en-IN')}
+                  </p>
+                  <p className="mono tiny muted">
+                    {new Date(exp.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
+                  </p>
+                </div>
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  <button
+                    onClick={() => handleDownloadReceipt(exp)}
+                    disabled={downloadingReceiptId === exp.id}
+                    className="icon-btn"
+                    title="Download receipt"
+                  >
+                    <FileText style={{ width: 15, height: 15 }} />
+                  </button>
+                  <button
+                    onClick={() => handleEdit(exp)}
+                    className="icon-btn"
+                    title="Edit"
+                  >
+                    <Edit2 style={{ width: 15, height: 15 }} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(exp.id)}
+                    className="icon-btn"
+                    style={{ color: 'var(--coral)' }}
+                    title="Delete"
+                  >
+                    <Trash2 style={{ width: 15, height: 15 }} />
+                  </button>
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            ))}
 
-        <button
-          onClick={() => { resetForm(); setIsModalOpen(true); }}
-          className="fixed bottom-5 right-5 w-14 h-14 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-40"
-          aria-label="Add expense"
-        >
-          <Plus className="w-6 h-6" strokeWidth={2.5} />
-        </button>
-      </div>
-
-      {/* ─── Desktop UI (unchanged) ─────────────────────────────────────── */}
-      <div className="hidden md:block space-y-8">
-      <PageHeader
-        title="Expense Management"
-        subtitle="Track and manage school expenditures and bills"
-        icon={TrendingDown}
-        iconColor="gradient-amber"
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" icon={FileDown} onClick={handleDownloadCSV}>
-              Export CSV
-            </Button>
-            <Button
-              variant="danger"
-              icon={Plus}
-              onClick={() => { resetForm(); setIsModalOpen(true); }}
-            >
-              Add Expense
-            </Button>
+            {/* Total row */}
+            <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--ink)', color: 'var(--cream)' }}>
+              <p style={{ fontWeight: 600, fontSize: 13 }}>
+                {categoryFilter === 'all' ? 'All Expenses' : `${categoryFilter} total`} ({filteredExpenses.length} items)
+              </p>
+              <p className="t-num" style={{ fontSize: 18, fontWeight: 800 }}>
+                ₹{filteredTotal.toLocaleString('en-IN')}
+              </p>
+            </div>
           </div>
-        }
-      />
-
-      {/* Expense Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Total Expenses" value={`₹${(totalExpenses || 0).toLocaleString()}`} icon={TrendingDown} gradient="gradient-amber" index={0} />
-        <StatCard label="Pending Bills" value={`₹${(pendingBills || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" index={1} />
-        <StatCard label="Utilities" value={`₹${(expenses.filter(e => e.category === 'utilities').reduce((sum, e) => sum + e.amount, 0) || 0).toLocaleString()}`} icon={Wallet} gradient="gradient-amber" index={2} />
-        <StatCard label="Maintenance" value={`₹${(expenses.filter(e => e.category === 'maintenance').reduce((sum, e) => sum + e.amount, 0) || 0).toLocaleString()}`} icon={Receipt} gradient="gradient-amber" index={3} />
-      </div>
-
-      {/* Expenses Table */}
-      <Card padding="none">
-        <div className="p-4 border-b bg-slate-50/50 flex items-center justify-between gap-4">
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search by category or biller..."
-            className="max-w-md flex-1"
-          />
-        </div>
-        {filteredExpenses.length > 0 ? (
-          <Table>
-            <Thead>
-              <tr>
-                <Th>Expense Category</Th>
-                <Th>Biller/Vendor</Th>
-                <Th>Amount</Th>
-                <Th>Date</Th>
-                <Th>Status</Th>
-                <Th className="text-right">Actions</Th>
-              </tr>
-            </Thead>
-            <Tbody>
-              {filteredExpenses.map((exp) => (
-                <Tr key={exp.id}>
-                  <Td>
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-600 font-bold text-xs uppercase">
-                        {exp.category.charAt(0)}
-                      </div>
-                      <span className="font-bold text-slate-900 capitalize">{exp.category}</span>
-                    </div>
-                  </Td>
-                  <Td>{exp.biller}</Td>
-                  <Td className="font-bold text-slate-900">₹{(exp.amount || 0).toLocaleString()}</Td>
-                  <Td>{new Date(exp.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Td>
-                  <Td>
-                    <Badge variant={exp.status === 'paid' ? 'success' : 'warning'}>
-                      {exp.status}
-                    </Badge>
-                  </Td>
-                  <Td className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <IconButton
-                        icon={FileText}
-                        variant="ghost"
-                        onClick={() => handleDownloadReceipt(exp)}
-                        title="Download acknowledgement receipt"
-                      />
-                      <IconButton icon={Edit2} variant="ghost" onClick={() => handleEdit(exp)} />
-                      <IconButton icon={Trash2} variant="danger" onClick={() => handleDelete(exp.id)} />
-                    </div>
-                  </Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        ) : (
-          <EmptyState icon={Receipt} title="No expenses found" description="Add your first expense to get started." />
         )}
-      </Card>
       </div>
 
       {/* Delete Confirmation Modal */}
