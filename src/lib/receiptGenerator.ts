@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { FeePayment, FeeRequest, Student } from '../types';
 import { getSchoolSettings } from '../services/settingsService';
 import { fmtMonthYear } from './utils';
+import { savePdf } from './download';
 
 const NAVY: [number, number, number] = [26, 45, 80];
 const GOLD: [number, number, number] = [180, 145, 45];
@@ -392,5 +393,5 @@ export const generateFeeReceipt = async (
   doc.setFontSize(6.5); doc.setFont('helvetica', 'italic'); doc.setTextColor(...SLATE);
   doc.text('A unit of Bhagwati Educational And Charitable Trust', PW / 2, footY + 9, { align: 'center' });
 
-  doc.save(`Receipt_${payment.receiptNumber}.pdf`);
+  await savePdf(doc, `Receipt_${payment.receiptNumber}.pdf`);
 };

@@ -8,6 +8,7 @@ import { Student, UserProfile, Class, House } from '../../types';
 import { logActivity } from '../../services/activityService';
 import { SCHOOL_DOMAIN } from '../../constants';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
+import { savePdf, saveText } from '../../lib/download';
 import {
   Plus,
   Edit2,
@@ -402,7 +403,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     const selectedCols = ALL_EXPORT_COLUMNS.filter(c => exportCols[c.key]);
     if (selectedCols.length === 0) {
       showToast('Select at least one column to export', 'error');
@@ -415,31 +416,19 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       headers.join(','),
       ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
     ];
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
     const suffix = exportScope === 'filtered' && activeFilterCount > 0 ? '_filtered' : '_all';
-    a.download = `students${suffix}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await saveText(lines.join('\n'), `students${suffix}_${new Date().toISOString().slice(0, 10)}.csv`);
     setExportModalOpen(false);
     showToast(`Exported ${sourceRows.length} student${sourceRows.length !== 1 ? 's' : ''}`, 'success');
   };
 
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     const exampleRows = [
       ['Ravi Kumar', '1001', '5', 'A', 'male', 'Suresh Kumar', 'Priya Kumar', '9876543210', 'parent@example.com', 'ravi@example.com', 'Red House', 'School', '', '', '123 Main Street'],
       ['Anita Sharma', '1002', '3', 'B', 'female', 'Ramesh Sharma', 'Sunita Sharma', '9123456789', 'sharma@example.com', '', '', 'Private', '', '', ''],
     ];
     const lines = [CSV_HEADERS.join(','), ...exampleRows.map(r => r.map(v => `"${v}"`).join(','))];
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'student_import_template.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    await saveText(lines.join('\n'), 'student_import_template.csv');
   };
 
   const parseCSV = (text: string): Record<string, string>[] => {
@@ -757,7 +746,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     }
 
     addFooter(doc);
-    doc.save(`student_record_${student.schoolNumber || student.admissionNumber}.pdf`);
+    await savePdf(doc, `student_record_${student.schoolNumber || student.admissionNumber}.pdf`);
   };
 
   const performDelete = async (options: {

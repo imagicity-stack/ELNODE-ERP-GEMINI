@@ -17,6 +17,7 @@ import {
 } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
+import { openExternalUrl } from '../../lib/download';
 import {
   updateLessonLog, deleteLessonLog, validateLessonInput,
   ConcurrentEditError,
@@ -149,13 +150,8 @@ export default function LessonLogs({ user, student }: LessonLogsProps) {
     (user.role === 'teacher' && log.teacherId === (user.teacherId || user.uid));
   const canDelete = canEdit;
 
-  const handleDownload = (url: string, name: string) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = name;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.click();
+  const handleDownload = async (url: string, _name: string) => {
+    await openExternalUrl(url);
   };
 
   const openEdit = (log: LessonLog) => {

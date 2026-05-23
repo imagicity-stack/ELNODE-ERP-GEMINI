@@ -1,5 +1,6 @@
 import { UserProfile, Teacher, Salary, StaffMember, UnifiedStaff, PayrollConfig } from '../../types';
 import { generatePayrollSlip } from '../../lib/payrollSlip';
+import { saveText } from '../../lib/download';
 import {
   Download,
   Users,
@@ -697,7 +698,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
     setIsHistoryModalOpen(true);
   };
 
-  const exportPayroll = () => {
+  const exportPayroll = async () => {
     const headers = ['Employee', 'Category', 'Month', 'Base', 'Bonus', 'PF', 'Tax', 'Leaves', 'Net Amount', 'Paid', 'Balance', 'Status'];
     const csvData = salaries.map(s => [
       s.employeeName,
@@ -715,12 +716,7 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
     ]);
 
     const csvContent = [headers, ...csvData].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Payroll_Export_${fmtMonth(selectedMonth).replace(/\s+/g, '_')}.csv`;
-    a.click();
+    await saveText(csvContent, `Payroll_Export_${fmtMonth(selectedMonth).replace(/\s+/g, '_')}.csv`);
   };
 
   const filteredStaff = useMemo(() => {

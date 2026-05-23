@@ -25,6 +25,7 @@ import { useData } from '../../contexts/DataContext';
 import { useToast } from '../../components/Toast';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { fmtDate } from '../../lib/utils';
+import { saveText } from '../../lib/download';
 import Papa from 'papaparse';
 import {
   PageHeader,
@@ -119,7 +120,7 @@ export default function PaymentHistory({ user }: { user: UserProfile }) {
     { label: '30 Days', val: new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0] },
   ];
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!filteredPayments.length) { showToast('No data to export', 'error'); return; }
     const rows = filteredPayments.map(p => {
       const student = globalStudents.find(s => s.id === p.studentId);
@@ -144,10 +145,7 @@ export default function PaymentHistory({ user }: { user: UserProfile }) {
       };
     });
     const csv = Papa.unparse(rows);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    a.download = `payment_history_${todayStr}.csv`;
-    a.click();
+    await saveText(csv, `payment_history_${todayStr}.csv`);
     showToast('Exported successfully', 'success');
   };
 

@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { Expense } from '../types';
+import { savePdf } from './download';
 
 const EMERALD: [number, number, number] = [5, 150, 105];
 const DARK: [number, number, number] = [15, 23, 42];
@@ -251,5 +252,5 @@ export async function generateExpenseAcknowledgement(expense: Expense): Promise<
   doc.text('EHS Accounts', pageWidth - 12, pageHeight - 7, { align: 'right' });
 
   const safeBiller = (expense.biller || 'vendor').replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-  doc.save(`expense_ack_${safeBiller}_${expense.date || new Date().toISOString().split('T')[0]}.pdf`);
+  await savePdf(doc, `expense_ack_${safeBiller}_${expense.date || new Date().toISOString().split('T')[0]}.pdf`);
 }

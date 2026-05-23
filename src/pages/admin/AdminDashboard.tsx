@@ -38,6 +38,7 @@ import { StatCard, Card, Badge, Button, Avatar } from '../../components/ui';
 import UpdatesSection from '../../components/UpdatesSection';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
+import { savePdf } from '../../lib/download';
 import { MobilePageEnter } from '../../components/animations';
 
 const GENDER_COLORS = ['#6366f1', '#ec4899'];
@@ -177,7 +178,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     }
 
     addFooter(doc);
-    doc.save(`admin_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+    await savePdf(doc, `admin_report_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   const noticePriorityVariant = (p: string) => p === 'high' ? 'error' : p === 'medium' ? 'warning' : 'info';

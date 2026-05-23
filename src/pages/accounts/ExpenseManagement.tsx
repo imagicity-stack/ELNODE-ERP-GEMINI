@@ -1,5 +1,6 @@
 import { UserProfile, Expense } from '../../types';
 import { generateExpenseAcknowledgement } from '../../lib/expenseReceipt';
+import { saveText } from '../../lib/download';
 import { Plus, Download, Receipt, Wallet, TrendingDown, Edit2, FileText, FileDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
@@ -235,7 +236,7 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
     setDownloadingReceiptId(null);
   };
 
-  const handleDownloadCSV = () => {
+  const handleDownloadCSV = async () => {
     const headers = ['Date', 'Category', 'Biller', 'Description', 'Mode', 'Status', 'Amount', 'Phone', 'Address'];
     const rows = filteredExpenses.map(e => [
       e.date,
@@ -249,13 +250,7 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
       `"${(e.address || '').replace(/"/g, '""')}"`,
     ]);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `expenses_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await saveText(csv, `expenses_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const filteredExpenses = expenses.filter(e =>

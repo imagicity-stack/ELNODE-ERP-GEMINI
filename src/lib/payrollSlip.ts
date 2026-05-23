@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { Salary } from '../types';
 import { getSchoolSettings } from '../services/settingsService';
 import { fmtMonthYear } from './utils';
+import { savePdf } from './download';
 
 const NAVY: [number, number, number] = [26, 45, 80];
 const GOLD: [number, number, number] = [180, 145, 45];
@@ -351,5 +352,5 @@ export async function generatePayrollSlip(salary: Salary, displayEmployeeId?: st
 
   const fileSafeMonth = monthLabel.replace(/\s+/g, '_');
   const fileName = `PaySlip_${salary.employeeName.replace(/\s+/g, '_')}_${fileSafeMonth}.pdf`;
-  pdf.save(fileName);
+  await savePdf(pdf, fileName);
 }

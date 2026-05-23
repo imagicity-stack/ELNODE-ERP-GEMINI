@@ -44,6 +44,7 @@ import {
 import { useToast } from '../../components/Toast';
 import { format } from 'date-fns';
 import { fmtDate } from '../../lib/utils';
+import { openExternalUrl } from '../../lib/download';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePermissions } from '../../hooks/usePermissions';
 import { logActivity } from '../../services/activityService';
@@ -623,7 +624,7 @@ export default function LeaveManagement({ user }: { user: UserProfile }) {
                     <p className="text-[10px] text-slate-500 font-bold uppercase">Medical Cert / Application</p>
                   </div>
                 </div>
-                <Button variant="secondary" size="sm" onClick={() => window.open(selectedLeave.documentUrl, '_blank')}>
+                <Button variant="secondary" size="sm" onClick={() => openExternalUrl(selectedLeave.documentUrl)}>
                   <Eye className="w-3 h-3 mr-1" /> View Document
                 </Button>
               </div>
