@@ -15,18 +15,43 @@ import { requestNotificationPermission, startNotificationListeners } from '../se
 
 const BASE = '/teacher';
 
-const NAV = [
-  { label: 'Home', icon: Home, path: '' },
-  { label: 'My Classes', icon: GraduationCap, path: '/classes' },
-  { label: 'Attendance', icon: ClipboardCheck, path: '/attendance' },
-  { label: 'Timetable', icon: CalendarDays, path: '/timetable' },
-  { label: 'Homework', icon: CheckSquare, path: '/homework' },
-  { label: 'Exams', icon: FileText, path: '/exams' },
-  { label: 'Lesson Diary', icon: BookOpen, path: '/diary' },
-  { label: 'Leaves', icon: Clock, path: '/leaves' },
-  { label: 'Notices', icon: Megaphone, path: '/notices' },
-  { label: 'Calendar', icon: Calendar, path: '/calendar' },
-  { label: 'Notes', icon: FileText, path: '/notes' },
+const NAV_SECTIONS = [
+  {
+    heading: 'Overview',
+    items: [
+      { label: 'Home', icon: Home, path: '' },
+    ],
+  },
+  {
+    heading: 'Teaching',
+    items: [
+      { label: 'My Classes', icon: GraduationCap, path: '/classes' },
+      { label: 'Attendance', icon: ClipboardCheck, path: '/attendance' },
+      { label: 'Homework', icon: CheckSquare, path: '/homework' },
+      { label: 'Lesson Diary', icon: BookOpen, path: '/diary' },
+    ],
+  },
+  {
+    heading: 'Academic',
+    items: [
+      { label: 'Timetable', icon: CalendarDays, path: '/timetable' },
+      { label: 'Exams', icon: FileText, path: '/exams' },
+      { label: 'Notes', icon: FileText, path: '/notes' },
+    ],
+  },
+  {
+    heading: 'Communication',
+    items: [
+      { label: 'Notices', icon: Megaphone, path: '/notices' },
+      { label: 'Calendar', icon: Calendar, path: '/calendar' },
+    ],
+  },
+  {
+    heading: 'Time Off',
+    items: [
+      { label: 'Leaves', icon: Clock, path: '/leaves' },
+    ],
+  },
 ];
 
 const TABS = [
@@ -96,27 +121,36 @@ export default function TeacherShell({ children, user }: { children: React.React
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-hide space-y-1">
-          {NAV.map((item) => {
-            const active = isActive(item.path);
-            return (
-              <Link
-                key={item.label + item.path}
-                to={`${BASE}${item.path}`}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors"
-                style={
-                  active
-                    ? { background: 'var(--ink)', color: 'var(--cream)' }
-                    : { color: 'var(--ink-3)' }
-                }
-                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--cream-2)'; }}
-                onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={active ? 2.2 : 1.7} />
-                <span className="text-[13px] font-semibold">{item.label}</span>
-              </Link>
-            );
-          })}
+        <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-hide">
+          {NAV_SECTIONS.map((section, si) => (
+            <div key={section.heading} className={si > 0 ? 'mt-4' : ''}>
+              <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-4)' }}>
+                {section.heading}
+              </p>
+              <div className="space-y-0.5">
+                {section.items.map((item) => {
+                  const active = isActive(item.path);
+                  return (
+                    <Link
+                      key={item.label + item.path}
+                      to={`${BASE}${item.path}`}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors"
+                      style={
+                        active
+                          ? { background: 'var(--ink)', color: 'var(--cream)' }
+                          : { color: 'var(--ink-3)' }
+                      }
+                      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--cream-2)'; }}
+                      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={active ? 2.2 : 1.7} />
+                      <span className="text-[13px] font-semibold">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         {/* Footer */}

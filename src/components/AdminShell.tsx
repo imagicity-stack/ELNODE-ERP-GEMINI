@@ -14,23 +14,53 @@ import { useToast } from './Toast';
 import { logActivity } from '../services/activityService';
 import { requestNotificationPermission, startNotificationListeners } from '../services/notificationService';
 
-const NAV = [
-  { label: 'Dashboard', icon: Home, path: '' },
-  { label: 'Students', icon: Users, path: '/students' },
-  { label: 'Teachers', icon: GraduationCap, path: '/teachers' },
-  { label: 'Classes', icon: BookOpen, path: '/classes' },
-  { label: 'Subjects', icon: Layers, path: '/subjects' },
-  { label: 'Admissions', icon: ClipboardCheck, path: '/admissions' },
-  { label: 'Fee Structure', icon: DollarSign, path: '/fees' },
-  { label: 'Fee Collection', icon: CreditCard, path: '/fee-collection' },
-  { label: 'Leave Management', icon: Calendar, path: '/leaves' },
-  { label: 'Teacher Leaves', icon: ClipboardCheck, path: '/teacher-leaves' },
-  { label: 'Exams', icon: FileText, path: '/exams' },
-  { label: 'Timetable', icon: Calendar, path: '/timetable' },
-  { label: 'Notice Board', icon: MessageCircle, path: '/notices' },
-  { label: 'Notifications', icon: Bell, path: '/notifications' },
-  { label: 'Activity Logs', icon: Activity, path: '/activity-logs' },
-  { label: 'School Settings', icon: Settings, path: '/school-settings' },
+const NAV_SECTIONS = [
+  {
+    heading: 'Overview',
+    items: [
+      { label: 'Dashboard', icon: Home, path: '' },
+    ],
+  },
+  {
+    heading: 'People',
+    items: [
+      { label: 'Students', icon: Users, path: '/students' },
+      { label: 'Teachers', icon: GraduationCap, path: '/teachers' },
+      { label: 'Admissions', icon: ClipboardCheck, path: '/admissions' },
+    ],
+  },
+  {
+    heading: 'Academic',
+    items: [
+      { label: 'Classes', icon: BookOpen, path: '/classes' },
+      { label: 'Subjects', icon: Layers, path: '/subjects' },
+      { label: 'Exams', icon: FileText, path: '/exams' },
+      { label: 'Timetable', icon: Calendar, path: '/timetable' },
+    ],
+  },
+  {
+    heading: 'Finance',
+    items: [
+      { label: 'Fee Structure', icon: DollarSign, path: '/fees' },
+      { label: 'Fee Collection', icon: CreditCard, path: '/fee-collection' },
+      { label: 'Leave Management', icon: Calendar, path: '/leaves' },
+      { label: 'Teacher Leaves', icon: ClipboardCheck, path: '/teacher-leaves' },
+    ],
+  },
+  {
+    heading: 'Communication',
+    items: [
+      { label: 'Notice Board', icon: MessageCircle, path: '/notices' },
+      { label: 'Notifications', icon: Bell, path: '/notifications' },
+    ],
+  },
+  {
+    heading: 'System',
+    items: [
+      { label: 'Activity Logs', icon: Activity, path: '/activity-logs' },
+      { label: 'School Settings', icon: Settings, path: '/school-settings' },
+    ],
+  },
 ];
 
 const TABS = [
@@ -99,27 +129,36 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-hide space-y-1">
-          {NAV.map((item) => {
-            const active = isActive(item.path);
-            return (
-              <Link
-                key={item.label + item.path}
-                to={`${BASE}${item.path}`}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors"
-                style={
-                  active
-                    ? { background: 'var(--ink)', color: 'var(--cream)' }
-                    : { color: 'var(--ink-3)' }
-                }
-                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--cream-2)'; }}
-                onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={active ? 2.2 : 1.7} />
-                <span className="text-[13px] font-semibold">{item.label}</span>
-              </Link>
-            );
-          })}
+        <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-hide">
+          {NAV_SECTIONS.map((section, si) => (
+            <div key={section.heading} className={si > 0 ? 'mt-4' : ''}>
+              <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-4)' }}>
+                {section.heading}
+              </p>
+              <div className="space-y-0.5">
+                {section.items.map((item) => {
+                  const active = isActive(item.path);
+                  return (
+                    <Link
+                      key={item.label + item.path}
+                      to={`${BASE}${item.path}`}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors"
+                      style={
+                        active
+                          ? { background: 'var(--ink)', color: 'var(--cream)' }
+                          : { color: 'var(--ink-3)' }
+                      }
+                      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--cream-2)'; }}
+                      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={active ? 2.2 : 1.7} />
+                      <span className="text-[13px] font-semibold">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         {/* Footer */}
