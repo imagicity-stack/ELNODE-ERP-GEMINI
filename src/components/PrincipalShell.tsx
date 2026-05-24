@@ -5,7 +5,7 @@ import { signOut } from 'firebase/auth';
 import {
   Home, Users, GraduationCap, BookOpen, Layers, ClipboardCheck,
   FileText, Bell, Calendar, BarChart3, Activity, MessageCircle,
-  User, LogOut, UserCheck, Building2,
+  User, LogOut, UserCheck, Building2, Award, NotebookPen,
 } from 'lucide-react';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserProfile } from '../types';
@@ -39,7 +39,9 @@ const NAV_SECTIONS = [
       { label: 'Classes', icon: BookOpen, path: '/classes' },
       { label: 'Subjects', icon: Layers, path: '/subjects' },
       { label: 'Exams', icon: FileText, path: '/exams' },
+      { label: 'Grading Scales', icon: Award, path: '/grading-scales' },
       { label: 'Timetable', icon: Calendar, path: '/timetable' },
+      { label: 'Lesson Diary', icon: NotebookPen, path: '/diary' },
     ],
   },
   {

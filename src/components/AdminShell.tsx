@@ -6,6 +6,9 @@ import {
   Home, Users, GraduationCap, BookOpen, Layers, DollarSign,
   ClipboardCheck, FileText, Bell, Settings, BarChart3, Calendar,
   CreditCard, MessageCircle, Activity, User, LogOut,
+  UserCheck, Building2, Award, CalendarDays, CalendarClock, History,
+  Receipt, Wallet, TrendingUp, LifeBuoy, PhoneCall, Radio,
+  Banknote, Gavel, Lock, NotebookPen,
 } from 'lucide-react';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserProfile } from '../types';
@@ -26,6 +29,8 @@ const NAV_SECTIONS = [
     items: [
       { label: 'Students', icon: Users, path: '/students' },
       { label: 'Teachers', icon: GraduationCap, path: '/teachers' },
+      { label: 'Staff', icon: UserCheck, path: '/staff' },
+      { label: 'Houses', icon: Building2, path: '/houses' },
       { label: 'Admissions', icon: ClipboardCheck, path: '/admissions' },
     ],
   },
@@ -35,7 +40,10 @@ const NAV_SECTIONS = [
       { label: 'Classes', icon: BookOpen, path: '/classes' },
       { label: 'Subjects', icon: Layers, path: '/subjects' },
       { label: 'Exams', icon: FileText, path: '/exams' },
-      { label: 'Timetable', icon: Calendar, path: '/timetable' },
+      { label: 'Grading Scales', icon: Award, path: '/grading-scales' },
+      { label: 'Timetable', icon: CalendarDays, path: '/timetable' },
+      { label: 'Lesson Diary', icon: NotebookPen, path: '/diary' },
+      { label: 'Calendar', icon: Calendar, path: '/calendar' },
     ],
   },
   {
@@ -43,8 +51,25 @@ const NAV_SECTIONS = [
     items: [
       { label: 'Fee Structure', icon: DollarSign, path: '/fees' },
       { label: 'Fee Collection', icon: CreditCard, path: '/fee-collection' },
-      { label: 'Leave Management', icon: Calendar, path: '/leaves' },
+      { label: 'Payment History', icon: History, path: '/payment-history' },
+      { label: 'Expenses', icon: Receipt, path: '/expenses' },
+      { label: 'Salaries', icon: Wallet, path: '/salaries' },
+      { label: 'Reports', icon: BarChart3, path: '/reports' },
+      { label: 'Analytics', icon: TrendingUp, path: '/analytics' },
+    ],
+  },
+  {
+    heading: 'Leave & HR',
+    items: [
+      { label: 'Leave Management', icon: CalendarClock, path: '/leaves' },
       { label: 'Teacher Leaves', icon: ClipboardCheck, path: '/teacher-leaves' },
+    ],
+  },
+  {
+    heading: 'Grievances',
+    items: [
+      { label: 'Grievance Tracker', icon: LifeBuoy, path: '/tracker' },
+      { label: 'Fee Follow-up', icon: PhoneCall, path: '/fee-followup' },
     ],
   },
   {
@@ -52,12 +77,17 @@ const NAV_SECTIONS = [
     items: [
       { label: 'Notice Board', icon: MessageCircle, path: '/notices' },
       { label: 'Notifications', icon: Bell, path: '/notifications' },
+      { label: 'WhatsApp', icon: MessageCircle, path: '/whatsapp' },
+      { label: 'Broadcast', icon: Radio, path: '/broadcast' },
     ],
   },
   {
     heading: 'System',
     items: [
       { label: 'Activity Logs', icon: Activity, path: '/activity-logs' },
+      { label: 'Payroll Settings', icon: Banknote, path: '/payroll-settings' },
+      { label: 'Fine Settings', icon: Gavel, path: '/fine-settings' },
+      { label: 'Permissions', icon: Lock, path: '/permissions' },
       { label: 'School Settings', icon: Settings, path: '/school-settings' },
     ],
   },
