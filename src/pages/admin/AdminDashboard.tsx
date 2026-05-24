@@ -11,6 +11,8 @@ import {
   BarChart3,
   Sparkles,
   Download,
+  TrendingUp,
+  Wallet,
 } from 'lucide-react';
 import {
   BarChart,
@@ -25,6 +27,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from 'recharts';
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
@@ -45,31 +48,41 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [recentAdmissions, setRecentAdmissions] = useState<any[]>([]);
   const [counts, setCounts] = useState({ students: 0, teachers: 0, classes: 0, feeCollection: 0 });
-  const [attendanceStats, setAttendanceStats] = useState([
-    { name: 'Mon', students: 0, staff: 0 },
-    { name: 'Tue', students: 0, staff: 0 },
-    { name: 'Wed', students: 0, staff: 0 },
-    { name: 'Thu', students: 0, staff: 0 },
-    { name: 'Fri', students: 0, staff: 0 },
-  ]);
-  const [feeTrendData, setFeeTrendData] = useState([
-    { month: 'Jan', amount: 0 }, { month: 'Feb', amount: 0 }, { month: 'Mar', amount: 0 },
-    { month: 'Apr', amount: 0 }, { month: 'May', amount: 0 }, { month: 'Jun', amount: 0 },
-  ]);
+  const [attendanceStats, setAttendanceStats] = useState<{ name: string; present: number; absent: number; rate: number }[]>([]);
+  const [feeTrendData, setFeeTrendData] = useState<{ month: string; amount: number }[]>([]);
   const [genderStats, setGenderStats] = useState([{ name: 'Boys', value: 0 }, { name: 'Girls', value: 0 }]);
+  const [classDistribution, setClassDistribution] = useState<{ name: string; students: number }[]>([]);
+  const [feeOverview, setFeeOverview] = useState({ expected: 0, collected: 0, outstanding: 0, collectionRate: 0 });
   const [pendingLeaves, setPendingLeaves] = useState(0);
   const [attendanceRate, setAttendanceRate] = useState(0);
   const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+
+      // Mon–Fri of the current week (real working-day buckets)
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      const weekDates = Array.from({ length: 5 }, (_, i) => {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        return { name: dayNames[d.getDay()], date: d.toISOString().split('T')[0] };
+      });
+
+      // Last 6 calendar months as YYYY-MM buckets
+      const monthBuckets = Array.from({ length: 6 }, (_, i) => {
+        const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+        return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: d.toLocaleString('default', { month: 'short' }) };
+      });
 
       const safe = async <T,>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
         try { return await fn(); } catch (err) { console.warn(`Dashboard: ${label} failed`, err); return fallback; }
       };
 
-      const [studentsSnap, teachersSnap, classesSnap, noticesSnap, recentSnap, feesSnap, leaveSnap, attendanceSnap] = await Promise.all([
+      const [studentsSnap, teachersSnap, classesSnap, noticesSnap, recentSnap, feesSnap, leaveSnap, weekAttendanceSnap, feeReqSnap] = await Promise.all([
         safe('students', () => getDocs(collection(db, 'students')), { docs: [] as any[], size: 0 } as any),
         safe('teachers', () => getDocs(collection(db, 'teachers')), { docs: [] as any[], size: 0 } as any),
         safe('classes', () => getDocs(collection(db, 'classes')), { docs: [] as any[], size: 0 } as any),
@@ -77,7 +90,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         safe('recentAdmissions', () => getDocs(query(collection(db, 'students'), orderBy('createdAt', 'desc'), limit(5))), { docs: [] as any[] } as any),
         safe('feePayments', () => getDocs(collection(db, 'feePayments')), { docs: [] as any[] } as any),
         safe('studentLeaves', () => getDocs(query(collection(db, 'studentLeaves'), where('status', 'in', ['submitted', 'pending']))), { size: 0 } as any),
-        safe('attendance', () => getDocs(query(collection(db, 'attendance'), where('date', '==', today))), { docs: [] as any[] } as any),
+        safe('weekAttendance', () => getDocs(query(collection(db, 'attendance'), where('date', 'in', weekDates.map(w => w.date)))), { docs: [] as any[] } as any),
+        safe('feeRequests', () => getDocs(collection(db, 'feeRequests')), { docs: [] as any[] } as any),
       ]);
 
       const students = studentsSnap.docs.map((d: any) => d.data());
@@ -85,7 +99,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       const girls = students.filter((s: any) => s.gender === 'female' || s.gender === 'Girl').length;
       setGenderStats([{ name: 'Boys', value: boys }, { name: 'Girls', value: girls }]);
 
-      const totalFees = feesSnap.docs.reduce((sum: number, d: any) => sum + (d.data().amount || 0), 0);
+      const payments = feesSnap.docs.map((d: any) => d.data());
+      const totalFees = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
       setCounts({
         students: studentsSnap.size || 0,
         teachers: teachersSnap.size || 0,
@@ -96,19 +111,51 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       setRecentAdmissions(recentSnap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
       setPendingLeaves(leaveSnap.size || 0);
 
-      const presentToday = attendanceSnap.docs.filter((d: any) => d.data().status === 'present').length;
-      const totalPossible = studentsSnap.size || 0;
-      const attendRate = totalPossible > 0 ? Math.round((presentToday / totalPossible) * 100) : 0;
-      setAttendanceRate(attendRate);
+      // ─── Real weekly attendance (student docs only) ──────────────────────
+      const weekDocs = weekAttendanceSnap.docs.map((d: any) => d.data()).filter((a: any) => a.type !== 'staff');
+      const presentStatuses = ['present', 'late', 'regularized'];
+      const absentStatuses = ['absent', 'uninformed_absence'];
+      const attStats = weekDates.map(w => {
+        const dayDocs = weekDocs.filter((a: any) => a.date === w.date);
+        const present = dayDocs.filter((a: any) => presentStatuses.includes(a.status)).length;
+        const absent = dayDocs.filter((a: any) => absentStatuses.includes(a.status)).length;
+        const marked = present + absent;
+        return { name: w.name, present, absent, rate: marked > 0 ? Math.round((present / marked) * 100) : 0 };
+      });
+      setAttendanceStats(attStats);
 
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-      setAttendanceStats(days.map(day => ({
-        name: day,
-        students: day === 'Fri' ? attendRate : Math.floor(Math.random() * 5) + 90,
-        staff: 98,
+      const todayBucket = attStats.find(a => weekDates.find(w => w.name === a.name)?.date === today);
+      setAttendanceRate(todayBucket ? todayBucket.rate : 0);
+
+      // ─── Real fee collection trend (last 6 months) ───────────────────────
+      setFeeTrendData(monthBuckets.map(m => ({
+        month: m.label,
+        amount: payments.filter((p: any) => (p.date || '').startsWith(m.key)).reduce((s: number, p: any) => s + (p.amount || 0), 0),
       })));
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-      setFeeTrendData(months.map(month => ({ month, amount: Math.floor(Math.random() * 50000) + 10000 })));
+
+      // ─── Class-wise enrollment ───────────────────────────────────────────
+      const classNameById: Record<string, string> = {};
+      classesSnap.docs.forEach((d: any) => { classNameById[d.id] = d.data().name || d.id; });
+      const classCount: Record<string, number> = {};
+      students.forEach((s: any) => { const k = s.classId || 'Unassigned'; classCount[k] = (classCount[k] || 0) + 1; });
+      setClassDistribution(
+        Object.entries(classCount)
+          .map(([id, n]) => ({ name: classNameById[id] || id, students: n }))
+          .sort((a, b) => b.students - a.students)
+          .slice(0, 12)
+      );
+
+      // ─── Fee collection efficiency (expected vs collected) ───────────────
+      const requests = feeReqSnap.docs.map((d: any) => d.data());
+      const expected = requests.reduce((s: number, r: any) => s + (r.totalAmount || 0), 0);
+      const collected = requests.reduce((s: number, r: any) => s + (r.paidAmount || 0), 0);
+      const outstanding = Math.max(0, expected - collected);
+      setFeeOverview({
+        expected,
+        collected,
+        outstanding,
+        collectionRate: expected > 0 ? Math.round((collected / expected) * 100) : 0,
+      });
     };
     fetchDashboardData();
   }, []);
@@ -129,6 +176,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         { label: 'Total Teachers', value: counts.teachers.toString() },
         { label: 'Active Classes', value: counts.classes.toString() },
         { label: 'Fee Collection', value: `₹${counts.feeCollection.toLocaleString('en-IN')}` },
+        { label: 'Collection Rate', value: `${feeOverview.collectionRate}%` },
+        { label: 'Outstanding Dues', value: `₹${feeOverview.outstanding.toLocaleString('en-IN')}` },
+        { label: "Today's Attendance", value: `${attendanceRate}%` },
         { label: 'Pending Leaves', value: pendingLeaves.toString() },
         { label: 'Report Date', value: today },
       ],
@@ -229,6 +279,15 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             <p className="eyebrow">Today's Attendance</p>
             <p className="t-num" style={{ fontSize: '2.4rem', lineHeight: 1, color: 'var(--leaf)' }}>{attendanceRate}%</p>
           </div>
+          <div className="card" style={{ padding: '16px 18px' }}>
+            <p className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><TrendingUp size={12} /> Collection Rate</p>
+            <p className="t-num" style={{ fontSize: '2.4rem', lineHeight: 1, color: 'var(--ink)' }}>{feeOverview.collectionRate}%</p>
+            <p className="muted tiny" style={{ margin: '4px 0 0' }}>₹{feeOverview.collected.toLocaleString('en-IN')} of ₹{feeOverview.expected.toLocaleString('en-IN')}</p>
+          </div>
+          <div className="card" style={{ padding: '16px 18px' }}>
+            <p className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Wallet size={12} /> Outstanding Dues</p>
+            <p className="t-num" style={{ fontSize: '2.4rem', lineHeight: 1, color: 'var(--coral)' }}>₹{feeOverview.outstanding.toLocaleString('en-IN')}</p>
+          </div>
         </div>
 
         <div className="section-head">
@@ -297,40 +356,64 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       <div className="hidden lg:block" style={{ padding: '0 var(--pad)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
           <div className="card">
-            <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Weekly Attendance (%)</p>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={attendanceStats} barGap={4}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <Tooltip
-                  cursor={{ fill: '#f8fafc' }}
-                  contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: 12 }}
-                />
-                <Bar dataKey="students" fill="#6366f1" radius={[4, 4, 0, 0]} name="Students" />
-                <Bar dataKey="staff" fill="#a5b4fc" radius={[4, 4, 0, 0]} name="Staff" />
-              </BarChart>
-            </ResponsiveContainer>
+            <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Weekly Attendance</p>
+            {attendanceStats.every(a => a.present + a.absent === 0) ? (
+              <p className="muted" style={{ textAlign: 'center', padding: '70px 0', fontSize: 13 }}>No attendance marked this week</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={attendanceStats} barGap={2}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} allowDecimals={false} />
+                  <Tooltip
+                    cursor={{ fill: '#f8fafc' }}
+                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: 12 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="present" stackId="a" fill="#4d8b5f" radius={[0, 0, 0, 0]} name="Present" />
+                  <Bar dataKey="absent" stackId="a" fill="#e2553a" radius={[4, 4, 0, 0]} name="Absent" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
           <div className="card">
             <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Fee Collection Trend</p>
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={feeTrendData}>
-                <defs>
-                  <linearGradient id="colorFee" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: 12 }} />
-                <Area type="monotone" dataKey="amount" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorFee)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {feeTrendData.every(d => d.amount === 0) ? (
+              <p className="muted" style={{ textAlign: 'center', padding: '70px 0', fontSize: 13 }}>No payments in the last 6 months</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={feeTrendData}>
+                  <defs>
+                    <linearGradient id="colorFee" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0E0F11" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#0E0F11" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`} />
+                  <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Collected']} />
+                  <Area type="monotone" dataKey="amount" stroke="#0E0F11" strokeWidth={2.5} fillOpacity={1} fill="url(#colorFee)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
+
+        {classDistribution.length > 0 && (
+          <div className="card" style={{ marginBottom: 20 }}>
+            <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Enrollment by Class</p>
+            <ResponsiveContainer width="100%" height={Math.max(180, classDistribution.length * 34)}>
+              <BarChart data={classDistribution} layout="vertical" margin={{ left: 8, right: 16 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} width={90} />
+                <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v: number) => [`${v} students`, '']} />
+                <Bar dataKey="students" fill="#0E0F11" radius={[0, 4, 4, 0]} name="Students" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         <div className="card" style={{ marginBottom: 20 }}>
           <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Student Distribution</p>
