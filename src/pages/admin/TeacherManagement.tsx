@@ -100,6 +100,31 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
       });
       if (validationErr) { showToast(validationErr, 'error'); return; }
 
+      // Class-teacher integrity checks
+      if (formData.isClassTeacher) {
+        const { classId, section } = formData.classTeacherOf;
+        if (!classId) { showToast('Select a class for the class teacher assignment', 'error'); return; }
+
+        const selectedClass = classes.find(c => c.id === classId);
+        const namedSections = (selectedClass?.sections ?? []).filter(s => s.name);
+        if (namedSections.length > 0 && !section) {
+          showToast('Select a section for the class teacher assignment', 'error');
+          return;
+        }
+
+        // No two teachers may be class teacher of the same class + section
+        const clash = teachers.find(t =>
+          t.id !== editingTeacher?.id &&
+          t.classTeacherOf?.classId === classId &&
+          (t.classTeacherOf?.section || '') === (section || '')
+        );
+        if (clash) {
+          const label = `Class ${selectedClass?.name ?? ''}${section ? ` · Section ${section}` : ''}`.trim();
+          showToast(`${clash.name} is already the class teacher of ${label}`, 'error');
+          return;
+        }
+      }
+
       const normalizedEmail = normalizeEmail(formData.email);
       const teacherData = {
         ...formData,
@@ -487,9 +512,9 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
             </div>
 
             <div className="space-y-4">
-              <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Academic Assignments</p>
+              <p className="eyebrow" style={{ paddingBottom: 4 }}>Academic Assignments</p>
               <FormField label="Subjects Taught">
-                <div className="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 min-h-[60px]">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: 10, background: 'var(--cream-2)', borderRadius: 12, border: '1px solid var(--line)', minHeight: 52 }}>
                   {subjects.map(subject => (
                     <button key={subject.id} type="button"
                       onClick={() => {
@@ -498,17 +523,16 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
                           : [...formData.subjects, subject.id];
                         setFormData({ ...formData, subjects: ns });
                       }}
-                      className={cn('px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border',
-                        formData.subjects.includes(subject.id)
-                          ? 'bg-indigo-600 border-indigo-600 text-white'
-                          : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
-                      )}
+                      className="chip"
+                      style={formData.subjects.includes(subject.id)
+                        ? { background: 'var(--ink)', color: 'var(--cream)', fontSize: 12, padding: '3px 10px' }
+                        : { fontSize: 12, padding: '3px 10px' }}
                     >{subject.name}</button>
                   ))}
                 </div>
               </FormField>
               <FormField label="Assigned Classes">
-                <div className="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 min-h-[60px]">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: 10, background: 'var(--cream-2)', borderRadius: 12, border: '1px solid var(--line)', minHeight: 52 }}>
                   {classes.map(cls => (
                     <button key={cls.id} type="button"
                       onClick={() => {
@@ -517,58 +541,79 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
                           : [...formData.classes, cls.id];
                         setFormData({ ...formData, classes: nc });
                       }}
-                      className={cn('px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border',
-                        formData.classes.includes(cls.id)
-                          ? 'bg-blue-600 border-blue-600 text-white'
-                          : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'
-                      )}
+                      className="chip"
+                      style={formData.classes.includes(cls.id)
+                        ? { background: 'var(--ink)', color: 'var(--cream)', fontSize: 12, padding: '3px 10px' }
+                        : { fontSize: 12, padding: '3px 10px' }}
                     >Class {cls.name}</button>
                   ))}
                 </div>
               </FormField>
 
-              <div className="space-y-3">
-                <label className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-violet-500" />
-                    <span className="text-sm font-semibold text-slate-700">House Incharge</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* House Incharge toggle */}
+                <label className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <ShieldCheck size={16} style={{ color: 'var(--ink-3)' }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>House Incharge</span>
                   </div>
                   <input type="checkbox" checked={formData.isHouseIncharge}
                     onChange={e => setFormData({ ...formData, isHouseIncharge: e.target.checked })}
-                    className="accent-indigo-600 w-4 h-4" />
+                    style={{ width: 16, height: 16, accentColor: 'var(--ink)', cursor: 'pointer' }} />
                 </label>
                 {formData.isHouseIncharge && (
-                  <Select value={formData.houseInchargeId}
-                    onChange={e => setFormData({ ...formData, houseInchargeId: e.target.value })}>
+                  <select
+                    value={formData.houseInchargeId}
+                    onChange={e => setFormData({ ...formData, houseInchargeId: e.target.value })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid var(--line)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)', outline: 'none' }}
+                  >
                     <option value="">Select House</option>
                     {houses.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-                  </Select>
+                  </select>
                 )}
-                <label className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300">
-                  <div className="flex items-center gap-2">
-                    <GraduationCap className="w-4 h-4 text-blue-500" />
-                    <span className="text-sm font-semibold text-slate-700">Class Teacher</span>
+
+                {/* Class Teacher toggle */}
+                <label className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <GraduationCap size={16} style={{ color: 'var(--ink-3)' }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Class Teacher</span>
                   </div>
                   <input type="checkbox" checked={formData.isClassTeacher}
                     onChange={e => setFormData({ ...formData, isClassTeacher: e.target.checked })}
-                    className="accent-indigo-600 w-4 h-4" />
+                    style={{ width: 16, height: 16, accentColor: 'var(--ink)', cursor: 'pointer' }} />
                 </label>
-                {formData.isClassTeacher && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <Select value={formData.classTeacherOf.classId}
-                      onChange={e => setFormData({ ...formData, classTeacherOf: { ...formData.classTeacherOf, classId: e.target.value } })}>
-                      <option value="">Select Class</option>
-                      {classes.map(c => <option key={c.id} value={c.id}>Class {c.name}</option>)}
-                    </Select>
-                    <Select value={formData.classTeacherOf.section}
-                      onChange={e => setFormData({ ...formData, classTeacherOf: { ...formData.classTeacherOf, section: e.target.value } })}>
-                      <option value="">Section</option>
-                      {classes.find(c => c.id === formData.classTeacherOf.classId)?.sections.map(sec => (
-                        <option key={sec.name} value={sec.name}>Section {sec.name}</option>
-                      ))}
-                    </Select>
-                  </div>
-                )}
+
+                {formData.isClassTeacher && (() => {
+                  const selectedClass = classes.find(c => c.id === formData.classTeacherOf.classId);
+                  const namedSections = (selectedClass?.sections ?? []).filter(s => s.name);
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: (formData.classTeacherOf.classId && namedSections.length > 0) ? '1fr 1fr' : '1fr', gap: 8 }}>
+                      {/* Class picker */}
+                      <select
+                        value={formData.classTeacherOf.classId}
+                        onChange={e => setFormData({ ...formData, classTeacherOf: { classId: e.target.value, section: '' } })}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid var(--line)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)', outline: 'none' }}
+                      >
+                        <option value="">Select Class</option>
+                        {classes.map(c => <option key={c.id} value={c.id}>Class {c.name}</option>)}
+                      </select>
+
+                      {/* Section picker — only shown when class has named sections */}
+                      {formData.classTeacherOf.classId && namedSections.length > 0 && (
+                        <select
+                          value={formData.classTeacherOf.section}
+                          onChange={e => setFormData({ ...formData, classTeacherOf: { ...formData.classTeacherOf, section: e.target.value } })}
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid var(--line)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)', outline: 'none' }}
+                        >
+                          <option value="">Select Section</option>
+                          {namedSections.map(sec => (
+                            <option key={sec.name} value={sec.name}>Section {sec.name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
