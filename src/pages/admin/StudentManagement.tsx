@@ -944,12 +944,16 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           <h1>Students</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="icon-btn" title="Export CSV" onClick={() => setExportModalOpen(true)}>
-            <Download size={16} />
+          <button className="btn ghost" style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }} title="Export CSV" onClick={() => setExportModalOpen(true)}>
+            <Download size={14} /> Export
           </button>
           {!readOnly && (
-            <button className="icon-btn" title="Import CSV" onClick={() => { setImportRows([]); setImportErrors([]); setImportProgress(null); setImportResults([]); setImportModalOpen(true); }}>
-              <Upload size={16} />
+            <button
+              className="btn ghost"
+              style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }}
+              onClick={() => { setImportRows([]); setImportErrors([]); setImportProgress(null); setImportResults([]); setImportModalOpen(true); }}
+            >
+              <Upload size={14} /> Bulk Import
             </button>
           )}
           {!readOnly && (
@@ -1381,35 +1385,47 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         subtitle="Upload a CSV file to add multiple students at once"
         size="xl"
         footer={
-          <div className="flex items-center justify-between w-full gap-3">
-            <Button variant="secondary" size="sm" icon={FileDown} onClick={handleDownloadTemplate}>
-              Download Template
-            </Button>
-            <div className="flex gap-3">
-              <Button variant="secondary" onClick={() => setImportModalOpen(false)}>Cancel</Button>
-              <Button
-                icon={Upload}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12 }}>
+            <button className="btn ghost" style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }} onClick={handleDownloadTemplate}>
+              <FileDown size={14} /> Download Template
+            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn ghost" style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }} onClick={() => setImportModalOpen(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn accent"
+                style={{ width: 'auto', padding: '8px 16px', fontSize: 13, opacity: (importRows.length === 0 || importErrors.length > 0 || !!importProgress) ? 0.45 : 1 }}
                 onClick={handleBulkImport}
                 disabled={importRows.length === 0 || importErrors.length > 0 || !!importProgress}
-                loading={!!importProgress && importProgress.done < importProgress.total}
               >
-                Import {importRows.length > 0 ? `${importRows.length} Students` : ''}
-              </Button>
+                <Upload size={14} />
+                {importRows.length > 0 ? `Import ${importRows.length} Students` : 'Import'}
+              </button>
             </div>
           </div>
         }
       >
-        <div className="space-y-5">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
           {/* File drop zone */}
           {!importProgress && (
-            <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group">
-              <Upload className="w-8 h-8 text-slate-300 group-hover:text-indigo-400 mb-2 transition-colors" />
-              <p className="text-sm font-semibold text-slate-500 group-hover:text-indigo-600">Click to upload CSV file</p>
-              <p className="text-xs text-slate-400 mt-1">or drag and drop</p>
+            <label
+              className="card"
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                height: 140, border: '2px dashed var(--line)', cursor: 'pointer', gap: 8, transition: 'border-color .15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--ink-3)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--line)')}
+            >
+              <Upload size={28} style={{ color: 'var(--ink-4)' }} />
+              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-2)' }}>Click to upload CSV file</p>
+              <p className="eyebrow">or drag and drop</p>
               <input
                 type="file"
                 accept=".csv"
-                className="hidden"
+                style={{ display: 'none' }}
                 onChange={e => e.target.files?.[0] && handleCSVFile(e.target.files[0])}
                 onDrop={e => { e.preventDefault(); const f = e.dataTransfer?.files?.[0]; if (f) handleCSVFile(f); }}
               />
@@ -1418,12 +1434,12 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
           {/* Validation errors */}
           {importErrors.length > 0 && (
-            <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 space-y-1.5 max-h-40 overflow-y-auto">
-              <p className="text-xs font-bold text-rose-700 uppercase tracking-wide flex items-center gap-1.5">
-                <XCircle className="w-3.5 h-3.5" /> {importErrors.length} validation error{importErrors.length > 1 ? 's' : ''}
+            <div className="card" style={{ padding: 14, border: '1px solid var(--coral)', background: 'oklch(0.97 0.02 30)', maxHeight: 160, overflowY: 'auto' }}>
+              <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--coral)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <XCircle size={13} /> {importErrors.length} validation error{importErrors.length > 1 ? 's' : ''}
               </p>
               {importErrors.map((e, i) => (
-                <p key={i} className="text-xs text-rose-600">{e}</p>
+                <p key={i} style={{ fontSize: 12, color: 'var(--coral)', marginTop: 4 }}>{e}</p>
               ))}
             </div>
           )}
@@ -1431,28 +1447,28 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           {/* Preview table */}
           {importRows.length > 0 && importErrors.length === 0 && !importProgress && (
             <div>
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+              <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-3)', marginBottom: 8 }}>
                 Preview — {importRows.length} student{importRows.length > 1 ? 's' : ''} ready to import
               </p>
-              <div className="border border-slate-100 rounded-xl overflow-hidden max-h-52 overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-50 sticky top-0">
-                    <tr>
+              <div className="card" style={{ padding: 0, overflow: 'hidden', maxHeight: 210, overflowY: 'auto' }}>
+                <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--cream-2)', position: 'sticky', top: 0 }}>
                       {['Name', 'Adm. No.', 'Class', 'Sec.', 'Gender', 'Father', 'Phone'].map(h => (
-                        <th key={h} className="text-left px-3 py-2 font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                        <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-3)' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody>
                     {importRows.map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50">
-                        <td className="px-3 py-2 font-medium text-slate-800">{row.name}</td>
-                        <td className="px-3 py-2 font-mono text-slate-600">{row.admissionnumber}</td>
-                        <td className="px-3 py-2 text-slate-600">{row.class}</td>
-                        <td className="px-3 py-2 text-slate-600">{row.section}</td>
-                        <td className="px-3 py-2 text-slate-600 capitalize">{row.gender}</td>
-                        <td className="px-3 py-2 text-slate-600">{row.fathername}</td>
-                        <td className="px-3 py-2 text-slate-600">{row.phone}</td>
+                      <tr key={i} style={{ borderTop: '1px solid var(--line)' }}>
+                        <td style={{ padding: '7px 12px', fontWeight: 600, color: 'var(--ink)' }}>{row.name}</td>
+                        <td style={{ padding: '7px 12px', fontFamily: 'var(--mono)', color: 'var(--ink-2)' }}>{row.admissionnumber}</td>
+                        <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.class}</td>
+                        <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.section}</td>
+                        <td style={{ padding: '7px 12px', color: 'var(--ink-2)', textTransform: 'capitalize' }}>{row.gender}</td>
+                        <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.fathername}</td>
+                        <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.phone}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1463,37 +1479,40 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
           {/* Progress */}
           {importProgress && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-semibold text-slate-700">Importing… {importProgress.done} / {importProgress.total}</span>
-                {importProgress.failed > 0 && <span className="text-rose-500 text-xs font-bold">{importProgress.failed} failed</span>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Importing… {importProgress.done} / {importProgress.total}</span>
+                {importProgress.failed > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--coral)' }}>{importProgress.failed} failed</span>}
               </div>
-              <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+              <div style={{ height: 8, background: 'var(--line)', borderRadius: 99, overflow: 'hidden' }}>
                 <div
-                  className="h-2.5 bg-indigo-500 rounded-full transition-all duration-300"
-                  style={{ width: `${(importProgress.done / importProgress.total) * 100}%` }}
+                  style={{ height: 8, background: 'var(--ink)', borderRadius: 99, transition: 'width .3s', width: `${(importProgress.done / importProgress.total) * 100}%` }}
                 />
               </div>
 
-              {/* Per-row results */}
               {importResults.length > 0 && (
-                <div className="space-y-1 max-h-48 overflow-y-auto">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 192, overflowY: 'auto' }}>
                   {importResults.map((r, i) => (
-                    <div key={i} className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${r.status === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                      {r.status === 'ok'
-                        ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                        : <XCircle className="w-3.5 h-3.5 shrink-0" />}
-                      <span className="font-semibold">{r.name}</span>
-                      {r.message && <span className="opacity-70">— {r.message}</span>}
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '6px 12px', borderRadius: 8,
+                      background: r.status === 'ok' ? 'oklch(0.95 0.07 145)' : 'oklch(0.97 0.02 30)',
+                      color: r.status === 'ok' ? 'var(--leaf)' : 'var(--coral)',
+                    }}>
+                      {r.status === 'ok' ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                      <span style={{ fontWeight: 600 }}>{r.name}</span>
+                      {r.message && <span style={{ opacity: 0.7 }}>— {r.message}</span>}
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Done summary */}
               {importProgress.done === importProgress.total && (
-                <div className={`flex items-center gap-2 p-3 rounded-xl text-sm font-semibold ${importProgress.failed === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                  <CheckCircle2 className="w-4 h-4" />
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, fontSize: 13, fontWeight: 600,
+                  background: importProgress.failed === 0 ? 'oklch(0.95 0.07 145)' : 'oklch(0.97 0.08 85)',
+                  color: importProgress.failed === 0 ? 'var(--leaf)' : 'oklch(0.55 0.15 85)',
+                }}>
+                  <CheckCircle2 size={16} />
                   {importProgress.failed === 0
                     ? `All ${importProgress.total} students imported successfully!`
                     : `${importProgress.total - importProgress.failed} imported, ${importProgress.failed} failed — check errors above`}
@@ -1502,16 +1521,18 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             </div>
           )}
 
-          {/* How-to hint */}
+          {/* Format rules */}
           {!importProgress && importRows.length === 0 && (
-            <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-500 space-y-1">
-              <p className="font-bold text-slate-700">CSV format rules:</p>
-              <p>• First row must be the header row exactly as in the template</p>
-              <p>• <span className="font-semibold">Required:</span> name, admissionNumber, class, section, fatherName, motherName, phone, email</p>
-              <p>• <span className="font-semibold">Optional:</span> gender, studentEmail, house, transport (School/Private), medicalNotes, academicHistory, address</p>
-              <p>• <span className="font-semibold">class</span> must match an existing class name (e.g. "5", "10A")</p>
-              <p>• <span className="font-semibold">gender</span> (if provided) must be male, female, or other</p>
-              <p>• Download the template above for a ready-to-fill example</p>
+            <div className="card" style={{ padding: 14, background: 'var(--cream-2)' }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>CSV format rules</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--ink-3)' }}>
+                <p>• First row must be the header row exactly as in the template</p>
+                <p>• <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Required:</span> name, admissionNumber, class, section, fatherName, motherName, phone, email</p>
+                <p>• <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Optional:</span> gender, studentEmail, house, transport (School/Private), medicalNotes, academicHistory, address</p>
+                <p>• <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>class</span> must match an existing class name (e.g. "5", "10A")</p>
+                <p>• <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>gender</span> must be male, female, or other</p>
+                <p>• Download the template above to get a ready-to-fill example</p>
+              </div>
             </div>
           )}
         </div>
