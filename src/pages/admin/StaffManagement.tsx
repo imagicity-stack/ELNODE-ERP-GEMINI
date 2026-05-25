@@ -21,7 +21,7 @@ interface StaffMember {
   name: string;
   email: string;
   phone?: string;
-  role: 'principal' | 'accounts' | 'admin' | 'security' | 'transport' | 'grievance_officer';
+  role: 'principal' | 'accounts' | 'admin' | 'security' | 'transport' | 'grievance_officer' | 'store_keeper';
   joiningDate: string;
   salary: number;
   status: 'active' | 'on-leave' | 'resigned';
@@ -30,7 +30,7 @@ interface StaffMember {
 }
 
 const ALLOWED_ROLES: ReadonlyArray<StaffMember['role']> = [
-  'principal', 'accounts', 'admin', 'security', 'transport', 'grievance_officer',
+  'principal', 'accounts', 'admin', 'security', 'transport', 'grievance_officer', 'store_keeper',
 ];
 const PORTAL_ROLES: ReadonlyArray<string> = ['principal', 'accounts', 'grievance_officer'];
 const DEFAULT_PASSWORD = 'password123';
@@ -46,6 +46,7 @@ const roleLabel: Record<string, string> = {
   security: 'Security',
   transport: 'Transport',
   grievance_officer: 'Grievance Officer',
+  store_keeper: 'Store Keeper',
 };
 
 export default function StaffManagement({ user }: { user: any }) {
@@ -414,6 +415,7 @@ export default function StaffManagement({ user }: { user: any }) {
                 <option value="admin">Admin Staff</option>
                 <option value="security">Security</option>
                 <option value="transport">Transport</option>
+                <option value="store_keeper">Store Keeper</option>
               </Select>
             </FormField>
             <FormField label="Salary" required>
