@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { usePullToRefresh, PullIndicator } from './PullToRefresh';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
@@ -81,6 +82,8 @@ export default function ParentShell({
   const location = useLocation();
   const { showToast } = useToast();
   const mainRef = useRef<HTMLElement>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { pullY, refreshing } = usePullToRefresh(mainRef, () => setRefreshKey(k => k + 1));
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const userName = user.name || user.email || 'Parent';
   const initials = userName.charAt(0).toUpperCase();
@@ -291,8 +294,9 @@ export default function ParentShell({
         </div>
 
         {/* Scrollable content */}
+        <PullIndicator pullY={pullY} refreshing={refreshing} />
         <main ref={mainRef} className="flex-1 overflow-y-auto pb-24 lg:pb-8">
-          <div className="lg:max-w-7xl lg:mx-auto lg:px-10">
+          <div className="lg:max-w-7xl lg:mx-auto lg:px-10" key={refreshKey}>
             {children}
           </div>
         </main>
