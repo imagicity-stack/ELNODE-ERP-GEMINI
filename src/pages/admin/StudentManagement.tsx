@@ -115,17 +115,17 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   type ImportResult = {
     name: string;
     admissionNumber: string;
-    status: 'ok' | 'error' | 'duplicate';
+    status: 'ok' | 'incomplete' | 'duplicate' | 'error';
     message?: string;
     warnings?: string[];
   };
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
-  const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number; failed: number; skipped: number } | null>(null);
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [importRowWarnings, setImportRowWarnings] = useState<Record<number, string[]>>({});
-  const [importDbDuplicates, setImportDbDuplicates] = useState<Set<string>>(new Set());
+  // Per-row blocking issues (missing required fields, bad class, duplicates) → row will be skipped, not block the batch
+  const [importRowIssues, setImportRowIssues] = useState<Record<number, string[]>>({});
 
   // Form State
   const [formData, setFormData] = useState({
@@ -459,48 +459,59 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     });
   };
 
+  // Returns the list of blocking issues for a single parsed row (empty = row is importable)
+  const getRowIssues = (
+    row: Record<string, string>,
+    index: number,
+    seenInFile: Map<string, number>,
+    existingAdmNos: Set<string>,
+  ): string[] => {
+    const issues: string[] = [];
+    if (!row.name?.trim()) issues.push('name');
+    if (!row.admissionnumber?.trim()) issues.push('admission number');
+    if (!row.class?.trim()) issues.push('class');
+    if (!row.section?.trim()) issues.push('section');
+    if (!row.fathername?.trim()) issues.push("father's name");
+    if (!row.mothername?.trim()) issues.push("mother's name");
+    if (!row.phone?.trim()) issues.push('phone');
+    if (row.gender?.trim() && !['male', 'female', 'other'].includes(row.gender.trim().toLowerCase()))
+      issues.push('invalid gender (use male/female/other)');
+    // Class must exist in the system
+    if (row.class?.trim()) {
+      const classObj = classes.find(c => c.name === row.class || c.name.toLowerCase() === row.class?.trim().toLowerCase());
+      if (!classObj) issues.push(`class "${row.class}" not found`);
+    }
+    // Duplicate detection
+    const admNo = row.admissionnumber?.trim();
+    if (admNo) {
+      if (seenInFile.has(admNo)) {
+        issues.push(`duplicate of row ${seenInFile.get(admNo)! + 2} in this file`);
+      } else {
+        seenInFile.set(admNo, index);
+        if (existingAdmNos.has(admNo)) issues.push('already exists in database');
+      }
+    }
+    return issues;
+  };
+
   const handleCSVFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
       const rows = parseCSV(text);
-      const errors: string[] = [];
+      const rowIssues: Record<number, string[]> = {};
       const rowWarnings: Record<number, string[]> = {};
-      const dbDuplicates = new Set<string>();
 
-      // Collect existing admission/school numbers from already-loaded students
       const existingAdmNos = new Set(
         students.flatMap(s => [s.admissionNumber, s.schoolNumber].filter(Boolean))
       );
-      // Track intra-file admission numbers to catch duplicates within the CSV
       const seenInFile = new Map<string, number>();
 
       rows.forEach((row, i) => {
-        const rowNum = i + 2;
-        // ── Required field errors (block import) ──
-        if (!row.name?.trim()) errors.push(`Row ${rowNum}: Name is required`);
-        if (!row.admissionnumber?.trim()) errors.push(`Row ${rowNum}: admissionNumber is required`);
-        if (!row.class?.trim()) errors.push(`Row ${rowNum}: class is required`);
-        if (!row.section?.trim()) errors.push(`Row ${rowNum}: section is required`);
-        if (row.gender?.trim() && !['male', 'female', 'other'].includes(row.gender.trim().toLowerCase()))
-          errors.push(`Row ${rowNum}: gender must be male, female, or other`);
-        if (!row.fathername?.trim()) errors.push(`Row ${rowNum}: fatherName is required`);
-        if (!row.mothername?.trim()) errors.push(`Row ${rowNum}: motherName is required`);
-        if (!row.phone?.trim()) errors.push(`Row ${rowNum}: phone is required`);
+        const issues = getRowIssues(row, i, seenInFile, existingAdmNos);
+        if (issues.length) rowIssues[i] = issues;
 
-        const admNo = row.admissionnumber?.trim();
-        if (admNo) {
-          // Intra-file duplicate — blocking error
-          if (seenInFile.has(admNo)) {
-            errors.push(`Row ${rowNum}: Admission number "${admNo}" appears twice in this file (also row ${seenInFile.get(admNo)! + 2})`);
-          } else {
-            seenInFile.set(admNo, i);
-            // Already in DB — will be skipped during import (not a blocking error)
-            if (existingAdmNos.has(admNo)) dbDuplicates.add(admNo);
-          }
-        }
-
-        // ── Optional field warnings (informational only) ──
+        // Optional field warnings (row still imports)
         const warns: string[] = [];
         if (!row.gender?.trim()) warns.push('gender missing');
         if (!row.house?.trim()) warns.push('house not assigned');
@@ -510,9 +521,8 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       });
 
       setImportRows(rows);
-      setImportErrors(errors);
+      setImportRowIssues(rowIssues);
       setImportRowWarnings(rowWarnings);
-      setImportDbDuplicates(dbDuplicates);
       setImportProgress(null);
       setImportResults([]);
     };
@@ -520,13 +530,14 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   };
 
   const handleBulkImport = async () => {
-    if (importRows.length === 0 || importErrors.length > 0) return;
+    if (importRows.length === 0) return;
 
     // Fresh duplicate check from DB at import time (in case DB changed since CSV was loaded)
     const existingSnap = await getDocs(collection(db, 'students'));
     const existingAdmNos = new Set(
       existingSnap.docs.flatMap(d => [d.data().admissionNumber, d.data().schoolNumber].filter(Boolean))
     );
+    const seenInFile = new Map<string, number>();
 
     let secondaryApp;
     try { secondaryApp = getApp('Secondary'); }
@@ -560,15 +571,57 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       const admissionNumber = row.admissionnumber?.trim();
       const rowWarns = importRowWarnings[i] || [];
 
-      // ── Skip existing admission numbers ──────────────────────────────────
-      if (admissionNumber && existingAdmNos.has(admissionNumber)) {
+      // ── Validate required fields & data integrity — skip the row if it fails,
+      //    but never abort the whole batch ────────────────────────────────────
+      const missing: string[] = [];
+      if (!name) missing.push('name');
+      if (!admissionNumber) missing.push('admission number');
+      if (!row.class?.trim()) missing.push('class');
+      if (!row.section?.trim()) missing.push('section');
+      if (!row.fathername?.trim()) missing.push("father's name");
+      if (!row.mothername?.trim()) missing.push("mother's name");
+      if (!row.phone?.trim()) missing.push('phone');
+      if (row.gender?.trim() && !['male', 'female', 'other'].includes(row.gender.trim().toLowerCase()))
+        missing.push('invalid gender');
+
+      const classObj = classes.find(c => c.name === row.class || c.name.toLowerCase() === row.class?.trim().toLowerCase());
+      if (row.class?.trim() && !classObj) missing.push(`class "${row.class}" not found`);
+
+      if (missing.length) {
+        skipped++;
+        results.push({
+          name: name || `Row ${i + 2}`,
+          admissionNumber: admissionNumber || '',
+          status: 'incomplete',
+          message: `Missing / invalid: ${missing.join(', ')}`,
+        });
+        setImportProgress({ done: i + 1, total: importRows.length, failed, skipped });
+        setImportResults([...results]);
+        continue;
+      }
+
+      // ── Skip duplicates (within file or already in DB) ────────────────────
+      if (seenInFile.has(admissionNumber!)) {
+        skipped++;
+        results.push({
+          name: name || `Row ${i + 2}`,
+          admissionNumber: admissionNumber || '',
+          status: 'duplicate',
+          message: `Duplicate of row ${seenInFile.get(admissionNumber!)! + 2} in this file — skipped`,
+        });
+        setImportProgress({ done: i + 1, total: importRows.length, failed, skipped });
+        setImportResults([...results]);
+        continue;
+      }
+      seenInFile.set(admissionNumber!, i);
+
+      if (existingAdmNos.has(admissionNumber!)) {
         skipped++;
         results.push({
           name: name || `Row ${i + 2}`,
           admissionNumber: admissionNumber || '',
           status: 'duplicate',
           message: 'Already exists in database — skipped',
-          warnings: rowWarns,
         });
         setImportProgress({ done: i + 1, total: importRows.length, failed, skipped });
         setImportResults([...results]);
@@ -578,9 +631,6 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       try {
         const gender = row.gender?.toLowerCase();
         const houseObj = houses.find(h => h.name.toLowerCase() === (row.house || '').toLowerCase());
-        const classObj = classes.find(c => c.name === row.class || c.name.toLowerCase() === row.class?.toLowerCase());
-
-        if (!classObj) throw new Error(`Class "${row.class}" not found in the system`);
 
         const schoolNumber = admissionNumber;
         const studentEmail = `${schoolNumber}@${SCHOOL_DOMAIN}`;
@@ -612,7 +662,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           name,
           schoolNumber,
           admissionNumber,
-          classId: classObj.id,
+          classId: classObj!.id,
           section: row.section,
           gender,
           houseId: houseObj?.id || '',
@@ -638,7 +688,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           name,
           role: 'student',
           schoolNumber,
-          classId: classObj.id,
+          classId: classObj!.id,
           section: row.section,
           parentId: parentUid,
           studentId: studentRef.id,
@@ -677,21 +727,30 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
     fetchStudents();
     const imported = results.filter(r => r.status === 'ok').length;
+    const incomplete = results.filter(r => r.status === 'incomplete').length;
+    const duplicates = results.filter(r => r.status === 'duplicate').length;
     await logActivity(
       user, 'BULK_IMPORT_STUDENTS', 'Students',
-      `Bulk import: ${imported} imported, ${skipped} skipped (duplicates), ${failed} failed — ${importRows.length} total rows`,
+      `Bulk import: ${imported} imported, ${incomplete} skipped (incomplete), ${duplicates} skipped (duplicate), ${failed} failed — ${importRows.length} total rows`,
     );
   };
 
+  const statusLabel = (s: ImportResult['status']) =>
+    s === 'ok' ? 'Imported'
+    : s === 'incomplete' ? 'Skipped (Missing Data)'
+    : s === 'duplicate' ? 'Skipped (Duplicate)'
+    : 'Failed';
+
   const handleDownloadImportReport = async () => {
+    const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
     const lines = [
-      'Name,Admission Number,Status,Details,Warnings',
+      'Name,Admission Number,Result,Reason / Missing Fields,Warnings',
       ...importResults.map(r => [
-        `"${r.name}"`,
-        `"${r.admissionNumber}"`,
-        `"${r.status === 'ok' ? 'Imported' : r.status === 'duplicate' ? 'Skipped (Duplicate)' : 'Failed'}"`,
-        `"${r.message || ''}"`,
-        `"${(r.warnings || []).join('; ')}"`,
+        esc(r.name),
+        esc(r.admissionNumber),
+        esc(statusLabel(r.status)),
+        esc(r.message || ''),
+        esc((r.warnings || []).join('; ')),
       ].join(','))
     ];
     await saveText(lines.join('\n'), `import_report_${new Date().toISOString().slice(0, 10)}.csv`);
@@ -1035,7 +1094,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             <button
               className="btn ghost"
               style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }}
-              onClick={() => { setImportRows([]); setImportErrors([]); setImportProgress(null); setImportResults([]); setImportRowWarnings({}); setImportDbDuplicates(new Set()); setImportModalOpen(true); }}
+              onClick={() => { setImportRows([]); setImportProgress(null); setImportResults([]); setImportRowWarnings({}); setImportRowIssues({}); setImportModalOpen(true); }}
             >
               <Upload size={14} /> Bulk Import
             </button>
@@ -1477,17 +1536,23 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
               <button className="btn ghost" style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }} onClick={() => setImportModalOpen(false)}>
                 Cancel
               </button>
-              <button
-                className="btn accent"
-                style={{ width: 'auto', padding: '8px 16px', fontSize: 13, opacity: (importRows.length === 0 || importErrors.length > 0 || !!importProgress) ? 0.45 : 1 }}
-                onClick={handleBulkImport}
-                disabled={importRows.length === 0 || importErrors.length > 0 || !!importProgress}
-              >
-                <Upload size={14} />
-                {importRows.length > 0
-                  ? `Import ${importRows.length - importDbDuplicates.size} Student${importRows.length - importDbDuplicates.size !== 1 ? 's' : ''}${importDbDuplicates.size > 0 ? ` (${importDbDuplicates.size} will skip)` : ''}`
-                  : 'Import'}
-              </button>
+              {(() => {
+                const skipCount = Object.keys(importRowIssues).length;
+                const importable = importRows.length - skipCount;
+                return (
+                  <button
+                    className="btn accent"
+                    style={{ width: 'auto', padding: '8px 16px', fontSize: 13, opacity: (importable <= 0 || !!importProgress) ? 0.45 : 1 }}
+                    onClick={handleBulkImport}
+                    disabled={importable <= 0 || !!importProgress}
+                  >
+                    <Upload size={14} />
+                    {importRows.length > 0
+                      ? `Import ${importable} Student${importable !== 1 ? 's' : ''}${skipCount > 0 ? ` (${skipCount} will skip)` : ''}`
+                      : 'Import'}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         }
@@ -1518,20 +1583,11 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             </label>
           )}
 
-          {/* Validation errors */}
-          {importErrors.length > 0 && (
-            <div className="card" style={{ padding: 14, border: '1px solid var(--coral)', background: 'oklch(0.97 0.02 30)', maxHeight: 160, overflowY: 'auto' }}>
-              <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--coral)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <XCircle size={13} /> {importErrors.length} validation error{importErrors.length > 1 ? 's' : ''}
-              </p>
-              {importErrors.map((e, i) => (
-                <p key={i} style={{ fontSize: 12, color: 'var(--coral)', marginTop: 4 }}>{e}</p>
-              ))}
-            </div>
-          )}
-
-          {/* Preview table */}
-          {importRows.length > 0 && importErrors.length === 0 && !importProgress && (
+          {/* Preview table — nothing blocks the import; rows with issues are simply skipped */}
+          {importRows.length > 0 && !importProgress && (() => {
+            const skipCount = Object.keys(importRowIssues).length;
+            const importable = importRows.length - skipCount;
+            return (
             <div>
               {/* Summary badges */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -1539,50 +1595,58 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                   Preview
                 </span>
                 <span style={{ background: 'oklch(0.95 0.07 145)', color: 'var(--leaf)', borderRadius: 99, fontSize: 11, fontWeight: 700, padding: '2px 8px' }}>
-                  ✓ {importRows.length - importDbDuplicates.size} to import
+                  ✓ {importable} will import
                 </span>
-                {importDbDuplicates.size > 0 && (
+                {skipCount > 0 && (
                   <span style={{ background: 'oklch(0.96 0.08 85)', color: 'oklch(0.52 0.18 85)', borderRadius: 99, fontSize: 11, fontWeight: 700, padding: '2px 8px' }}>
-                    ⊘ {importDbDuplicates.size} already exist (will skip)
+                    ⊘ {skipCount} will skip (missing data / duplicate)
                   </span>
                 )}
                 {Object.keys(importRowWarnings).length > 0 && (
                   <span style={{ background: 'oklch(0.96 0.05 60)', color: 'oklch(0.52 0.15 60)', borderRadius: 99, fontSize: 11, fontWeight: 700, padding: '2px 8px' }}>
-                    ⚠ {Object.keys(importRowWarnings).length} with missing optional fields
+                    ⚠ {Object.keys(importRowWarnings).length} missing optional fields
                   </span>
                 )}
               </div>
-              <div className="card" style={{ padding: 0, overflow: 'hidden', maxHeight: 230, overflowY: 'auto' }}>
+              {skipCount > 0 && (
+                <p style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 10 }}>
+                  Rows with missing required data or duplicate admission numbers will be skipped automatically. A full report is downloadable after import.
+                </p>
+              )}
+              <div className="card" style={{ padding: 0, overflow: 'hidden', maxHeight: 250, overflowY: 'auto' }}>
                 <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'var(--cream-2)', position: 'sticky', top: 0 }}>
-                      {['', 'Name', 'Adm. No.', 'Class', 'Sec.', 'Gender', 'Father', 'Phone'].map(h => (
+                      {['', 'Name', 'Adm. No.', 'Class', 'Sec.', 'Father', 'Phone', 'Status'].map(h => (
                         <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-3)' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {importRows.map((row, i) => {
-                      const isDup = importDbDuplicates.has(row.admissionnumber?.trim());
+                      const issues = importRowIssues[i];
+                      const willSkip = !!issues;
                       const warns = importRowWarnings[i];
                       return (
-                        <tr key={i} style={{ borderTop: '1px solid var(--line)', background: isDup ? 'oklch(0.97 0.05 85)' : 'transparent', opacity: isDup ? 0.7 : 1 }}>
+                        <tr key={i} style={{ borderTop: '1px solid var(--line)', background: willSkip ? 'oklch(0.97 0.04 30)' : 'transparent', opacity: willSkip ? 0.85 : 1 }}>
                           <td style={{ padding: '7px 8px 7px 12px', width: 24 }}>
-                            {isDup ? (
-                              <span title="Already in database — will skip" style={{ fontSize: 14, lineHeight: 1 }}>⊘</span>
+                            {willSkip ? (
+                              <span title={issues.join(', ')} style={{ fontSize: 14, lineHeight: 1, cursor: 'help', color: 'var(--coral)' }}>⊘</span>
                             ) : warns ? (
                               <span title={warns.join(', ')} style={{ fontSize: 14, lineHeight: 1, cursor: 'help' }}>⚠</span>
                             ) : (
                               <span style={{ fontSize: 14, lineHeight: 1, color: 'var(--leaf)' }}>✓</span>
                             )}
                           </td>
-                          <td style={{ padding: '7px 12px', fontWeight: 600, color: 'var(--ink)' }}>{row.name}</td>
-                          <td style={{ padding: '7px 12px', fontFamily: 'var(--mono)', color: 'var(--ink-2)' }}>{row.admissionnumber}</td>
-                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.class}</td>
-                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.section}</td>
-                          <td style={{ padding: '7px 12px', color: row.gender ? 'var(--ink-2)' : 'var(--ink-4)', textTransform: 'capitalize', fontStyle: row.gender ? 'normal' : 'italic' }}>{row.gender || '—'}</td>
-                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.fathername}</td>
-                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.phone}</td>
+                          <td style={{ padding: '7px 12px', fontWeight: 600, color: row.name ? 'var(--ink)' : 'var(--ink-4)', fontStyle: row.name ? 'normal' : 'italic' }}>{row.name || '(no name)'}</td>
+                          <td style={{ padding: '7px 12px', fontFamily: 'var(--mono)', color: 'var(--ink-2)' }}>{row.admissionnumber || '—'}</td>
+                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.class || '—'}</td>
+                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.section || '—'}</td>
+                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.fathername || '—'}</td>
+                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.phone || '—'}</td>
+                          <td style={{ padding: '7px 12px', fontSize: 11, color: willSkip ? 'var(--coral)' : 'var(--leaf)' }}>
+                            {willSkip ? `Skip — ${issues[0]}${issues.length > 1 ? ` +${issues.length - 1}` : ''}` : 'Import'}
+                          </td>
                         </tr>
                       );
                     })}
@@ -1590,7 +1654,8 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                 </table>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* Progress + Report */}
           {importProgress && (
@@ -1615,10 +1680,10 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                   {importResults.map((r, i) => (
                     <div key={i} style={{
                       display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, padding: '6px 12px', borderRadius: 8,
-                      background: r.status === 'ok' ? 'oklch(0.95 0.07 145)' : r.status === 'duplicate' ? 'oklch(0.96 0.05 85)' : 'oklch(0.97 0.02 30)',
+                      background: r.status === 'ok' ? 'oklch(0.95 0.07 145)' : r.status === 'error' ? 'oklch(0.97 0.02 30)' : 'oklch(0.96 0.05 85)',
                     }}>
                       <span style={{ marginTop: 1, flexShrink: 0 }}>
-                        {r.status === 'ok' ? <CheckCircle2 size={13} style={{ color: 'var(--leaf)' }} /> : r.status === 'duplicate' ? <span style={{ fontSize: 13, color: 'oklch(0.52 0.18 85)' }}>⊘</span> : <XCircle size={13} style={{ color: 'var(--coral)' }} />}
+                        {r.status === 'ok' ? <CheckCircle2 size={13} style={{ color: 'var(--leaf)' }} /> : r.status === 'error' ? <XCircle size={13} style={{ color: 'var(--coral)' }} /> : <span style={{ fontSize: 13, color: 'oklch(0.52 0.18 85)' }}>⊘</span>}
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.name}</span>
@@ -1635,29 +1700,36 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
               {/* Summary + Download Report */}
               {importProgress.done === importProgress.total && (() => {
-                const imported = importResults.filter(r => r.status === 'ok').length;
-                const skipped  = importResults.filter(r => r.status === 'duplicate').length;
-                const failed   = importResults.filter(r => r.status === 'error').length;
-                const withWarns = importResults.filter(r => r.status === 'ok' && r.warnings?.length).length;
+                const imported   = importResults.filter(r => r.status === 'ok').length;
+                const incomplete = importResults.filter(r => r.status === 'incomplete').length;
+                const duplicate  = importResults.filter(r => r.status === 'duplicate').length;
+                const failed     = importResults.filter(r => r.status === 'error').length;
+                const withWarns  = importResults.filter(r => r.status === 'ok' && r.warnings?.length).length;
+                const tiles = [
+                  { n: imported,   label: 'Imported',     bg: 'oklch(0.95 0.07 145)', fg: 'var(--leaf)' },
+                  { n: incomplete, label: 'Missing Data', bg: 'oklch(0.96 0.05 85)',  fg: 'oklch(0.52 0.18 85)' },
+                  { n: duplicate,  label: 'Duplicates',   bg: 'oklch(0.96 0.05 85)',  fg: 'oklch(0.52 0.18 85)' },
+                  { n: failed,     label: 'Failed',       bg: 'oklch(0.97 0.02 30)',  fg: 'var(--coral)' },
+                ];
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                      <div style={{ background: 'oklch(0.95 0.07 145)', borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--leaf)' }}>{imported}</div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--leaf)', opacity: 0.8 }}>Imported</div>
-                      </div>
-                      <div style={{ background: 'oklch(0.96 0.05 85)', borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: 'oklch(0.52 0.18 85)' }}>{skipped}</div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'oklch(0.52 0.18 85)', opacity: 0.8 }}>Skipped</div>
-                      </div>
-                      <div style={{ background: failed > 0 ? 'oklch(0.97 0.02 30)' : 'var(--cream-2)', borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: failed > 0 ? 'var(--coral)' : 'var(--ink-3)' }}>{failed}</div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: failed > 0 ? 'var(--coral)' : 'var(--ink-3)', opacity: 0.8 }}>Failed</div>
-                      </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                      {tiles.map(t => (
+                        <div key={t.label} style={{ background: t.n > 0 ? t.bg : 'var(--cream-2)', borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: t.n > 0 ? t.fg : 'var(--ink-3)' }}>{t.n}</div>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: t.n > 0 ? t.fg : 'var(--ink-3)', opacity: 0.85 }}>{t.label}</div>
+                        </div>
+                      ))}
                     </div>
+                    {(incomplete > 0 || failed > 0) && (
+                      <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '8px 12px', background: 'var(--cream-2)', borderRadius: 8 }}>
+                        {incomplete > 0 && <>⊘ {incomplete} row{incomplete > 1 ? 's were' : ' was'} not imported due to missing required data. </>}
+                        Download the report below for the exact missing fields per student.
+                      </div>
+                    )}
                     {withWarns > 0 && (
                       <div style={{ fontSize: 12, color: 'oklch(0.52 0.15 60)', padding: '8px 12px', background: 'oklch(0.96 0.05 60)', borderRadius: 8 }}>
-                        ⚠ {withWarns} student{withWarns > 1 ? 's' : ''} imported with missing optional fields — check the rows marked ⚠ above
+                        ⚠ {withWarns} imported student{withWarns > 1 ? 's' : ''} had missing optional fields (listed in the report).
                       </div>
                     )}
                     <button
@@ -1679,11 +1751,11 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
               <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>CSV format rules</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--ink-3)' }}>
                 <p>• First row must be the header row exactly as in the template</p>
-                <p>• <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Required:</span> name, admissionNumber, class, section, fatherName, motherName, phone, email</p>
-                <p>• <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Optional:</span> gender, studentEmail, house, transport (School/Private), medicalNotes, academicHistory, address</p>
+                <p>• <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Required:</span> name, admissionNumber, class, section, fatherName, motherName, phone</p>
+                <p>• <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>Optional:</span> gender, email, studentEmail, house, transport (School/Private), medicalNotes, academicHistory, address</p>
                 <p>• <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>class</span> must match an existing class name (e.g. "5", "10A")</p>
-                <p>• <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>gender</span> must be male, female, or other</p>
-                <p>• Download the template above to get a ready-to-fill example</p>
+                <p>• Rows missing required data or with duplicate admission numbers are <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>skipped automatically</span> — the rest still import</p>
+                <p>• A downloadable report lists exactly what imported and what was skipped (with reasons)</p>
               </div>
             </div>
           )}
