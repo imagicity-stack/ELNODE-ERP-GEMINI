@@ -100,6 +100,31 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
       });
       if (validationErr) { showToast(validationErr, 'error'); return; }
 
+      // Class-teacher integrity checks
+      if (formData.isClassTeacher) {
+        const { classId, section } = formData.classTeacherOf;
+        if (!classId) { showToast('Select a class for the class teacher assignment', 'error'); return; }
+
+        const selectedClass = classes.find(c => c.id === classId);
+        const namedSections = (selectedClass?.sections ?? []).filter(s => s.name);
+        if (namedSections.length > 0 && !section) {
+          showToast('Select a section for the class teacher assignment', 'error');
+          return;
+        }
+
+        // No two teachers may be class teacher of the same class + section
+        const clash = teachers.find(t =>
+          t.id !== editingTeacher?.id &&
+          t.classTeacherOf?.classId === classId &&
+          (t.classTeacherOf?.section || '') === (section || '')
+        );
+        if (clash) {
+          const label = `Class ${selectedClass?.name ?? ''}${section ? ` · Section ${section}` : ''}`.trim();
+          showToast(`${clash.name} is already the class teacher of ${label}`, 'error');
+          return;
+        }
+      }
+
       const normalizedEmail = normalizeEmail(formData.email);
       const teacherData = {
         ...formData,
