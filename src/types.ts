@@ -145,6 +145,7 @@ export interface Teacher {
     classId: string;
     section: string;
   };
+  tags?: string[];
   photoURL?: string;
   // Optimistic-concurrency token incremented on every update.
   version?: number;
