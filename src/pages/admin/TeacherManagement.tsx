@@ -21,6 +21,7 @@ import {
   Trash2,
   ShieldCheck,
   Search,
+  X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -63,8 +64,10 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
     houseInchargeId: '',
     isClassTeacher: false,
     classTeacherOf: { classId: '', section: '' },
+    tags: [] as string[],
     photoURL: '',
   });
+  const [tagInput, setTagInput] = useState('');
 
   const fetchData = async () => {
     try {
@@ -212,8 +215,10 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
       houseInchargeId: '',
       isClassTeacher: false,
       classTeacherOf: { classId: '', section: '' },
+      tags: [],
       photoURL: '',
     });
+    setTagInput('');
     setIsEditMode(false);
     setEditingTeacher(null);
   };
@@ -234,8 +239,10 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
       houseInchargeId: teacher.houseInchargeId || '',
       isClassTeacher: !!teacher.classTeacherOf?.classId,
       classTeacherOf: teacher.classTeacherOf || { classId: '', section: '' },
+      tags: teacher.tags || [],
       photoURL: teacher.photoURL || '',
     });
+    setTagInput('');
     setIsModalOpen(true);
   };
 
@@ -352,6 +359,16 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
                       <p className="muted tiny" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Phone size={11} /> {teacher.phone}
                       </p>
+                    )}
+                    {teacher.tags && teacher.tags.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 5 }}>
+                        {teacher.tags.slice(0, 3).map(tag => (
+                          <span key={tag} className="chip" style={{ fontSize: 10, padding: '2px 7px', background: 'var(--cream-2)', color: 'var(--ink-3)' }}>{tag}</span>
+                        ))}
+                        {teacher.tags.length > 3 && (
+                          <span className="chip" style={{ fontSize: 10, padding: '2px 7px' }}>+{teacher.tags.length - 3}</span>
+                        )}
+                      </div>
                     )}
                   </div>
                   {!readOnly && (
@@ -508,6 +525,76 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
               <FormField label="Joining Date" required>
                 <Input type="date" required value={formData.joiningDetails}
                   onChange={e => setFormData({ ...formData, joiningDetails: e.target.value })} />
+              </FormField>
+
+              <FormField label="Tags">
+                <div
+                  style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 10px',
+                    background: 'var(--cream-2)', borderRadius: 12, border: '1px solid var(--line)',
+                    minHeight: 44, cursor: 'text',
+                  }}
+                  onClick={e => (e.currentTarget.querySelector('input') as HTMLInputElement | null)?.focus()}
+                >
+                  {formData.tags.map(tag => (
+                    <span
+                      key={tag}
+                      className="chip"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '2px 8px' }}
+                    >
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, tags: formData.tags.filter(t => t !== tag) })}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'inherit', opacity: 0.6 }}
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    type="text"
+                    value={tagInput}
+                    placeholder={formData.tags.length === 0 ? 'Type a tag and press comma…' : ''}
+                    style={{
+                      border: 'none', outline: 'none', background: 'transparent',
+                      fontSize: 13, color: 'var(--ink)', minWidth: 120, flex: 1,
+                    }}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val.includes(',')) {
+                        const parts = val.split(',').map(p => p.trim()).filter(Boolean);
+                        const newTags = [...new Set([...formData.tags, ...parts])];
+                        setFormData({ ...formData, tags: newTags });
+                        setTagInput('');
+                      } else {
+                        setTagInput(val);
+                      }
+                    }}
+                    onKeyDown={e => {
+                      if ((e.key === 'Enter' || e.key === 'Tab') && tagInput.trim()) {
+                        e.preventDefault();
+                        const tag = tagInput.trim();
+                        if (!formData.tags.includes(tag)) {
+                          setFormData({ ...formData, tags: [...formData.tags, tag] });
+                        }
+                        setTagInput('');
+                      }
+                      if (e.key === 'Backspace' && !tagInput && formData.tags.length > 0) {
+                        setFormData({ ...formData, tags: formData.tags.slice(0, -1) });
+                      }
+                    }}
+                    onBlur={() => {
+                      if (tagInput.trim()) {
+                        const tag = tagInput.trim();
+                        if (!formData.tags.includes(tag)) {
+                          setFormData({ ...formData, tags: [...formData.tags, tag] });
+                        }
+                        setTagInput('');
+                      }
+                    }}
+                  />
+                </div>
               </FormField>
             </div>
 
