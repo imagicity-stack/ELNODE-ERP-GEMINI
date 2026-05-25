@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { Teacher, Subject, Class, House, UserProfile } from '../../types';
@@ -162,6 +162,19 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
               teacherId: editingTeacher.id,
             },
           });
+
+          // Sync house documents: keep House.teacherInchargeId in step with Teacher.houseInchargeId
+          const prevHouseId = editingTeacher.houseInchargeId || '';
+          const newHouseId = formData.houseInchargeId;
+          if (prevHouseId !== newHouseId) {
+            if (prevHouseId) {
+              await updateDoc(doc(db, 'houses', prevHouseId), { teacherInchargeId: '' });
+            }
+            if (newHouseId) {
+              await updateDoc(doc(db, 'houses', newHouseId), { teacherInchargeId: editingTeacher.id });
+            }
+          }
+
           await logActivity(user, 'UPDATE_TEACHER', 'Teachers', `Updated teacher profile for ${formData.name}`);
           showToast('Teacher updated successfully!', 'success');
         } catch (err: any) {
@@ -183,6 +196,10 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
           version: 1,
           createdAt: new Date().toISOString(),
         });
+        // If new teacher is appointed as house incharge, sync the house document
+        if (formData.houseInchargeId) {
+          await updateDoc(doc(db, 'houses', formData.houseInchargeId), { teacherInchargeId: teacherRef.id });
+        }
         await setDoc(doc(db, 'users', teacherUid), {
           uid: teacherUid,
           email: normalizedEmail,

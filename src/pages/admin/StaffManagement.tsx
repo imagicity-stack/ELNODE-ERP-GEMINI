@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { logActivity } from '../../services/activityService';
 import {
@@ -10,7 +10,7 @@ import {
   normalizeEmail,
   ConcurrentEditError,
 } from '../../services/staffService';
-import { Plus, Search, Edit2, Mail, UserPlus } from 'lucide-react';
+import { Plus, Search, Edit2, Mail, Phone, UserPlus } from 'lucide-react';
 import { useToast } from '../../components/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
 import { fmtDate } from '../../lib/utils';
@@ -21,7 +21,7 @@ interface StaffMember {
   name: string;
   email: string;
   phone?: string;
-  role: 'principal' | 'accounts' | 'admin' | 'security' | 'transport' | 'grievance_officer' | 'store_keeper';
+  role: 'principal' | 'accounts' | 'admin' | 'security' | 'transport' | 'grievance_officer' | 'store_keeper' | 'guard' | 'maid';
   joiningDate: string;
   salary: number;
   status: 'active' | 'on-leave' | 'resigned';
@@ -30,9 +30,15 @@ interface StaffMember {
 }
 
 const ALLOWED_ROLES: ReadonlyArray<StaffMember['role']> = [
-  'principal', 'accounts', 'admin', 'security', 'transport', 'grievance_officer', 'store_keeper',
+  'principal', 'accounts', 'admin', 'security', 'transport', 'grievance_officer', 'store_keeper', 'guard', 'maid',
 ];
+
+// These roles have no portal access and no email/auth account
+const INTERNAL_ROLES: ReadonlyArray<string> = ['security', 'transport', 'store_keeper', 'guard', 'maid'];
+
+// These roles get full portal access + auth account
 const PORTAL_ROLES: ReadonlyArray<string> = ['principal', 'accounts', 'grievance_officer'];
+
 const DEFAULT_PASSWORD = 'password123';
 
 function getInitials(name: string) {
@@ -43,11 +49,20 @@ const roleLabel: Record<string, string> = {
   principal: 'Principal',
   accounts: 'Accounts',
   admin: 'Admin',
+  grievance_officer: 'Grievance Officer',
   security: 'Security',
   transport: 'Transport',
-  grievance_officer: 'Grievance Officer',
   store_keeper: 'Store Keeper',
+  guard: 'Guard',
+  maid: 'Maid / Housekeeping',
 };
+
+// Sections for the staff list display
+const STAFF_SECTIONS: { heading: string; roles: string[] }[] = [
+  { heading: 'Portal Access', roles: ['principal', 'accounts', 'grievance_officer'] },
+  { heading: 'Administration', roles: ['admin'] },
+  { heading: 'Support & Operations', roles: ['security', 'transport', 'store_keeper', 'guard', 'maid'] },
+];
 
 export default function StaffManagement({ user }: { user: any }) {
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -66,10 +81,12 @@ export default function StaffManagement({ user }: { user: any }) {
     name: '',
     email: '',
     phone: '',
-    role: 'accounts',
+    role: 'accounts' as StaffMember['role'],
     joiningDate: '',
     salary: '',
   });
+
+  const isInternalRole = INTERNAL_ROLES.includes(formData.role);
 
   const fetchStaff = async () => {
     try {
@@ -91,17 +108,31 @@ export default function StaffManagement({ user }: { user: any }) {
     setLoading(true);
     try {
       const salaryNum = Number(formData.salary);
-      const validationErr = validateStaffInput({
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        salary: salaryNum,
-      });
-      if (validationErr) {
-        showToast(validationErr, 'error');
+      const isInternal = INTERNAL_ROLES.includes(formData.role);
+
+      if (!formData.name.trim()) {
+        showToast('Name is required', 'error');
         return;
       }
-      if (!ALLOWED_ROLES.includes(formData.role as StaffMember['role'])) {
+      if (!isInternal) {
+        const validationErr = validateStaffInput({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          salary: salaryNum,
+        });
+        if (validationErr) {
+          showToast(validationErr, 'error');
+          return;
+        }
+      } else {
+        if (isNaN(salaryNum) || salaryNum < 0) {
+          showToast('Salary must be a valid number', 'error');
+          return;
+        }
+      }
+
+      if (!ALLOWED_ROLES.includes(formData.role)) {
         showToast('Invalid role selected', 'error');
         return;
       }
@@ -110,40 +141,54 @@ export default function StaffManagement({ user }: { user: any }) {
         return;
       }
 
-      const normalizedEmail = normalizeEmail(formData.email);
-      const portalRole = PORTAL_ROLES.includes(formData.role) ? formData.role : 'office_staff';
-
+      // ── EDIT PATH ──────────────────────────────────────────────
       if (isEditMode && editingStaff) {
-        try {
-          await updateStaffWithUserSync({
-            collectionName: 'staff',
-            docId: editingStaff.id,
-            expectedVersion: editingStaff.version ?? 0,
-            updates: {
-              employeeId: formData.employeeId.trim(),
-              name: formData.name.trim(),
-              email: normalizedEmail,
-              phone: formData.phone,
-              role: formData.role,
-              joiningDate: formData.joiningDate,
-              salary: salaryNum,
-            },
-            originalEmail: editingStaff.email,
-            userProfileUpdates: {
-              name: formData.name.trim(),
-              email: normalizedEmail,
-              phone: formData.phone,
-              role: portalRole,
-            },
+        const wasInternal = INTERNAL_ROLES.includes(editingStaff.role);
+        if (wasInternal || isInternal) {
+          // Internal staff: skip user sync, just update staff doc directly
+          await updateDoc(doc(db, 'staff', editingStaff.id), {
+            employeeId: formData.employeeId.trim(),
+            name: formData.name.trim(),
+            phone: formData.phone,
+            role: formData.role,
+            joiningDate: formData.joiningDate,
+            salary: salaryNum,
           });
           showToast('Staff member updated successfully!', 'success');
-        } catch (err: any) {
-          if (err instanceof ConcurrentEditError) {
-            showToast(err.message, 'error');
-            fetchStaff();
-            return;
+        } else {
+          const normalizedEmail = normalizeEmail(formData.email);
+          const portalRole = PORTAL_ROLES.includes(formData.role) ? formData.role : 'office_staff';
+          try {
+            await updateStaffWithUserSync({
+              collectionName: 'staff',
+              docId: editingStaff.id,
+              expectedVersion: editingStaff.version ?? 0,
+              updates: {
+                employeeId: formData.employeeId.trim(),
+                name: formData.name.trim(),
+                email: normalizedEmail,
+                phone: formData.phone,
+                role: formData.role,
+                joiningDate: formData.joiningDate,
+                salary: salaryNum,
+              },
+              originalEmail: editingStaff.email,
+              userProfileUpdates: {
+                name: formData.name.trim(),
+                email: normalizedEmail,
+                phone: formData.phone,
+                role: portalRole,
+              },
+            });
+            showToast('Staff member updated successfully!', 'success');
+          } catch (err: any) {
+            if (err instanceof ConcurrentEditError) {
+              showToast(err.message, 'error');
+              fetchStaff();
+              return;
+            }
+            throw err;
           }
-          throw err;
         }
         setIsModalOpen(false);
         setIsEditMode(false);
@@ -152,18 +197,13 @@ export default function StaffManagement({ user }: { user: any }) {
         return;
       }
 
-      // CREATE PATH — duplicate-email check first so we don't orphan auth users
-      await ensureUniqueEmail(normalizedEmail);
-
-      // Provision the auth account (also cleans up secondary app afterwards)
-      const staffUid = await provisionStaffAuthAccount(normalizedEmail, DEFAULT_PASSWORD);
-
-      let staffRef;
-      try {
-        staffRef = await addDoc(collection(db, 'staff'), {
+      // ── CREATE PATH ────────────────────────────────────────────
+      if (isInternal) {
+        // Internal-only: no email, no auth account
+        await addDoc(collection(db, 'staff'), {
           employeeId: formData.employeeId.trim(),
           name: formData.name.trim(),
-          email: normalizedEmail,
+          email: '',
           phone: formData.phone,
           role: formData.role,
           joiningDate: formData.joiningDate,
@@ -172,57 +212,70 @@ export default function StaffManagement({ user }: { user: any }) {
           version: 1,
           createdAt: new Date().toISOString(),
         });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, 'staff');
-        throw err;
-      }
-
-      try {
-        await setDoc(doc(db, 'users', staffUid), {
-          uid: staffUid,
-          email: normalizedEmail,
+        logActivity(user, 'Staff Member Added', 'Staff', `Added ${formData.role} ${formData.name.trim()}`, {
           name: formData.name.trim(),
-          phone: formData.phone,
-          role: portalRole,
-          staffId: staffRef.id,
-          createdAt: new Date().toISOString(),
+          role: formData.role,
+          employeeId: formData.employeeId.trim(),
         });
-        logActivity(
-          user,
-          'Staff User Provisioned',
-          'Staff',
-          `Provisioned portal user account for ${normalizedEmail}`,
-          { email: normalizedEmail, role: portalRole, staffId: staffRef.id }
-        );
-      } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `users/${staffUid}`);
-        throw err;
-      }
+      } else {
+        const normalizedEmail = normalizeEmail(formData.email);
+        const portalRole = PORTAL_ROLES.includes(formData.role) ? formData.role : 'office_staff';
 
-      logActivity(
-        user,
-        'Staff Member Added',
-        'Staff',
-        `Added staff member ${formData.name.trim()} as ${formData.role}`,
-        {
+        // Duplicate-email check before we create an orphaned auth user
+        await ensureUniqueEmail(normalizedEmail);
+
+        const staffUid = await provisionStaffAuthAccount(normalizedEmail, DEFAULT_PASSWORD);
+
+        let staffRef;
+        try {
+          staffRef = await addDoc(collection(db, 'staff'), {
+            employeeId: formData.employeeId.trim(),
+            name: formData.name.trim(),
+            email: normalizedEmail,
+            phone: formData.phone,
+            role: formData.role,
+            joiningDate: formData.joiningDate,
+            salary: salaryNum,
+            status: 'active',
+            version: 1,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, 'staff');
+          throw err;
+        }
+
+        try {
+          await setDoc(doc(db, 'users', staffUid), {
+            uid: staffUid,
+            email: normalizedEmail,
+            name: formData.name.trim(),
+            phone: formData.phone,
+            role: portalRole,
+            staffId: staffRef.id,
+            createdAt: new Date().toISOString(),
+          });
+          logActivity(user, 'Staff User Provisioned', 'Staff', `Provisioned portal user for ${normalizedEmail}`, {
+            email: normalizedEmail,
+            role: portalRole,
+            staffId: staffRef.id,
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `users/${staffUid}`);
+          throw err;
+        }
+
+        logActivity(user, 'Staff Member Added', 'Staff', `Added staff member ${formData.name.trim()} as ${formData.role}`, {
           name: formData.name.trim(),
           role: formData.role,
           email: normalizedEmail,
           employeeId: formData.employeeId.trim(),
-        }
-      );
+        });
+      }
 
       setIsModalOpen(false);
       fetchStaff();
-      setFormData({
-        employeeId: '',
-        name: '',
-        email: '',
-        phone: '',
-        role: 'accounts',
-        joiningDate: '',
-        salary: '',
-      });
+      setFormData({ employeeId: '', name: '', email: '', phone: '', role: 'accounts', joiningDate: '', salary: '' });
       showToast('Staff member created successfully!', 'success');
     } catch (err: any) {
       console.error(err);
@@ -242,7 +295,7 @@ export default function StaffManagement({ user }: { user: any }) {
     setFormData({
       employeeId: member.employeeId || '',
       name: member.name,
-      email: member.email,
+      email: member.email || '',
       phone: member.phone || '',
       role: member.role,
       joiningDate: member.joiningDate,
@@ -260,9 +313,20 @@ export default function StaffManagement({ user }: { user: any }) {
 
   const filteredStaff = staff.filter(m =>
     m.name.toLowerCase().includes(search.toLowerCase()) ||
-    m.email.toLowerCase().includes(search.toLowerCase()) ||
-    (m.role || '').toLowerCase().includes(search.toLowerCase())
+    (m.email || '').toLowerCase().includes(search.toLowerCase()) ||
+    (m.role || '').toLowerCase().includes(search.toLowerCase()) ||
+    (m.phone || '').includes(search)
   );
+
+  // Group filtered staff by section
+  const staffBySection = STAFF_SECTIONS.map(section => ({
+    ...section,
+    members: filteredStaff.filter(m => section.roles.includes(m.role)),
+  })).filter(s => s.members.length > 0);
+
+  // Catch-all for any roles not in a defined section
+  const allSectionRoles = STAFF_SECTIONS.flatMap(s => s.roles);
+  const ungrouped = filteredStaff.filter(m => !allSectionRoles.includes(m.role));
 
   return (
     <>
@@ -285,12 +349,12 @@ export default function StaffManagement({ user }: { user: any }) {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search staff..."
+            placeholder="Search staff…"
             style={{ border: 0, outline: 'none', background: 'transparent', flex: 1, fontSize: 14, fontFamily: 'var(--body)', color: 'var(--ink)' }}
           />
         </div>
 
-        {/* Staff cards */}
+        {/* Sectioned staff cards */}
         {filteredStaff.length === 0 ? (
           <div className="card" style={{ padding: 48, textAlign: 'center' }}>
             <p className="muted" style={{ fontSize: 14 }}>
@@ -298,52 +362,32 @@ export default function StaffManagement({ user }: { user: any }) {
             </p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-            {filteredStaff.map(member => (
-              <div key={member.id} className="card" style={{ padding: '16px 18px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                  {/* Avatar */}
-                  <div style={{
-                    width: 40, height: 40, borderRadius: '50%', background: 'var(--accent)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0,
-                  }}>
-                    {getInitials(member.name)}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', marginBottom: 4 }}>
-                      {member.name}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-                      <span className="chip solid" style={{ fontSize: 11 }}>{roleLabel[member.role] || member.role}</span>
-                      {member.status === 'active' && (
-                        <span className="chip" style={{ fontSize: 11, color: 'var(--leaf)', borderColor: 'var(--leaf)' }}>Active</span>
-                      )}
-                      {member.status === 'on-leave' && (
-                        <span className="chip" style={{ fontSize: 11, color: 'var(--coral)', borderColor: 'var(--coral)' }}>On Leave</span>
-                      )}
-                      {member.status === 'resigned' && (
-                        <span className="chip" style={{ fontSize: 11 }}>Resigned</span>
-                      )}
-                    </div>
-                    <div className="muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                      <Mail size={11} /> {member.email}
-                    </div>
-                    {member.joiningDate && (
-                      <div className="mono tiny" style={{ marginTop: 2 }}>
-                        Joined {fmtDate(member.joiningDate)}
-                      </div>
-                    )}
-                  </div>
-                  {!readOnly && (
-                    <button className="icon-btn" onClick={() => handleEdit(member)} title="Edit" style={{ flexShrink: 0 }}>
-                      <Edit2 size={14} />
-                    </button>
-                  )}
+          <>
+            {staffBySection.map(section => (
+              <div key={section.heading}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)', padding: '4px 2px 8px' }}>
+                  {section.heading}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 20 }}>
+                  {section.members.map(member => (
+                    <StaffCard key={member.id} member={member} readOnly={readOnly} onEdit={handleEdit} />
+                  ))}
                 </div>
               </div>
             ))}
-          </div>
+            {ungrouped.length > 0 && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)', padding: '4px 2px 8px' }}>
+                  Other
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 20 }}>
+                  {ungrouped.map(member => (
+                    <StaffCard key={member.id} member={member} readOnly={readOnly} onEdit={handleEdit} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -383,39 +427,29 @@ export default function StaffManagement({ user }: { user: any }) {
               />
             </FormField>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="Email Address" required>
-              <Input
-                type="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </FormField>
-            <FormField label="Phone Number" required>
-              <Input
-                type="tel"
-                required
-                placeholder="10-digit number"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-              />
-            </FormField>
-          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Role" required>
               <Select
                 required
                 value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value as StaffMember['role'], email: '' })}
               >
-                <option value="principal">Principal</option>
-                <option value="accounts">Accounts</option>
-                <option value="grievance_officer">Grievance Officer</option>
-                <option value="admin">Admin Staff</option>
-                <option value="security">Security</option>
-                <option value="transport">Transport</option>
-                <option value="store_keeper">Store Keeper</option>
+                <optgroup label="Portal Access">
+                  <option value="principal">Principal</option>
+                  <option value="accounts">Accounts</option>
+                  <option value="grievance_officer">Grievance Officer</option>
+                </optgroup>
+                <optgroup label="Administration">
+                  <option value="admin">Admin Staff</option>
+                </optgroup>
+                <optgroup label="Support & Operations">
+                  <option value="security">Security</option>
+                  <option value="transport">Transport</option>
+                  <option value="store_keeper">Store Keeper</option>
+                  <option value="guard">Guard</option>
+                  <option value="maid">Maid / Housekeeping</option>
+                </optgroup>
               </Select>
             </FormField>
             <FormField label="Salary" required>
@@ -427,6 +461,28 @@ export default function StaffManagement({ user }: { user: any }) {
               />
             </FormField>
           </div>
+
+          {/* Email only for portal/admin roles */}
+          {!isInternalRole && (
+            <FormField label="Email Address" required hint="Used to create a portal login account">
+              <Input
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+            </FormField>
+          )}
+
+          <FormField label="Phone Number" hint={isInternalRole ? 'Optional — for internal records only' : undefined}>
+            <Input
+              type="tel"
+              placeholder="10-digit number"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+            />
+          </FormField>
+
           <FormField label="Joining Date" required>
             <Input
               type="date"
@@ -435,8 +491,68 @@ export default function StaffManagement({ user }: { user: any }) {
               onChange={(e) => setFormData({ ...formData, joiningDate: e.target.value })}
             />
           </FormField>
+
+          {isInternalRole && (
+            <div style={{ background: 'var(--cream-2)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: 'var(--ink-3)' }}>
+              This role is for internal record-keeping only. No portal login will be created.
+            </div>
+          )}
         </form>
       </Modal>
     </>
+  );
+}
+
+function StaffCard({ member, readOnly, onEdit }: { member: StaffMember; readOnly: boolean; onEdit: (m: StaffMember) => void }) {
+  const isInternal = INTERNAL_ROLES.includes(member.role);
+  return (
+    <div className="card" style={{ padding: '16px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: '50%', background: 'var(--accent)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0,
+        }}>
+          {member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', marginBottom: 4 }}>
+            {member.name}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+            <span className="chip solid" style={{ fontSize: 11 }}>{roleLabel[member.role] || member.role}</span>
+            {member.status === 'active' && (
+              <span className="chip" style={{ fontSize: 11, color: 'var(--leaf)', borderColor: 'var(--leaf)' }}>Active</span>
+            )}
+            {member.status === 'on-leave' && (
+              <span className="chip" style={{ fontSize: 11, color: 'var(--coral)', borderColor: 'var(--coral)' }}>On Leave</span>
+            )}
+            {member.status === 'resigned' && (
+              <span className="chip" style={{ fontSize: 11 }}>Resigned</span>
+            )}
+          </div>
+          {isInternal ? (
+            <div className="muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+              <Phone size={11} />
+              {member.phone ? member.phone : <span style={{ fontStyle: 'italic' }}>No phone on record</span>}
+            </div>
+          ) : (
+            <div className="muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+              <Mail size={11} /> {member.email || '—'}
+            </div>
+          )}
+          {member.joiningDate && (
+            <div className="mono tiny" style={{ marginTop: 2 }}>
+              Joined {fmtDate(member.joiningDate)}
+            </div>
+          )}
+        </div>
+        {!readOnly && (
+          <button className="icon-btn" onClick={() => onEdit(member)} title="Edit" style={{ flexShrink: 0 }}>
+            <Edit2 size={14} />
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
