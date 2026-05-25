@@ -126,18 +126,16 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isAnyAdmin()
                     && request.resource.data.get('version', 0) == 1;
-      // Admins may update any field; teachers may self-edit only safe
-      // profile fields on their own teacher doc. Both paths must bump version.
-      allow update: if request.resource.data.get('version', 1)
-                       == resource.data.get('version', 0) + 1
-                    && (
-                      isAnyAdmin() ||
-                      (
-                        isTeacher() &&
-                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teacherId', '') == teacherId &&
-                        request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['name', 'phone', 'photoURL', 'version', 'updatedAt'])
-                      )
+      // Admins may update any field freely (no version check — they have full control and
+      // may write partial updates such as houseInchargeId sync from HouseManagement).
+      // Teachers may only self-edit safe profile fields and must bump version for optimistic concurrency.
+      allow update: if isAnyAdmin() ||
+                    (
+                      isTeacher() &&
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teacherId', '') == teacherId &&
+                      request.resource.data.get('version', 1) == resource.data.get('version', 0) + 1 &&
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['name', 'phone', 'photoURL', 'version', 'updatedAt'])
                     );
       allow delete: if isAnyAdmin();
     }
