@@ -112,11 +112,20 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const { showToast } = useToast();
 
   // Bulk import state
+  type ImportResult = {
+    name: string;
+    admissionNumber: string;
+    status: 'ok' | 'error' | 'duplicate';
+    message?: string;
+    warnings?: string[];
+  };
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
   const [importErrors, setImportErrors] = useState<string[]>([]);
-  const [importProgress, setImportProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
-  const [importResults, setImportResults] = useState<{ name: string; status: 'ok' | 'error'; message?: string }[]>([]);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number; failed: number; skipped: number } | null>(null);
+  const [importResults, setImportResults] = useState<ImportResult[]>([]);
+  const [importRowWarnings, setImportRowWarnings] = useState<Record<number, string[]>>({});
+  const [importDbDuplicates, setImportDbDuplicates] = useState<Set<string>>(new Set());
 
   // Form State
   const [formData, setFormData] = useState({
@@ -456,19 +465,54 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       const text = e.target?.result as string;
       const rows = parseCSV(text);
       const errors: string[] = [];
+      const rowWarnings: Record<number, string[]> = {};
+      const dbDuplicates = new Set<string>();
+
+      // Collect existing admission/school numbers from already-loaded students
+      const existingAdmNos = new Set(
+        students.flatMap(s => [s.admissionNumber, s.schoolNumber].filter(Boolean))
+      );
+      // Track intra-file admission numbers to catch duplicates within the CSV
+      const seenInFile = new Map<string, number>();
+
       rows.forEach((row, i) => {
         const rowNum = i + 2;
-        if (!row.name) errors.push(`Row ${rowNum}: name is required`);
-        if (!row.admissionnumber) errors.push(`Row ${rowNum}: admissionNumber is required`);
-        if (!row.class) errors.push(`Row ${rowNum}: class is required`);
-        if (!row.section) errors.push(`Row ${rowNum}: section is required`);
-        if (row.gender && !['male', 'female', 'other'].includes(row.gender.toLowerCase())) errors.push(`Row ${rowNum}: gender must be male/female/other (or left blank)`);
-        if (!row.fathername) errors.push(`Row ${rowNum}: fatherName is required`);
-        if (!row.mothername) errors.push(`Row ${rowNum}: motherName is required`);
-        if (!row.phone) errors.push(`Row ${rowNum}: phone is required`);
+        // ── Required field errors (block import) ──
+        if (!row.name?.trim()) errors.push(`Row ${rowNum}: Name is required`);
+        if (!row.admissionnumber?.trim()) errors.push(`Row ${rowNum}: admissionNumber is required`);
+        if (!row.class?.trim()) errors.push(`Row ${rowNum}: class is required`);
+        if (!row.section?.trim()) errors.push(`Row ${rowNum}: section is required`);
+        if (row.gender?.trim() && !['male', 'female', 'other'].includes(row.gender.trim().toLowerCase()))
+          errors.push(`Row ${rowNum}: gender must be male, female, or other`);
+        if (!row.fathername?.trim()) errors.push(`Row ${rowNum}: fatherName is required`);
+        if (!row.mothername?.trim()) errors.push(`Row ${rowNum}: motherName is required`);
+        if (!row.phone?.trim()) errors.push(`Row ${rowNum}: phone is required`);
+
+        const admNo = row.admissionnumber?.trim();
+        if (admNo) {
+          // Intra-file duplicate — blocking error
+          if (seenInFile.has(admNo)) {
+            errors.push(`Row ${rowNum}: Admission number "${admNo}" appears twice in this file (also row ${seenInFile.get(admNo)! + 2})`);
+          } else {
+            seenInFile.set(admNo, i);
+            // Already in DB — will be skipped during import (not a blocking error)
+            if (existingAdmNos.has(admNo)) dbDuplicates.add(admNo);
+          }
+        }
+
+        // ── Optional field warnings (informational only) ──
+        const warns: string[] = [];
+        if (!row.gender?.trim()) warns.push('gender missing');
+        if (!row.house?.trim()) warns.push('house not assigned');
+        if (!row.address?.trim()) warns.push('address missing');
+        if (!row.transport?.trim()) warns.push('transport not set');
+        if (warns.length) rowWarnings[i] = warns;
       });
+
       setImportRows(rows);
       setImportErrors(errors);
+      setImportRowWarnings(rowWarnings);
+      setImportDbDuplicates(dbDuplicates);
       setImportProgress(null);
       setImportResults([]);
     };
@@ -477,6 +521,12 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
   const handleBulkImport = async () => {
     if (importRows.length === 0 || importErrors.length > 0) return;
+
+    // Fresh duplicate check from DB at import time (in case DB changed since CSV was loaded)
+    const existingSnap = await getDocs(collection(db, 'students'));
+    const existingAdmNos = new Set(
+      existingSnap.docs.flatMap(d => [d.data().admissionNumber, d.data().schoolNumber].filter(Boolean))
+    );
 
     let secondaryApp;
     try { secondaryApp = getApp('Secondary'); }
@@ -499,20 +549,38 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       }
     };
 
-    setImportProgress({ done: 0, total: importRows.length, failed: 0 });
-    const results: { name: string; status: 'ok' | 'error'; message?: string }[] = [];
+    setImportProgress({ done: 0, total: importRows.length, failed: 0, skipped: 0 });
+    const results: ImportResult[] = [];
     let failed = 0;
+    let skipped = 0;
 
     for (let i = 0; i < importRows.length; i++) {
       const row = importRows[i];
-      const name = row.name;
-      const admissionNumber = row.admissionnumber;
-      const gender = row.gender?.toLowerCase();
-      const houseObj = houses.find(h => h.name.toLowerCase() === (row.house || '').toLowerCase());
-      const classObj = classes.find(c => c.name === row.class || c.name.toLowerCase() === row.class?.toLowerCase());
+      const name = row.name?.trim();
+      const admissionNumber = row.admissionnumber?.trim();
+      const rowWarns = importRowWarnings[i] || [];
+
+      // ── Skip existing admission numbers ──────────────────────────────────
+      if (admissionNumber && existingAdmNos.has(admissionNumber)) {
+        skipped++;
+        results.push({
+          name: name || `Row ${i + 2}`,
+          admissionNumber: admissionNumber || '',
+          status: 'duplicate',
+          message: 'Already exists in database — skipped',
+          warnings: rowWarns,
+        });
+        setImportProgress({ done: i + 1, total: importRows.length, failed, skipped });
+        setImportResults([...results]);
+        continue;
+      }
 
       try {
-        if (!classObj) throw new Error(`Class "${row.class}" not found`);
+        const gender = row.gender?.toLowerCase();
+        const houseObj = houses.find(h => h.name.toLowerCase() === (row.house || '').toLowerCase());
+        const classObj = classes.find(c => c.name === row.class || c.name.toLowerCase() === row.class?.toLowerCase());
+
+        if (!classObj) throw new Error(`Class "${row.class}" not found in the system`);
 
         const schoolNumber = admissionNumber;
         const studentEmail = `${schoolNumber}@${SCHOOL_DOMAIN}`;
@@ -520,7 +588,6 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
 
         const studentUid = await getOrCreateUser(studentEmail);
 
-        // Look up existing parent by phone (multi-child families share one login)
         const normalizePhone = (p: string) => (p || '').replace(/\D/g, '').slice(-10);
         const normalizedPhone = normalizePhone(row.phone || '');
         const allParentsSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'parent')));
@@ -555,7 +622,6 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           academicHistory: row.academichistory || '',
           address: row.address || '',
           parentId: parentUid,
-          // feeStatus intentionally omitted — set only when a fee request is created
           photoURL: '',
           parentDetails: {
             fatherName: row.fathername,
@@ -599,18 +665,36 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           }, { merge: true });
         }
 
-        results.push({ name, status: 'ok' });
+        results.push({ name: name || `Row ${i + 2}`, admissionNumber: admissionNumber || '', status: 'ok', warnings: rowWarns });
       } catch (err: any) {
         failed++;
-        results.push({ name: name || `Row ${i + 2}`, status: 'error', message: err.message || 'Unknown error' });
+        results.push({ name: name || `Row ${i + 2}`, admissionNumber: admissionNumber || '', status: 'error', message: err.message || 'Unknown error' });
       }
 
-      setImportProgress({ done: i + 1, total: importRows.length, failed });
+      setImportProgress({ done: i + 1, total: importRows.length, failed, skipped });
       setImportResults([...results]);
     }
 
     fetchStudents();
-    await logActivity(user, 'BULK_IMPORT_STUDENTS', 'Students', `Bulk imported ${importRows.length - failed}/${importRows.length} students`);
+    const imported = results.filter(r => r.status === 'ok').length;
+    await logActivity(
+      user, 'BULK_IMPORT_STUDENTS', 'Students',
+      `Bulk import: ${imported} imported, ${skipped} skipped (duplicates), ${failed} failed — ${importRows.length} total rows`,
+    );
+  };
+
+  const handleDownloadImportReport = async () => {
+    const lines = [
+      'Name,Admission Number,Status,Details,Warnings',
+      ...importResults.map(r => [
+        `"${r.name}"`,
+        `"${r.admissionNumber}"`,
+        `"${r.status === 'ok' ? 'Imported' : r.status === 'duplicate' ? 'Skipped (Duplicate)' : 'Failed'}"`,
+        `"${r.message || ''}"`,
+        `"${(r.warnings || []).join('; ')}"`,
+      ].join(','))
+    ];
+    await saveText(lines.join('\n'), `import_report_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const handleEdit = (student: Student) => {
@@ -951,7 +1035,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
             <button
               className="btn ghost"
               style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }}
-              onClick={() => { setImportRows([]); setImportErrors([]); setImportProgress(null); setImportResults([]); setImportModalOpen(true); }}
+              onClick={() => { setImportRows([]); setImportErrors([]); setImportProgress(null); setImportResults([]); setImportRowWarnings({}); setImportDbDuplicates(new Set()); setImportModalOpen(true); }}
             >
               <Upload size={14} /> Bulk Import
             </button>
@@ -1400,7 +1484,9 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                 disabled={importRows.length === 0 || importErrors.length > 0 || !!importProgress}
               >
                 <Upload size={14} />
-                {importRows.length > 0 ? `Import ${importRows.length} Students` : 'Import'}
+                {importRows.length > 0
+                  ? `Import ${importRows.length - importDbDuplicates.size} Student${importRows.length - importDbDuplicates.size !== 1 ? 's' : ''}${importDbDuplicates.size > 0 ? ` (${importDbDuplicates.size} will skip)` : ''}`
+                  : 'Import'}
               </button>
             </div>
           </div>
@@ -1447,77 +1533,143 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           {/* Preview table */}
           {importRows.length > 0 && importErrors.length === 0 && !importProgress && (
             <div>
-              <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-3)', marginBottom: 8 }}>
-                Preview — {importRows.length} student{importRows.length > 1 ? 's' : ''} ready to import
-              </p>
-              <div className="card" style={{ padding: 0, overflow: 'hidden', maxHeight: 210, overflowY: 'auto' }}>
+              {/* Summary badges */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-3)' }}>
+                  Preview
+                </span>
+                <span style={{ background: 'oklch(0.95 0.07 145)', color: 'var(--leaf)', borderRadius: 99, fontSize: 11, fontWeight: 700, padding: '2px 8px' }}>
+                  ✓ {importRows.length - importDbDuplicates.size} to import
+                </span>
+                {importDbDuplicates.size > 0 && (
+                  <span style={{ background: 'oklch(0.96 0.08 85)', color: 'oklch(0.52 0.18 85)', borderRadius: 99, fontSize: 11, fontWeight: 700, padding: '2px 8px' }}>
+                    ⊘ {importDbDuplicates.size} already exist (will skip)
+                  </span>
+                )}
+                {Object.keys(importRowWarnings).length > 0 && (
+                  <span style={{ background: 'oklch(0.96 0.05 60)', color: 'oklch(0.52 0.15 60)', borderRadius: 99, fontSize: 11, fontWeight: 700, padding: '2px 8px' }}>
+                    ⚠ {Object.keys(importRowWarnings).length} with missing optional fields
+                  </span>
+                )}
+              </div>
+              <div className="card" style={{ padding: 0, overflow: 'hidden', maxHeight: 230, overflowY: 'auto' }}>
                 <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'var(--cream-2)', position: 'sticky', top: 0 }}>
-                      {['Name', 'Adm. No.', 'Class', 'Sec.', 'Gender', 'Father', 'Phone'].map(h => (
+                      {['', 'Name', 'Adm. No.', 'Class', 'Sec.', 'Gender', 'Father', 'Phone'].map(h => (
                         <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-3)' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {importRows.map((row, i) => (
-                      <tr key={i} style={{ borderTop: '1px solid var(--line)' }}>
-                        <td style={{ padding: '7px 12px', fontWeight: 600, color: 'var(--ink)' }}>{row.name}</td>
-                        <td style={{ padding: '7px 12px', fontFamily: 'var(--mono)', color: 'var(--ink-2)' }}>{row.admissionnumber}</td>
-                        <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.class}</td>
-                        <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.section}</td>
-                        <td style={{ padding: '7px 12px', color: 'var(--ink-2)', textTransform: 'capitalize' }}>{row.gender}</td>
-                        <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.fathername}</td>
-                        <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.phone}</td>
-                      </tr>
-                    ))}
+                    {importRows.map((row, i) => {
+                      const isDup = importDbDuplicates.has(row.admissionnumber?.trim());
+                      const warns = importRowWarnings[i];
+                      return (
+                        <tr key={i} style={{ borderTop: '1px solid var(--line)', background: isDup ? 'oklch(0.97 0.05 85)' : 'transparent', opacity: isDup ? 0.7 : 1 }}>
+                          <td style={{ padding: '7px 8px 7px 12px', width: 24 }}>
+                            {isDup ? (
+                              <span title="Already in database — will skip" style={{ fontSize: 14, lineHeight: 1 }}>⊘</span>
+                            ) : warns ? (
+                              <span title={warns.join(', ')} style={{ fontSize: 14, lineHeight: 1, cursor: 'help' }}>⚠</span>
+                            ) : (
+                              <span style={{ fontSize: 14, lineHeight: 1, color: 'var(--leaf)' }}>✓</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '7px 12px', fontWeight: 600, color: 'var(--ink)' }}>{row.name}</td>
+                          <td style={{ padding: '7px 12px', fontFamily: 'var(--mono)', color: 'var(--ink-2)' }}>{row.admissionnumber}</td>
+                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.class}</td>
+                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.section}</td>
+                          <td style={{ padding: '7px 12px', color: row.gender ? 'var(--ink-2)' : 'var(--ink-4)', textTransform: 'capitalize', fontStyle: row.gender ? 'normal' : 'italic' }}>{row.gender || '—'}</td>
+                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.fathername}</td>
+                          <td style={{ padding: '7px 12px', color: 'var(--ink-2)' }}>{row.phone}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {/* Progress */}
+          {/* Progress + Report */}
           {importProgress && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Progress bar */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Importing… {importProgress.done} / {importProgress.total}</span>
-                {importProgress.failed > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--coral)' }}>{importProgress.failed} failed</span>}
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>
+                  {importProgress.done < importProgress.total ? `Importing… ${importProgress.done} / ${importProgress.total}` : 'Done'}
+                </span>
+                <div style={{ display: 'flex', gap: 10, fontSize: 12 }}>
+                  {importProgress.skipped > 0 && <span style={{ fontWeight: 700, color: 'oklch(0.52 0.18 85)' }}>{importProgress.skipped} skipped</span>}
+                  {importProgress.failed > 0 && <span style={{ fontWeight: 700, color: 'var(--coral)' }}>{importProgress.failed} failed</span>}
+                </div>
               </div>
-              <div style={{ height: 8, background: 'var(--line)', borderRadius: 99, overflow: 'hidden' }}>
-                <div
-                  style={{ height: 8, background: 'var(--ink)', borderRadius: 99, transition: 'width .3s', width: `${(importProgress.done / importProgress.total) * 100}%` }}
-                />
+              <div style={{ height: 6, background: 'var(--line)', borderRadius: 99, overflow: 'hidden' }}>
+                <div style={{ height: 6, background: 'var(--accent)', borderRadius: 99, transition: 'width .3s', width: `${(importProgress.done / importProgress.total) * 100}%` }} />
               </div>
 
+              {/* Live result rows */}
               {importResults.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 192, overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 200, overflowY: 'auto' }}>
                   {importResults.map((r, i) => (
                     <div key={i} style={{
-                      display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '6px 12px', borderRadius: 8,
-                      background: r.status === 'ok' ? 'oklch(0.95 0.07 145)' : 'oklch(0.97 0.02 30)',
-                      color: r.status === 'ok' ? 'var(--leaf)' : 'var(--coral)',
+                      display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, padding: '6px 12px', borderRadius: 8,
+                      background: r.status === 'ok' ? 'oklch(0.95 0.07 145)' : r.status === 'duplicate' ? 'oklch(0.96 0.05 85)' : 'oklch(0.97 0.02 30)',
                     }}>
-                      {r.status === 'ok' ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-                      <span style={{ fontWeight: 600 }}>{r.name}</span>
-                      {r.message && <span style={{ opacity: 0.7 }}>— {r.message}</span>}
+                      <span style={{ marginTop: 1, flexShrink: 0 }}>
+                        {r.status === 'ok' ? <CheckCircle2 size={13} style={{ color: 'var(--leaf)' }} /> : r.status === 'duplicate' ? <span style={{ fontSize: 13, color: 'oklch(0.52 0.18 85)' }}>⊘</span> : <XCircle size={13} style={{ color: 'var(--coral)' }} />}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.name}</span>
+                        <span className="mono" style={{ fontSize: 11, color: 'var(--ink-3)', marginLeft: 6 }}>{r.admissionNumber}</span>
+                        {r.message && <div style={{ fontSize: 11, color: r.status === 'error' ? 'var(--coral)' : 'var(--ink-3)', marginTop: 1 }}>{r.message}</div>}
+                        {r.warnings && r.warnings.length > 0 && r.status === 'ok' && (
+                          <div style={{ fontSize: 11, color: 'oklch(0.52 0.15 60)', marginTop: 1 }}>⚠ {r.warnings.join(' · ')}</div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {importProgress.done === importProgress.total && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, fontSize: 13, fontWeight: 600,
-                  background: importProgress.failed === 0 ? 'oklch(0.95 0.07 145)' : 'oklch(0.97 0.08 85)',
-                  color: importProgress.failed === 0 ? 'var(--leaf)' : 'oklch(0.55 0.15 85)',
-                }}>
-                  <CheckCircle2 size={16} />
-                  {importProgress.failed === 0
-                    ? `All ${importProgress.total} students imported successfully!`
-                    : `${importProgress.total - importProgress.failed} imported, ${importProgress.failed} failed — check errors above`}
-                </div>
-              )}
+              {/* Summary + Download Report */}
+              {importProgress.done === importProgress.total && (() => {
+                const imported = importResults.filter(r => r.status === 'ok').length;
+                const skipped  = importResults.filter(r => r.status === 'duplicate').length;
+                const failed   = importResults.filter(r => r.status === 'error').length;
+                const withWarns = importResults.filter(r => r.status === 'ok' && r.warnings?.length).length;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                      <div style={{ background: 'oklch(0.95 0.07 145)', borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--leaf)' }}>{imported}</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--leaf)', opacity: 0.8 }}>Imported</div>
+                      </div>
+                      <div style={{ background: 'oklch(0.96 0.05 85)', borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: 'oklch(0.52 0.18 85)' }}>{skipped}</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'oklch(0.52 0.18 85)', opacity: 0.8 }}>Skipped</div>
+                      </div>
+                      <div style={{ background: failed > 0 ? 'oklch(0.97 0.02 30)' : 'var(--cream-2)', borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: failed > 0 ? 'var(--coral)' : 'var(--ink-3)' }}>{failed}</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: failed > 0 ? 'var(--coral)' : 'var(--ink-3)', opacity: 0.8 }}>Failed</div>
+                      </div>
+                    </div>
+                    {withWarns > 0 && (
+                      <div style={{ fontSize: 12, color: 'oklch(0.52 0.15 60)', padding: '8px 12px', background: 'oklch(0.96 0.05 60)', borderRadius: 8 }}>
+                        ⚠ {withWarns} student{withWarns > 1 ? 's' : ''} imported with missing optional fields — check the rows marked ⚠ above
+                      </div>
+                    )}
+                    <button
+                      className="btn ghost"
+                      style={{ width: '100%', justifyContent: 'center', fontSize: 13, gap: 6 }}
+                      onClick={handleDownloadImportReport}
+                    >
+                      <FileDown size={14} /> Download Import Report (.csv)
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
