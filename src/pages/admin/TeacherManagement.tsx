@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
@@ -22,6 +22,15 @@ import {
   ShieldCheck,
   Search,
   X,
+  ChevronDown,
+  ChevronRight,
+  Mail,
+  BookOpen,
+  CalendarDays,
+  Hash,
+  Tag,
+  Building2,
+  Layers,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -46,6 +55,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [expandedTeacherId, setExpandedTeacherId] = useState<string | null>(null);
 
   const { isReadOnly } = usePermissions(user.role);
   const readOnly = isReadOnly('teachers');
@@ -327,57 +337,115 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
           <>
             {/* Mobile cards — hidden on lg+ */}
             <div className="stack lg:hidden">
-              {filteredTeachers.map(teacher => (
-                <div key={teacher.id} className="card flex" style={{ gap: 12, alignItems: 'flex-start' }}>
-                  {/* Avatar */}
-                  {teacher.photoURL ? (
-                    <img src={teacher.photoURL} alt={teacher.name}
-                      style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                  ) : (
-                    <div className="avatar" style={{ width: 42, height: 42, fontSize: 15, flexShrink: 0 }}>
-                      {getInitials(teacher.name)}
-                    </div>
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{teacher.name}</p>
-                    {teacher.classTeacherOf?.classId && (
-                      <span className="chip" style={{ fontSize: 10, padding: '2px 8px', marginBottom: 4 }}>Class Teacher</span>
-                    )}
-                    {teacher.houseInchargeId && (
-                      <span className="chip" style={{ fontSize: 10, padding: '2px 8px', marginBottom: 4, marginLeft: 4 }}>House Incharge</span>
-                    )}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                      {teacher.subjects?.slice(0, 2).map(subId => {
-                        const sub = subjects.find(s => s.id === subId);
-                        return sub ? <span key={subId} className="chip solid" style={{ fontSize: 10, padding: '2px 8px' }}>{sub.name}</span> : null;
-                      })}
-                      {(teacher.subjects?.length ?? 0) > 2 && (
-                        <span className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>+{(teacher.subjects?.length ?? 0) - 2}</span>
+              {filteredTeachers.map(teacher => {
+                const isExpanded = expandedTeacherId === teacher.id;
+                const classTaught = teacher.classTeacherOf?.classId
+                  ? classes.find(c => c.id === teacher.classTeacherOf!.classId)
+                  : null;
+                const houseOfTeacher = teacher.houseInchargeId
+                  ? houses.find(h => h.id === teacher.houseInchargeId)
+                  : null;
+                return (
+                  <div key={teacher.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                    {/* Card header — tap to expand */}
+                    <div
+                      style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px 14px 12px', cursor: 'pointer' }}
+                      onClick={() => setExpandedTeacherId(isExpanded ? null : teacher.id)}
+                    >
+                      {teacher.photoURL ? (
+                        <img src={teacher.photoURL} alt={teacher.name}
+                          style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                      ) : (
+                        <div className="avatar" style={{ width: 42, height: 42, fontSize: 15, flexShrink: 0 }}>
+                          {getInitials(teacher.name)}
+                        </div>
                       )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{teacher.name}</p>
+                        {teacher.classTeacherOf?.classId && (
+                          <span className="chip" style={{ fontSize: 10, padding: '2px 8px', marginRight: 4 }}>Class Teacher</span>
+                        )}
+                        {teacher.houseInchargeId && (
+                          <span className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>House Incharge</span>
+                        )}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                          {teacher.subjects?.slice(0, 2).map(subId => {
+                            const sub = subjects.find(s => s.id === subId);
+                            return sub ? <span key={subId} className="chip solid" style={{ fontSize: 10, padding: '2px 8px' }}>{sub.name}</span> : null;
+                          })}
+                          {(teacher.subjects?.length ?? 0) > 2 && (
+                            <span className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>+{(teacher.subjects?.length ?? 0) - 2}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                        {!readOnly && (
+                          <button className="icon-btn" onClick={e => { e.stopPropagation(); handleEdit(teacher); }}>
+                            <Edit2 size={14} />
+                          </button>
+                        )}
+                        <span style={{ color: 'var(--ink-4)' }}>
+                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </span>
+                      </div>
                     </div>
-                    {teacher.phone && (
-                      <p className="muted tiny" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Phone size={11} /> {teacher.phone}
-                      </p>
-                    )}
-                    {teacher.tags && teacher.tags.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 5 }}>
-                        {teacher.tags.slice(0, 3).map(tag => (
-                          <span key={tag} className="chip" style={{ fontSize: 10, padding: '2px 7px', background: 'var(--cream-2)', color: 'var(--ink-3)' }}>{tag}</span>
-                        ))}
-                        {teacher.tags.length > 3 && (
-                          <span className="chip" style={{ fontSize: 10, padding: '2px 7px' }}>+{teacher.tags.length - 3}</span>
+
+                    {/* Expanded detail */}
+                    {isExpanded && (
+                      <div style={{ padding: '0 14px 16px', borderTop: '1px solid var(--line)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <div>
+                          <p className="eyebrow" style={{ marginBottom: 8 }}>Profile</p>
+                          <TeacherDetailRow icon={Mail} label="Email" value={teacher.email} />
+                          <TeacherDetailRow icon={Phone} label="Phone" value={teacher.phone || '—'} />
+                          <TeacherDetailRow icon={CalendarDays} label="Joining Date" value={teacher.joiningDetails || '—'} />
+                          <TeacherDetailRow icon={Hash} label="Employee ID" value={teacher.employeeId || '—'} />
+                        </div>
+                        <div>
+                          <p className="eyebrow" style={{ marginBottom: 8 }}>Academic</p>
+                          <TeacherDetailRow
+                            icon={GraduationCap}
+                            label="Class Teacher Of"
+                            value={classTaught
+                              ? `Class ${classTaught.name}${teacher.classTeacherOf?.section ? ` · Section ${teacher.classTeacherOf.section}` : ''}`
+                              : '—'}
+                          />
+                          <TeacherDetailRow
+                            icon={Building2}
+                            label="House Incharge"
+                            value={houseOfTeacher?.name || (teacher.houseInchargeId ? teacher.houseInchargeId : '—')}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+                            <div style={{ width: 26, height: 26, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <BookOpen size={12} style={{ color: 'var(--ink-3)' }} />
+                            </div>
+                            <div>
+                              <p className="eyebrow" style={{ marginBottom: 4 }}>All Subjects</p>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                {(teacher.subjects?.length ?? 0) === 0
+                                  ? <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>—</span>
+                                  : teacher.subjects.map(subId => {
+                                      const sub = subjects.find(s => s.id === subId);
+                                      return sub ? <span key={subId} className="chip" style={{ fontSize: 11, padding: '2px 8px' }}>{sub.name}</span> : null;
+                                    })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        {teacher.tags && teacher.tags.length > 0 && (
+                          <div>
+                            <p className="eyebrow" style={{ marginBottom: 8 }}>Tags</p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                              {teacher.tags.map(tag => (
+                                <span key={tag} className="chip" style={{ fontSize: 11, padding: '3px 10px' }}>{tag}</span>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
                     )}
                   </div>
-                  {!readOnly && (
-                    <button className="icon-btn" onClick={() => handleEdit(teacher)} style={{ flexShrink: 0 }}>
-                      <Edit2 size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Desktop table — hidden below lg */}
@@ -386,66 +454,170 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                      {['Teacher', 'Subjects', 'Phone', 'Role', ''].map(h => (
-                        <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: 11,
-                          textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--ink-3)' }}>{h}</th>
+                      {['', 'Teacher', 'Subjects', 'Phone', 'Role', ''].map((h, i) => (
+                        <th key={i} style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: 11,
+                          textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--ink-3)', width: i === 0 ? 32 : undefined }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTeachers.map(teacher => (
-                      <tr key={teacher.id} style={{ borderBottom: '1px solid var(--line-2)' }}>
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {teacher.photoURL ? (
-                              <img src={teacher.photoURL} alt={teacher.name}
-                                style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                            ) : (
-                              <div className="avatar" style={{ width: 34, height: 34, fontSize: 12 }}>
-                                {getInitials(teacher.name)}
+                    {filteredTeachers.map(teacher => {
+                      const isExpanded = expandedTeacherId === teacher.id;
+                      const classTaught = teacher.classTeacherOf?.classId
+                        ? classes.find(c => c.id === teacher.classTeacherOf!.classId)
+                        : null;
+                      const houseOfTeacher = teacher.houseInchargeId
+                        ? houses.find(h => h.id === teacher.houseInchargeId)
+                        : null;
+                      const tdStyle = { padding: '12px 16px', verticalAlign: 'middle' as const };
+                      return (
+                        <React.Fragment key={teacher.id}>
+                          <tr
+                            style={{ borderBottom: '1px solid var(--line-2)', cursor: 'pointer', background: isExpanded ? 'var(--cream-2)' : 'transparent', transition: 'background .1s' }}
+                            onClick={() => setExpandedTeacherId(isExpanded ? null : teacher.id)}
+                          >
+                            <td style={{ ...tdStyle, width: 32, color: 'var(--ink-4)' }}>
+                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </td>
+                            <td style={tdStyle}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                {teacher.photoURL ? (
+                                  <img src={teacher.photoURL} alt={teacher.name}
+                                    style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                                ) : (
+                                  <div className="avatar" style={{ width: 34, height: 34, fontSize: 12 }}>
+                                    {getInitials(teacher.name)}
+                                  </div>
+                                )}
+                                <div>
+                                  <p style={{ fontWeight: 700, marginBottom: 2 }}>{teacher.name}</p>
+                                  <p className="muted tiny">{teacher.email}</p>
+                                </div>
                               </div>
-                            )}
-                            <div>
-                              <p style={{ fontWeight: 700, marginBottom: 2 }}>{teacher.name}</p>
-                              <p className="muted tiny">{teacher.email}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {teacher.subjects?.slice(0, 2).map(subId => {
-                              const sub = subjects.find(s => s.id === subId);
-                              return sub ? <span key={subId} className="chip" style={{ fontSize: 11, padding: '2px 8px' }}>{sub.name}</span> : null;
-                            })}
-                            {(teacher.subjects?.length ?? 0) > 2 && (
-                              <span className="chip" style={{ fontSize: 11, padding: '2px 8px' }}>+{(teacher.subjects?.length ?? 0) - 2}</span>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <p className="muted tiny">{teacher.phone || '—'}</p>
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            {teacher.classTeacherOf?.classId && (
-                              <span className="chip solid" style={{ fontSize: 10, padding: '2px 8px' }}>Class Teacher</span>
-                            )}
-                            {teacher.houseInchargeId && (
-                              <span className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>House Incharge</span>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                          {!readOnly && (
-                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                              <button className="icon-btn" onClick={() => handleEdit(teacher)}><Edit2 size={14} /></button>
-                              <button className="icon-btn" onClick={() => handleDelete(teacher.id)}
-                                style={{ color: 'var(--coral)' }}><Trash2 size={14} /></button>
-                            </div>
+                            </td>
+                            <td style={tdStyle}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                {teacher.subjects?.slice(0, 2).map(subId => {
+                                  const sub = subjects.find(s => s.id === subId);
+                                  return sub ? <span key={subId} className="chip" style={{ fontSize: 11, padding: '2px 8px' }}>{sub.name}</span> : null;
+                                })}
+                                {(teacher.subjects?.length ?? 0) > 2 && (
+                                  <span className="chip" style={{ fontSize: 11, padding: '2px 8px' }}>+{(teacher.subjects?.length ?? 0) - 2}</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={tdStyle}>
+                              <p className="muted tiny">{teacher.phone || '—'}</p>
+                            </td>
+                            <td style={tdStyle}>
+                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                {teacher.classTeacherOf?.classId && (
+                                  <span className="chip solid" style={{ fontSize: 10, padding: '2px 8px' }}>Class Teacher</span>
+                                )}
+                                {teacher.houseInchargeId && (
+                                  <span className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>House Incharge</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={{ ...tdStyle, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                              {!readOnly && (
+                                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                  <button className="icon-btn" onClick={() => handleEdit(teacher)}><Edit2 size={14} /></button>
+                                  <button className="icon-btn" onClick={() => handleDelete(teacher.id)}
+                                    style={{ color: 'var(--coral)' }}><Trash2 size={14} /></button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+
+                          {/* Expanded detail row */}
+                          {isExpanded && (
+                            <tr style={{ background: 'var(--cream-2)' }}>
+                              <td colSpan={6} style={{ padding: '20px 24px', borderBottom: '1px solid var(--line)' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+
+                                  {/* Profile */}
+                                  <div>
+                                    <p className="eyebrow" style={{ marginBottom: 12 }}>Profile</p>
+                                    <TeacherDetailRow icon={Hash} label="Employee ID" value={teacher.employeeId || '—'} />
+                                    <TeacherDetailRow icon={Mail} label="Email" value={teacher.email} />
+                                    <TeacherDetailRow icon={Phone} label="Phone" value={teacher.phone || '—'} />
+                                    <TeacherDetailRow icon={CalendarDays} label="Joining Date" value={teacher.joiningDetails || '—'} />
+                                  </div>
+
+                                  {/* Academic */}
+                                  <div>
+                                    <p className="eyebrow" style={{ marginBottom: 12 }}>Academic</p>
+                                    <TeacherDetailRow
+                                      icon={GraduationCap}
+                                      label="Class Teacher Of"
+                                      value={classTaught
+                                        ? `Class ${classTaught.name}${teacher.classTeacherOf?.section ? ` · Section ${teacher.classTeacherOf.section}` : ''}`
+                                        : '—'}
+                                    />
+                                    <TeacherDetailRow
+                                      icon={Building2}
+                                      label="House Incharge"
+                                      value={houseOfTeacher?.name || (teacher.houseInchargeId ? teacher.houseInchargeId : '—')}
+                                    />
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+                                      <div style={{ width: 26, height: 26, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                                        <BookOpen size={12} style={{ color: 'var(--ink-3)' }} />
+                                      </div>
+                                      <div style={{ minWidth: 0, flex: 1 }}>
+                                        <p className="eyebrow" style={{ marginBottom: 4 }}>Subjects</p>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                          {(teacher.subjects?.length ?? 0) === 0
+                                            ? <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>—</span>
+                                            : teacher.subjects.map(subId => {
+                                                const sub = subjects.find(s => s.id === subId);
+                                                return sub ? <span key={subId} className="chip" style={{ fontSize: 11, padding: '2px 8px' }}>{sub.name}</span> : null;
+                                              })}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+                                      <div style={{ width: 26, height: 26, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                                        <Layers size={12} style={{ color: 'var(--ink-3)' }} />
+                                      </div>
+                                      <div style={{ minWidth: 0, flex: 1 }}>
+                                        <p className="eyebrow" style={{ marginBottom: 4 }}>Assigned Classes</p>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                          {(teacher.classes?.length ?? 0) === 0
+                                            ? <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>—</span>
+                                            : teacher.classes.map(clsId => {
+                                                const cls = classes.find(c => c.id === clsId);
+                                                return cls ? <span key={clsId} className="chip" style={{ fontSize: 11, padding: '2px 8px' }}>Class {cls.name}</span> : null;
+                                              })}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Tags */}
+                                  <div>
+                                    <p className="eyebrow" style={{ marginBottom: 12 }}>Tags</p>
+                                    {teacher.tags && teacher.tags.length > 0 ? (
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                        {teacher.tags.map(tag => (
+                                          <span key={tag} className="chip" style={{ fontSize: 12, padding: '4px 10px' }}>{tag}</span>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <Tag size={14} style={{ color: 'var(--ink-4)' }} />
+                                        <span style={{ fontSize: 13, color: 'var(--ink-4)' }}>No tags added</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                      </tr>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -645,7 +817,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>House Incharge</span>
                   </div>
                   <input type="checkbox" checked={formData.isHouseIncharge}
-                    onChange={e => setFormData({ ...formData, isHouseIncharge: e.target.checked })}
+                    onChange={e => setFormData({ ...formData, isHouseIncharge: e.target.checked, houseInchargeId: e.target.checked ? formData.houseInchargeId : '' })}
                     style={{ width: 16, height: 16, accentColor: 'var(--ink)', cursor: 'pointer' }} />
                 </label>
                 {formData.isHouseIncharge && (
@@ -666,7 +838,7 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Class Teacher</span>
                   </div>
                   <input type="checkbox" checked={formData.isClassTeacher}
-                    onChange={e => setFormData({ ...formData, isClassTeacher: e.target.checked })}
+                    onChange={e => setFormData({ ...formData, isClassTeacher: e.target.checked, classTeacherOf: e.target.checked ? formData.classTeacherOf : { classId: '', section: '' } })}
                     style={{ width: 16, height: 16, accentColor: 'var(--ink)', cursor: 'pointer' }} />
                 </label>
 
@@ -707,5 +879,19 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
         </form>
       </Modal>
     </>
+  );
+}
+
+function TeacherDetailRow({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+      <div style={{ width: 26, height: 26, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+        <Icon size={12} style={{ color: 'var(--ink-3)' }} />
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p className="eyebrow" style={{ marginBottom: 2 }}>{label}</p>
+        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</p>
+      </div>
+    </div>
   );
 }
