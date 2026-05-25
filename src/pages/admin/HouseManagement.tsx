@@ -46,12 +46,33 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
     e.preventDefault();
     setLoading(true);
     try {
+      const prevTeacherId = editingHouse?.teacherInchargeId || '';
+      const newTeacherId = formData.teacherInchargeId;
+
+      let houseId: string;
       if (isEditMode && editingHouse) {
         await updateDoc(doc(db, 'houses', editingHouse.id), formData);
+        houseId = editingHouse.id;
       } else {
-        await addDoc(collection(db, 'houses'), formData);
+        const ref = await addDoc(collection(db, 'houses'), formData);
+        houseId = ref.id;
         logActivity(user, 'House Created', 'Academic', `Created house "${formData.name}"`, { name: formData.name, color: formData.color });
       }
+
+      // Sync teacher documents: clear previous incharge, set new one
+      if (prevTeacherId && prevTeacherId !== newTeacherId) {
+        await updateDoc(doc(db, 'teachers', prevTeacherId), {
+          houseInchargeId: '',
+          isHouseIncharge: false,
+        });
+      }
+      if (newTeacherId) {
+        await updateDoc(doc(db, 'teachers', newTeacherId), {
+          houseInchargeId: houseId,
+          isHouseIncharge: true,
+        });
+      }
+
       setIsModalOpen(false);
       setIsEditMode(false);
       setEditingHouse(null);
@@ -81,6 +102,13 @@ export default function HouseManagement({ user }: { user: UserProfile }) {
     try {
       const deleted = houses.find(h => h.id === deletingId);
       await deleteDoc(doc(db, 'houses', deletingId));
+      // Clear the assigned teacher's house incharge status
+      if (deleted?.teacherInchargeId) {
+        await updateDoc(doc(db, 'teachers', deleted.teacherInchargeId), {
+          houseInchargeId: '',
+          isHouseIncharge: false,
+        });
+      }
       logActivity(user, 'House Deleted', 'Academic', `Deleted house "${deleted?.name || deletingId}"`, { houseId: deletingId, name: deleted?.name });
       fetchData();
       setIsDeleteModalOpen(false);
