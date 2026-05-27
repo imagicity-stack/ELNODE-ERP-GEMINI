@@ -5,6 +5,7 @@ import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
 import {
   Home, BarChart3, CreditCard, Radio, User, LogOut,
+  MoreHorizontal, X,
 } from 'lucide-react';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserProfile } from '../types';
@@ -27,7 +28,6 @@ const TABS = [
   { label: 'Tracker', icon: BarChart3, path: '/tracker' },
   { label: 'Fee Followup', icon: CreditCard, path: '/fee-followup' },
   { label: 'Broadcast', icon: Radio, path: '/broadcast' },
-  { label: 'Me', icon: User, path: '/profile' },
 ];
 
 export default function GrievanceShell({ children, user }: { children: React.ReactNode; user: UserProfile }) {
@@ -36,6 +36,7 @@ export default function GrievanceShell({ children, user }: { children: React.Rea
   const { showToast } = useToast();
   const mainRef = useRef<HTMLElement>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const { pullY, refreshing } = usePullToRefresh(mainRef, () => setRefreshKey(k => k + 1));
   const userName = user.name || user.email || 'Grievance';
   const initials = userName.charAt(0).toUpperCase();
@@ -175,7 +176,85 @@ export default function GrievanceShell({ children, user }: { children: React.Rea
             </button>
           );
         })}
+        <button
+          className={'tab' + (showMoreMenu ? ' active' : '')}
+          onClick={() => setShowMoreMenu(true)}
+        >
+          <MoreHorizontal size={22} strokeWidth={showMoreMenu ? 2.2 : 1.6} />
+          <span>More</span>
+          <span className="dot" />
+        </button>
       </nav>
+
+      {/* ── More menu overlay (mobile) ──────────────────────────── */}
+      {showMoreMenu && (
+        <div
+          className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={() => setShowMoreMenu(false)}
+        >
+          <div
+            className="more-sheet rounded-t-2xl flex flex-col"
+            style={{ background: 'var(--paper)', maxHeight: '88vh' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ borderBottom: '1px solid var(--line)' }}>
+              <p className="text-[15px] font-bold" style={{ color: 'var(--ink)' }}>Menu</p>
+              <button
+                onClick={() => setShowMoreMenu(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full"
+                style={{ background: 'var(--cream-2)', color: 'var(--ink-3)' }}
+              >
+                <X size={16} strokeWidth={2.5} />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-3 py-3">
+              <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-4)' }}>
+                Navigation
+              </p>
+              <div className="space-y-0.5">
+                {NAV.map((item) => {
+                  const active = isActive(item.path);
+                  return (
+                    <button
+                      key={item.label + item.path}
+                      className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors text-left"
+                      style={active ? { background: 'var(--ink)', color: 'var(--cream)' } : { color: 'var(--ink-2)' }}
+                      onClick={() => { navigate(`${BASE}${item.path}`); setShowMoreMenu(false); }}
+                    >
+                      <item.icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2.2 : 1.7} />
+                      <span className="text-[14px] font-semibold">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="px-3 pb-2 pt-2 shrink-0 space-y-0.5" style={{ borderTop: '1px solid var(--line)' }}>
+              <button
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors text-left"
+                style={isActive('/profile') ? { background: 'var(--ink)', color: 'var(--cream)' } : { color: 'var(--ink-2)' }}
+                onClick={() => { navigate(`${BASE}/profile`); setShowMoreMenu(false); }}
+              >
+                <div className="avatar shrink-0" style={{ width: 28, height: 28, fontSize: 12 }}>
+                  {user.photoURL ? <img src={user.photoURL} alt={userName} className="w-full h-full object-cover rounded-full" /> : initials}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-bold truncate leading-none">{userName}</p>
+                  <p className="eyebrow mt-0.5">My Profile</p>
+                </div>
+              </button>
+              <button
+                onClick={() => { setShowMoreMenu(false); handleLogout(); }}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors"
+                style={{ color: 'var(--coral)' }}
+              >
+                <LogOut className="w-5 h-5 shrink-0" />
+                <span className="text-[14px] font-semibold">Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
