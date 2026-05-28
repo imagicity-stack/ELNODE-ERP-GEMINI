@@ -204,6 +204,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         houseId: formData.houseId,
         photoURL: formData.photoURL,
         email: formData.studentEmail,
+        address: formData.address,
         transportDetails: formData.transportDetails,
         medicalNotes: formData.medicalNotes,
         academicHistory: formData.academicHistory,
