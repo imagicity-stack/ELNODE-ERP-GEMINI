@@ -50,6 +50,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isOpenPayment, setIsOpenPayment] = useState(false); // true = no linked feeRequest (past/open payment)
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [isEditingRequest, setIsEditingRequest] = useState(false);
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
@@ -60,6 +61,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   const [paymentData, setPaymentData] = useState({
     amount: '',
     head: 'Tuition Fees',
+    openHead: '',   // used when isOpenPayment = true (free-form fee head)
     method: 'cash' as PaymentMethod,
     date: new Date().toISOString().split('T')[0],
     referenceNumber: '',
@@ -231,7 +233,44 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
     setLoading(true);
     try {
-      const pendingRequest = feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid');
+      let pendingRequest = feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid');
+
+      // ── Open / past payment: no linked fee request — create a stub on the fly ──
+      if (!pendingRequest && isOpenPayment) {
+        const payAmount = Number(paymentData.amount);
+        if (!Number.isFinite(payAmount) || payAmount <= 0) {
+          showToast('Enter a valid payment amount', 'error');
+          setLoading(false);
+          return;
+        }
+        const headName = paymentData.openHead.trim() || 'Fees';
+        const d = new Date(paymentData.date);
+        const month = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+        const yr = d.getFullYear();
+        const mo = d.getMonth() + 1;
+        const acYear = mo >= 4 ? `${yr}-${String(yr + 1).slice(-2)}` : `${yr - 1}-${String(yr).slice(-2)}`;
+        const stubRef = doc(collection(db, 'feeRequests'));
+        const stub = {
+          studentId: selectedStudent.id,
+          classId: selectedStudent.classId,
+          academicYear: acYear,
+          month,
+          heads: [{ name: headName, amount: payAmount, discount: 0, discountReason: '', finalAmount: payAmount }],
+          totalAmount: payAmount,
+          fineAmount: 0,
+          waivedAmount: 0,
+          paidAmount: 0,
+          status: 'pending' as const,
+          dueDate: paymentData.date,
+          createdAt: new Date().toISOString(),
+          legacyImport: true,
+        };
+        await setDoc(stubRef, stub);
+        pendingRequest = { id: stubRef.id, ...stub };
+        // patch local state so the transaction can find it
+        setFeeRequests(prev => [...prev, pendingRequest as any]);
+      }
+
       if (!pendingRequest) throw new Error('No pending fee request found for student');
 
       const payAmount = Number(paymentData.amount);
@@ -392,6 +431,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       );
 
       setIsModalOpen(false);
+      setIsOpenPayment(false);
       fetchData();
       setPaymentSuccess({ amount: payAmount, receiptNumber });
 
@@ -1119,13 +1159,37 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                   {/* Action buttons */}
                   <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     {!studentRequest ? (
-                      <button
-                        className="btn accent"
-                        onClick={() => openRequestModal(student)}
-                        style={{ flex: 1 }}
-                      >
-                        <Plus size={14} /> Generate Request
-                      </button>
+                      <>
+                        <button
+                          className="btn accent"
+                          onClick={() => openRequestModal(student)}
+                          style={{ flex: 1 }}
+                        >
+                          <Plus size={14} /> Generate Request
+                        </button>
+                        <button
+                          className="btn ghost"
+                          title="Record a past or open payment without a fee request"
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setIsOpenPayment(true);
+                            setPaymentData({
+                              amount: '',
+                              head: 'Tuition Fees',
+                              openHead: '',
+                              method: 'cash',
+                              date: new Date().toISOString().split('T')[0],
+                              referenceNumber: '',
+                              remarks: '',
+                              voucherNumber: '',
+                              voucherImage: null,
+                            });
+                            setIsModalOpen(true);
+                          }}
+                        >
+                          <History size={14} /> Past Payment
+                        </button>
+                      </>
                     ) : (
                       <>
                         <button
@@ -1144,8 +1208,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                             style={{ flex: 1 }}
                             onClick={() => {
                               setSelectedStudent(student);
+                              setIsOpenPayment(false);
                               const defaultHead = studentRequest?.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
-                              setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead });
+                              setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead, openHead: '' });
                               setIsModalOpen(true);
                             }}
                           >
@@ -1465,67 +1530,100 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       {/* Capture Payment Modal */}
       <Modal
         isOpen={isModalOpen && !!selectedStudent}
-        onClose={() => setIsModalOpen(false)}
-        title="Capture Payment"
+        onClose={() => { setIsModalOpen(false); setIsOpenPayment(false); }}
+        title={isOpenPayment ? 'Record Past Payment' : 'Capture Payment'}
         subtitle={selectedStudent ? `${selectedStudent.name} (${selectedStudent.schoolNumber})` : ''}
         size="sm"
         footer={
           <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => { setIsModalOpen(false); setIsOpenPayment(false); }}>Cancel</Button>
             <Button variant="primary" loading={loading} onClick={(e: any) => {
               const form = document.querySelector('form[data-payment-form]') as HTMLFormElement;
               if (form) form.requestSubmit();
-            }}>Capture Payment</Button>
+            }}>{isOpenPayment ? 'Record Payment' : 'Capture Payment'}</Button>
           </div>
         }
       >
         <form onSubmit={handleRecordPayment} data-payment-form className="space-y-5">
-          {(() => {
-            const pending = selectedStudent
-              ? feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid')
-              : null;
-            if (!pending?.heads?.length) return null;
-            return (
-              <div className="bg-slate-50 rounded-xl border border-slate-100 divide-y divide-slate-100">
-                {pending.heads.map((h, i) => (
-                  <div key={i} className="flex items-center justify-between px-3 py-2">
-                    <span className="text-xs text-slate-600 font-medium">{h.name}</span>
-                    <span className="text-xs font-bold text-slate-900">₹{(h.finalAmount || h.amount || 0).toLocaleString()}</span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between px-3 py-2 bg-white rounded-b-xl">
-                  <span className="text-xs font-bold text-slate-900">Total Invoiced</span>
-                  <span className="text-sm font-black text-slate-900">₹{(pending.totalAmount || 0).toLocaleString()}</span>
-                </div>
+          {/* Open/past payment: free-form fee head + amount */}
+          {isOpenPayment ? (
+            <>
+              <div className="flex items-start gap-2 p-3 rounded-xl" style={{ background: 'var(--cream-2)' }}>
+                <History className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--ink-3)' }} />
+                <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
+                  Recording a past payment — no open invoice needed. A fee record will be created automatically.
+                </p>
               </div>
-            );
-          })()}
-          {(() => {
-            const isSuperAdmin = user?.role === 'super_admin';
-            if (isSuperAdmin) {
-              return (
-                <FormField label="Amount to Collect (₹)" required hint="Super admin override — partial collection allowed. Fine is waived separately.">
-                  <Input
-                    type="number"
-                    required
-                    value={paymentData.amount}
-                    onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
-                  />
-                </FormField>
-              );
-            }
-            return (
-              <FormField label="Amount to Collect (₹)" hint="Locked to full pending balance. Partial payments require super admin approval.">
+              <FormField label="Fee Head / Description" required>
                 <Input
-                  type="number"
-                  value={paymentData.amount}
-                  readOnly
-                  disabled
-                  className="bg-slate-50 cursor-not-allowed"
+                  type="text"
+                  required
+                  placeholder="e.g. Tuition Fees, Transport, etc."
+                  value={paymentData.openHead}
+                  onChange={(e) => setPaymentData({ ...paymentData, openHead: e.target.value })}
                 />
               </FormField>
-            );
-          })()}
+              <FormField label="Amount (₹)" required>
+                <Input
+                  type="number"
+                  required
+                  min={1}
+                  placeholder="Enter amount paid"
+                  value={paymentData.amount}
+                  onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                />
+              </FormField>
+            </>
+          ) : (
+            <>
+              {(() => {
+                const pending = selectedStudent
+                  ? feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid')
+                  : null;
+                if (!pending?.heads?.length) return null;
+                return (
+                  <div className="bg-slate-50 rounded-xl border border-slate-100 divide-y divide-slate-100">
+                    {pending.heads.map((h, i) => (
+                      <div key={i} className="flex items-center justify-between px-3 py-2">
+                        <span className="text-xs text-slate-600 font-medium">{h.name}</span>
+                        <span className="text-xs font-bold text-slate-900">₹{(h.finalAmount || h.amount || 0).toLocaleString()}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between px-3 py-2 bg-white rounded-b-xl">
+                      <span className="text-xs font-bold text-slate-900">Total Invoiced</span>
+                      <span className="text-sm font-black text-slate-900">₹{(pending.totalAmount || 0).toLocaleString()}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+              {(() => {
+                const isSuperAdmin = user?.role === 'super_admin';
+                if (isSuperAdmin) {
+                  return (
+                    <FormField label="Amount to Collect (₹)" required hint="Super admin override — partial collection allowed. Fine is waived separately.">
+                      <Input
+                        type="number"
+                        required
+                        value={paymentData.amount}
+                        onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                      />
+                    </FormField>
+                  );
+                }
+                return (
+                  <FormField label="Amount to Collect (₹)" hint="Locked to full pending balance. Partial payments require super admin approval.">
+                    <Input
+                      type="number"
+                      value={paymentData.amount}
+                      readOnly
+                      disabled
+                      className="bg-slate-50 cursor-not-allowed"
+                    />
+                  </FormField>
+                );
+              })()}
+            </>
+          )}
           {(() => {
             const pendingReqs = selectedStudent
               ? feeRequests.filter(r => r.studentId === selectedStudent.id && r.status !== 'paid')
@@ -1603,11 +1701,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               </FormField>
             </>
           )}
-          <FormField label="Date" required>
+          <FormField label="Date of Payment" required hint="Past dates are accepted">
             <Input
               type="date"
               required
               value={paymentData.date}
+              max={new Date().toISOString().split('T')[0]}
               onChange={(e) => setPaymentData({ ...paymentData, date: e.target.value })}
             />
           </FormField>

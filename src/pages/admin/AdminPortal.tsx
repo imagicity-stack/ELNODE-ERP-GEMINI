@@ -23,6 +23,7 @@ import ActivityTracker from './ActivityTracker';
 import PayrollSettings from './PayrollSettings';
 import FineSettings from './FineSettings';
 import RolePermissionsManager from './RolePermissionsManager';
+import DataImport from './DataImport';
 import ExpenseManagement from '../accounts/ExpenseManagement';
 import SalaryManagement from '../accounts/SalaryManagement';
 import FinancialReports from '../accounts/FinancialReports';
@@ -71,6 +72,7 @@ export default function AdminPortal({ user }: { user: UserProfile }) {
         <Route path="/whatsapp" element={<WhatsAppNotifications user={user} />} />
         <Route path="/diary" element={<LessonLogs user={user} />} />
         <Route path="/activity-logs" element={<ActivityTracker user={user} />} />
+        <Route path="/data-import" element={<DataImport user={user} />} />
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />
         <Route path="/tracker" element={<GrievanceTracker user={user} />} />
         <Route path="/fee-followup" element={<FeeFollowup user={user} />} />
