@@ -54,6 +54,7 @@ export async function buildAIContext(periodLabel = 'This Month') {
     teachLeaveSnap, studLeaveSnap,
     examSnap, examResultSnap,
     grievanceSnap, noticeSnap, homeworkSnap,
+    feeStructSnap, feeHeadsSnap, gradingScaleSnap, lessonLogSnap, admissionSnap,
   ] = await Promise.all([
     safeGet(collection(db, 'students')),
     safeGet(collection(db, 'classes')),
@@ -61,8 +62,8 @@ export async function buildAIContext(periodLabel = 'This Month') {
     safeGet(collection(db, 'subjects')),
     safeGet(collection(db, 'teachers')),
     safeGet(collection(db, 'staff')),
-    safeGet(query(collection(db, 'expenses'), orderBy('date', 'desc'))),
-    safeGet(query(collection(db, 'feePayments'), orderBy('date', 'desc'))),
+    safeGet(query(collection(db, 'expenses'), orderBy('date', 'desc'), limit(300))),
+    safeGet(query(collection(db, 'feePayments'), orderBy('date', 'desc'), limit(500))),
     safeGet(collection(db, 'salaries')),
     safeGet(collection(db, 'feeRequests')),
     safeGet(query(collection(db, 'advancePayments'), orderBy('createdAt', 'desc'), limit(200))),
@@ -70,11 +71,16 @@ export async function buildAIContext(periodLabel = 'This Month') {
     safeGet(query(collection(db, 'attendance'), where('date', '>=', todayMinus30))),
     safeGet(query(collection(db, 'teacherLeaves'), orderBy('createdAt', 'desc'), limit(100))),
     safeGet(query(collection(db, 'studentLeaves'), orderBy('createdAt', 'desc'), limit(100))),
-    safeGet(query(collection(db, 'exams'), orderBy('startDate', 'desc'), limit(30))),
+    safeGet(query(collection(db, 'exams'), orderBy('startDate', 'desc'), limit(50))),
     safeGet(query(collection(db, 'examResults'), limit(500))),
     safeGet(query(collection(db, 'grievances'), orderBy('createdAt', 'desc'), limit(100))),
-    safeGet(query(collection(db, 'notices'), orderBy('createdAt', 'desc'), limit(20))),
+    safeGet(query(collection(db, 'notices'), orderBy('createdAt', 'desc'), limit(30))),
     safeGet(query(collection(db, 'homework'), orderBy('dueDate', 'desc'), limit(100))),
+    safeGet(collection(db, 'feeStructures')),
+    safeGet(collection(db, 'feeHeads')),
+    safeGet(collection(db, 'gradingScales')),
+    safeGet(query(collection(db, 'lessonLogs'), orderBy('date', 'desc'), limit(100))),
+    safeGet(query(collection(db, 'admissions'), orderBy('createdAt', 'desc'), limit(50))),
   ]);
 
   // ── Raw arrays ────────────────────────────────────────────────────────────
@@ -95,9 +101,14 @@ export async function buildAIContext(periodLabel = 'This Month') {
   const sLeaves     = studLeaveSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
   const exams       = examSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
   const examResults = examResultSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-  const grievances  = grievanceSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-  const notices     = noticeSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-  const homework    = homeworkSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  const grievances    = grievanceSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  const notices       = noticeSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  const homework      = homeworkSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  const feeStructures = feeStructSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  const feeHeads      = feeHeadsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  const gradingScales = gradingScaleSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  const lessonLogs    = lessonLogSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  const admissions    = admissionSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
 
   // ── Lookup maps ───────────────────────────────────────────────────────────
   const classMap:   Record<string, string> = {};
@@ -541,6 +552,72 @@ export async function buildAIContext(periodLabel = 'This Month') {
           targets: n.targetRoles || [],
         })),
       },
+    },
+
+    // ── FEE STRUCTURES ────────────────────────────────────────────────────────
+    feeStructures: feeStructures.map(fs => ({
+      class:      classMap[fs.classId] || str(fs.classId),
+      academicYear: str(fs.academicYear),
+      heads: (fs.heads || []).map((h: any) => ({
+        name:    str(h.name),
+        amount:  inr(h.amount || 0),
+      })),
+      totalAmount: inr((fs.heads || []).reduce((s: number, h: any) => s + (h.amount || 0), 0)),
+    })),
+
+    // ── FEE HEADS ─────────────────────────────────────────────────────────────
+    feeHeads: feeHeads.map(fh => ({
+      name:        str(fh.name),
+      amount:      inr(fh.amount || 0),
+      description: str(fh.description),
+    })),
+
+    // ── GRADING SCALES ────────────────────────────────────────────────────────
+    gradingScales: gradingScales.map(gs => ({
+      name:   str(gs.name),
+      ranges: (gs.ranges || []).map((r: any) => ({
+        min:   r.min ?? null,
+        max:   r.max ?? null,
+        grade: str(r.grade),
+        point: r.point ?? null,
+      })),
+    })),
+
+    // ── LESSON LOGS ───────────────────────────────────────────────────────────
+    lessonLogs: {
+      totalRecent: lessonLogs.length,
+      bySubject: Object.entries(
+        lessonLogs.reduce((acc: Record<string, number>, l) => {
+          const s = subjectMap[l.subjectId] || str(l.subjectId);
+          acc[s] = (acc[s] || 0) + 1;
+          return acc;
+        }, {})
+      ).map(([subject, count]) => ({ subject, count })).sort((a, b) => b.count - a.count),
+      recent: lessonLogs.slice(0, 30).map(l => ({
+        date:    str(l.date),
+        class:   classMap[l.classId] ? `Class ${classMap[l.classId]}` : str(l.classId),
+        subject: subjectMap[l.subjectId] || str(l.subjectId),
+        teacher: teachers.find(t => t.id === l.teacherId)?.name || str(l.teacherId),
+        topic:   str(l.topic || l.title),
+        content: str(l.content || l.description),
+      })),
+    },
+
+    // ── ADMISSIONS ────────────────────────────────────────────────────────────
+    admissions: {
+      total:     admissions.length,
+      pending:   admissions.filter(a => a.status === 'pending' || a.status === 'under_review').length,
+      approved:  admissions.filter(a => a.status === 'approved' || a.status === 'enrolled').length,
+      rejected:  admissions.filter(a => a.status === 'rejected').length,
+      thisMonth: admissions.filter(a => (a.createdAt || '').startsWith(monthPrefix)).length,
+      all: admissions.slice(0, 50).map(a => ({
+        applicantName: str(a.studentName || a.applicantName || a.name),
+        class:         classMap[a.classId] ? `Class ${classMap[a.classId]}` : str(a.classId || a.applyingForClass),
+        date:          (a.createdAt || '').slice(0, 10),
+        status:        str(a.status),
+        parentName:    str(a.parentName || a.fatherName),
+        phone:         str(a.phone || a.parentPhone || a.contactNumber),
+      })),
     },
   };
 }
