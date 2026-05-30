@@ -503,9 +503,28 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Extended Student Profiles — student fills, parent edits own section, admins full access
+    match /studentProfiles/{studentId} {
+      // Admins/principal/accounts can read all profiles (for analytics and management)
+      allow get: if isSignedIn() && (
+        isAnyAdmin() || isAccountant() ||
+        isLinkedToStudent(studentId)
+      );
+      allow list: if isAnyAdmin() || isAccountant();
+      // Student can write their own profile; parent can update their own section
+      allow create: if isSignedIn() && (
+        isAnyAdmin() ||
+        isLinkedToStudent(studentId)
+      );
+      allow update: if isSignedIn() && (
+        isAnyAdmin() ||
+        isLinkedToStudent(studentId)
+      );
+      allow delete: if isAdmin();
+    }
+
     // Admission leads — admin portal only
-    match /admission_leads/{id} {
-      allow read: if isAnyAdmin();
+    match /admission_leads/{id} {      allow read: if isAnyAdmin();
       allow create, update: if isAnyAdmin();
       allow delete: if isAdmin();
     }
