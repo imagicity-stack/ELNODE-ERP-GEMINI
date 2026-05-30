@@ -13,6 +13,7 @@ import {
   Plus,
   Edit2,
   Trash2,
+  User,
   Download,
   Upload,
   UserPlus,
@@ -50,6 +51,7 @@ import {
 } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { StaggeredList } from '../../components/animations';
+import StudentProfileView from './StudentProfileView';
 
 export default function StudentManagement({ user }: { user: UserProfile }) {
   const [students, setStudents] = useState<Student[]>([]);
@@ -77,6 +79,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const [filterParentEmail, setFilterParentEmail] = useState<TriState>('any');
   const [showFilters, setShowFilters] = useState(false);
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
+  const [profileStudent, setProfileStudent] = useState<Student | null>(null);
 
   // ─── Export modal state ─────────────────────────────────────────────────────
   const ALL_EXPORT_COLUMNS = [
@@ -1339,16 +1342,21 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                             <p className="tiny muted">{student.parentDetails?.phone || ''}</p>
                           </td>
                           <td style={{ ...tdStyle, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                            {!readOnly && (
-                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
-                                <button className="icon-btn" title="Edit" onClick={() => handleEdit(student)}>
-                                  <Edit2 size={14} />
-                                </button>
-                                <button className="icon-btn" title="Delete" style={{ borderColor: 'var(--coral)', color: 'var(--coral)' }} onClick={() => { setDeletingStudent(student); setIsDeleteModalOpen(true); }}>
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            )}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+                              <button className="icon-btn" title="View Profile" onClick={() => setProfileStudent(student)}>
+                                <User size={14} />
+                              </button>
+                              {!readOnly && (
+                                <>
+                                  <button className="icon-btn" title="Edit" onClick={() => handleEdit(student)}>
+                                    <Edit2 size={14} />
+                                  </button>
+                                  <button className="icon-btn" title="Delete" style={{ borderColor: 'var(--coral)', color: 'var(--coral)' }} onClick={() => { setDeletingStudent(student); setIsDeleteModalOpen(true); }}>
+                                    <Trash2 size={14} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                         {isExpanded && (
@@ -1893,6 +1901,15 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           </div>
         </div>
       </Modal>
+
+      {/* ── Student Profile Drawer ── */}
+      {profileStudent && (
+        <StudentProfileView
+          student={profileStudent}
+          user={user}
+          onClose={() => setProfileStudent(null)}
+        />
+      )}
     </>
   );
 }

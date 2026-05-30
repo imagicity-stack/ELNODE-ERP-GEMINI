@@ -1,0 +1,612 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../firebase';
+import { UserProfile, Student, ExtendedStudentProfile } from '../../types';
+import { FormField, Input } from '../../components/ui';
+import {
+  User, Heart, Home as HomeIcon, Briefcase, BookOpen, Activity,
+  Users, CreditCard, Camera, CheckCircle, AlertCircle, Plus, X,
+} from 'lucide-react';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa',
+  'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala',
+  'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland',
+  'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+  'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+  'Delhi (NCT)', 'Jammu & Kashmir', 'Ladakh', 'Chandigarh', 'Puducherry',
+  'Andaman & Nicobar Islands', 'Dadra & Nagar Haveli and Daman & Diu', 'Lakshadweep',
+];
+const QUALIFICATIONS = [
+  'Illiterate', 'Below Primary', 'Primary (Class 1–5)', 'Middle (Class 6–8)',
+  'Secondary / Matric (10th)', 'Senior Secondary (12th)', 'Diploma / ITI',
+  'Graduate (BA/BSc/BCom)', 'Post Graduate (MA/MSc/MCom)',
+  'Professional Degree (MBBS/BTech/LLB/CA)', 'Doctorate (PhD)',
+];
+const INCOME_BRACKETS = [
+  'Below ₹1 Lakh', '₹1–2 Lakh', '₹2–5 Lakh', '₹5–10 Lakh',
+  '₹10–20 Lakh', '₹20–50 Lakh', 'Above ₹50 Lakh',
+];
+
+// ── Completion helpers ────────────────────────────────────────────────────────
+const COMPLETION_CHECKS = [
+  (p: Partial<ExtendedStudentProfile>) => !!p.dateOfBirth,
+  (p: Partial<ExtendedStudentProfile>) => !!p.bloodGroup,
+  (p: Partial<ExtendedStudentProfile>) => !!p.religion,
+  (p: Partial<ExtendedStudentProfile>) => !!p.category,
+  (p: Partial<ExtendedStudentProfile>) => !!p.nationality,
+  (p: Partial<ExtendedStudentProfile>) => !!p.motherTongue,
+  (p: Partial<ExtendedStudentProfile>) => !!p.aadhaarNumber,
+  (p: Partial<ExtendedStudentProfile>) => !!p.permanentAddress?.city,
+  (p: Partial<ExtendedStudentProfile>) => !!p.permanentAddress?.state,
+  (p: Partial<ExtendedStudentProfile>) => !!p.permanentAddress?.pinCode,
+  (p: Partial<ExtendedStudentProfile>) => !!p.father?.name,
+  (p: Partial<ExtendedStudentProfile>) => !!p.father?.phone,
+  (p: Partial<ExtendedStudentProfile>) => !!p.father?.occupation,
+  (p: Partial<ExtendedStudentProfile>) => !!p.father?.qualification,
+  (p: Partial<ExtendedStudentProfile>) => !!p.mother?.name,
+  (p: Partial<ExtendedStudentProfile>) => !!p.mother?.phone,
+  (p: Partial<ExtendedStudentProfile>) => !!p.previousSchool?.name,
+  (p: Partial<ExtendedStudentProfile>) => !!p.health?.height,
+  (p: Partial<ExtendedStudentProfile>) => !!p.health?.weight,
+  (p: Partial<ExtendedStudentProfile>) => !!p.idCardFrontUrl,
+  (p: Partial<ExtendedStudentProfile>) => !!p.idCardBackUrl,
+];
+
+function computeCompletion(p: Partial<ExtendedStudentProfile>): number {
+  const done = COMPLETION_CHECKS.filter(fn => fn(p)).length;
+  return Math.round((done / COMPLETION_CHECKS.length) * 100);
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+function SectionCard({ icon: Icon, title, subtitle, children }: {
+  icon: React.ElementType;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+        <div className="section-icon">
+          <Icon size={18} style={{ color: 'var(--ink-2)' }} />
+        </div>
+        <div>
+          <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', lineHeight: 1.2 }}>{title}</p>
+          {subtitle && <p style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>{subtitle}</p>}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SiblingEditor({ siblings, onChange }: {
+  siblings: { name: string; admissionNumber: string; class: string }[];
+  onChange: (v: { name: string; admissionNumber: string; class: string }[]) => void;
+}) {
+  const add = () => onChange([...siblings, { name: '', admissionNumber: '', class: '' }]);
+  const remove = (i: number) => onChange(siblings.filter((_, idx) => idx !== i));
+  const update = (i: number, key: 'name' | 'admissionNumber' | 'class', val: string) => {
+    const next = [...siblings];
+    next[i] = { ...next[i], [key]: val };
+    onChange(next);
+  };
+  return (
+    <div>
+      {siblings.map((s, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
+          <FormField label="Name"><Input value={s.name} placeholder="Sibling name" onChange={e => update(i, 'name', e.target.value)} /></FormField>
+          <FormField label="Adm. No."><Input value={s.admissionNumber} placeholder="e.g. 2023001" onChange={e => update(i, 'admissionNumber', e.target.value)} /></FormField>
+          <FormField label="Class"><Input value={s.class} placeholder="e.g. 8A" onChange={e => update(i, 'class', e.target.value)} /></FormField>
+          <button className="icon-btn" style={{ color: 'var(--coral)', marginBottom: 2 }} onClick={() => remove(i)}><X size={14} /></button>
+        </div>
+      ))}
+      <button className="btn ghost" style={{ marginTop: 4, fontSize: 13 }} type="button" onClick={add}>
+        <Plus size={14} /> Add Sibling
+      </button>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+interface ExtendedProfileProps {
+  user: UserProfile;
+  student: Student | null;
+}
+
+export default function ExtendedProfile({ user, student }: ExtendedProfileProps) {
+  const [profile, setProfile] = useState<Partial<ExtendedStudentProfile>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploadingFront, setUploadingFront] = useState(false);
+  const [uploadingBack, setUploadingBack] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
+  const frontRef = useRef<HTMLInputElement>(null);
+  const backRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!student?.id) { setLoading(false); return; }
+    getDoc(doc(db, 'studentProfiles', student.id)).then(snap => {
+      if (snap.exists()) {
+        setProfile(snap.data() as ExtendedStudentProfile);
+      } else {
+        setProfile({
+          father: {
+            name: student.parentDetails?.fatherName || '',
+            phone: student.parentDetails?.phone || '',
+            email: student.parentDetails?.email || '',
+          },
+          mother: {
+            name: student.parentDetails?.motherName || '',
+          },
+          nationality: 'Indian',
+        });
+      }
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [student?.id]);
+
+  const set = (path: string, value: any) => {
+    setProfile(prev => {
+      const next = { ...prev } as any;
+      const parts = path.split('.');
+      let obj = next;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!obj[parts[i]]) obj[parts[i]] = {};
+        else obj[parts[i]] = { ...obj[parts[i]] };
+        obj = obj[parts[i]];
+      }
+      obj[parts[parts.length - 1]] = value;
+      return next;
+    });
+  };
+
+  const uploadPhoto = async (file: File, side: 'front' | 'back') => {
+    if (!student?.id) return;
+    const setUploading = side === 'front' ? setUploadingFront : setUploadingBack;
+    setUploading(true);
+    setError('');
+    try {
+      const path = `studentProfiles/${student.id}/idCard-${side}-${Date.now()}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      setProfile(prev => ({
+        ...prev,
+        ...(side === 'front' ? { idCardFrontUrl: url, idCardFrontPath: path } : { idCardBackUrl: url, idCardBackPath: path }),
+      }));
+    } catch {
+      setError('Photo upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!student?.id) return;
+    if (!profile.idCardFrontUrl || !profile.idCardBackUrl) {
+      setError('Both ID card photos (front & back) are mandatory before saving.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const completion = computeCompletion(profile);
+      const data: ExtendedStudentProfile = {
+        ...(profile as ExtendedStudentProfile),
+        studentId: student.id,
+        completionPercentage: completion,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid,
+        updatedByName: user.name,
+      };
+      await setDoc(doc(db, 'studentProfiles', student.id), data, { merge: true });
+      setProfile(data);
+      setSuccess(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => setSuccess(false), 4000);
+    } catch {
+      setError('Failed to save profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="pad" style={{ paddingTop: 32, textAlign: 'center' }}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto" style={{ borderColor: 'var(--ink)' }} />
+      </div>
+    );
+  }
+  if (!student) {
+    return <div className="pad"><p className="muted">Student data not found. Please contact administration.</p></div>;
+  }
+
+  const completion = computeCompletion(profile);
+  const completionColor = completion === 100 ? 'var(--leaf)' : completion >= 60 ? 'var(--accent)' : 'var(--coral)';
+
+  return (
+    <div>
+      {/* Topbar */}
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">Student Portal</div>
+          <h1>My Profile</h1>
+        </div>
+        <button className="btn accent" onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving…' : 'Update Profile'}
+        </button>
+      </div>
+
+      <div className="pad" style={{ paddingTop: 16, paddingBottom: 80 }}>
+        <div className="stack">
+
+          {/* Status banners */}
+          {success && (
+            <div className="card" style={{ background: '#f0fdf4', border: '1px solid var(--leaf)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CheckCircle size={18} style={{ color: 'var(--leaf)', flexShrink: 0 }} />
+                <p style={{ fontSize: 14, color: 'var(--leaf)', fontWeight: 600 }}>Profile updated successfully!</p>
+              </div>
+            </div>
+          )}
+          {error && (
+            <div className="card" style={{ background: '#fef2f2', border: '1px solid var(--coral)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <AlertCircle size={18} style={{ color: 'var(--coral)', flexShrink: 0 }} />
+                <p style={{ fontSize: 14, color: 'var(--coral)' }}>{error}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Completion indicator */}
+          <div className="card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--cream-2)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `3px solid ${completionColor}` }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: completionColor, fontFamily: 'var(--display)', lineHeight: 1 }}>{completion}%</span>
+              </div>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)', marginBottom: 6 }}>
+                  {completion === 100 ? 'Profile Complete!' : `${completion}% Complete — keep going!`}
+                </p>
+                <div className="profile-completion-bar">
+                  <div className="profile-completion-fill" style={{ width: `${completion}%`, background: completionColor }} />
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 4 }}>
+                  {COMPLETION_CHECKS.length - COMPLETION_CHECKS.filter(fn => fn(profile)).length} fields remaining
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ── ID Card Photos (Mandatory) ── */}
+          <SectionCard icon={CreditCard} title="Identity Documents" subtitle="Upload both sides of your School ID card or Aadhaar — mandatory">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              {(['front', 'back'] as const).map(side => {
+                const url = side === 'front' ? profile.idCardFrontUrl : profile.idCardBackUrl;
+                const uploading = side === 'front' ? uploadingFront : uploadingBack;
+                const inputRef = side === 'front' ? frontRef : backRef;
+                return (
+                  <div key={side}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      {side === 'front' ? 'Front Side' : 'Back Side'} <span style={{ color: 'var(--coral)' }}>*</span>
+                    </p>
+                    <div
+                      onClick={() => !uploading && inputRef.current?.click()}
+                      style={{
+                        border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`,
+                        borderRadius: 12, minHeight: 130,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                        cursor: uploading ? 'wait' : 'pointer', overflow: 'hidden', position: 'relative',
+                        background: url ? 'transparent' : 'var(--cream)',
+                        transition: 'border-color 0.2s',
+                      }}
+                    >
+                      {url ? (
+                        <>
+                          <img src={url} alt={`ID ${side}`} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+                          <div style={{ position: 'absolute', bottom: 6, right: 6, background: 'var(--leaf)', color: '#fff', borderRadius: 99, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>
+                            Uploaded ✓
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Camera size={26} style={{ color: 'var(--ink-3)', marginBottom: 6 }} />
+                          <p style={{ fontSize: 12, color: 'var(--ink-3)', textAlign: 'center', fontWeight: 600 }}>
+                            {uploading ? 'Uploading…' : 'Tap to upload photo'}
+                          </p>
+                          <p style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', marginTop: 2 }}>JPG or PNG</p>
+                        </>
+                      )}
+                    </div>
+                    <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }}
+                      onChange={e => e.target.files?.[0] && uploadPhoto(e.target.files[0], side)} />
+                    {url && (
+                      <button className="btn ghost" style={{ marginTop: 6, fontSize: 11, padding: '4px 10px' }}
+                        onClick={() => inputRef.current?.click()}>
+                        Replace
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+
+          {/* ── Personal Information ── */}
+          <SectionCard icon={User} title="Personal Information" subtitle="Basic demographic details for official records">
+            <div className="form-grid">
+              <FormField label="Date of Birth">
+                <Input type="date" value={profile.dateOfBirth || ''} onChange={e => set('dateOfBirth', e.target.value)} />
+              </FormField>
+              <FormField label="Blood Group">
+                <select className="input" value={profile.bloodGroup || ''} onChange={e => set('bloodGroup', e.target.value)}>
+                  <option value="">Select blood group</option>
+                  {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map(g => <option key={g}>{g}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Religion">
+                <select className="input" value={profile.religion || ''} onChange={e => set('religion', e.target.value)}>
+                  <option value="">Select religion</option>
+                  {['Hindu', 'Muslim', 'Christian', 'Sikh', 'Buddhist', 'Jain', 'Parsi', 'Jewish', 'Other'].map(r => <option key={r}>{r}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Category">
+                <select className="input" value={profile.category || ''} onChange={e => set('category', e.target.value)}>
+                  <option value="">Select category</option>
+                  {['General', 'OBC', 'SC', 'ST', 'EWS'].map(c => <option key={c}>{c}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Nationality">
+                <Input value={profile.nationality || ''} placeholder="e.g. Indian" onChange={e => set('nationality', e.target.value)} />
+              </FormField>
+              <FormField label="Mother Tongue">
+                <Input value={profile.motherTongue || ''} placeholder="e.g. Hindi, Tamil" onChange={e => set('motherTongue', e.target.value)} />
+              </FormField>
+              <FormField label="Languages Known">
+                <Input value={profile.languagesKnown || ''} placeholder="e.g. Hindi, English, Kannada" onChange={e => set('languagesKnown', e.target.value)} />
+              </FormField>
+              <FormField label="Aadhaar Number">
+                <Input value={profile.aadhaarNumber || ''} placeholder="12-digit Aadhaar" maxLength={12} onChange={e => set('aadhaarNumber', e.target.value.replace(/\D/g, ''))} />
+              </FormField>
+              <FormField label="Passport Number" hint="Optional — leave blank if not applicable">
+                <Input value={profile.passportNumber || ''} placeholder="Passport number" onChange={e => set('passportNumber', e.target.value)} />
+              </FormField>
+              <FormField label="Identification Marks" hint="Optional — any visible marks or features">
+                <Input value={profile.identificationMarks || ''} placeholder="e.g. Mole on left cheek" onChange={e => set('identificationMarks', e.target.value)} />
+              </FormField>
+            </div>
+          </SectionCard>
+
+          {/* ── Permanent Address ── */}
+          <SectionCard icon={HomeIcon} title="Permanent Address" subtitle="Full residential address for official correspondence">
+            <div className="form-grid">
+              <FormField label="House / Flat / Door No.">
+                <Input value={profile.permanentAddress?.house || ''} placeholder="e.g. 12B, Flat 302" onChange={e => set('permanentAddress.house', e.target.value)} />
+              </FormField>
+              <FormField label="Street / Colony / Area">
+                <Input value={profile.permanentAddress?.street || ''} placeholder="Street, locality or colony name" onChange={e => set('permanentAddress.street', e.target.value)} />
+              </FormField>
+              <FormField label="City / Town / Village">
+                <Input value={profile.permanentAddress?.city || ''} placeholder="City or town" onChange={e => set('permanentAddress.city', e.target.value)} />
+              </FormField>
+              <FormField label="State / Union Territory">
+                <select className="input" value={profile.permanentAddress?.state || ''} onChange={e => set('permanentAddress.state', e.target.value)}>
+                  <option value="">Select state</option>
+                  {INDIAN_STATES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </FormField>
+              <FormField label="PIN Code">
+                <Input value={profile.permanentAddress?.pinCode || ''} placeholder="6-digit PIN code" maxLength={6} onChange={e => set('permanentAddress.pinCode', e.target.value.replace(/\D/g, ''))} />
+              </FormField>
+              <FormField label="Country">
+                <Input value={profile.permanentAddress?.country || 'India'} onChange={e => set('permanentAddress.country', e.target.value)} />
+              </FormField>
+            </div>
+          </SectionCard>
+
+          {/* ── Father's Details ── */}
+          <SectionCard icon={Briefcase} title="Father's Details" subtitle="Employment and contact information for the father">
+            <div className="form-grid">
+              <FormField label="Full Name">
+                <Input value={profile.father?.name || ''} placeholder="Father's full name" onChange={e => set('father.name', e.target.value)} />
+              </FormField>
+              <FormField label="Date of Birth">
+                <Input type="date" value={profile.father?.dob || ''} onChange={e => set('father.dob', e.target.value)} />
+              </FormField>
+              <FormField label="Highest Qualification">
+                <select className="input" value={profile.father?.qualification || ''} onChange={e => set('father.qualification', e.target.value)}>
+                  <option value="">Select qualification</option>
+                  {QUALIFICATIONS.map(q => <option key={q}>{q}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Occupation / Profession">
+                <Input value={profile.father?.occupation || ''} placeholder="e.g. Government Employee, Business" onChange={e => set('father.occupation', e.target.value)} />
+              </FormField>
+              <FormField label="Organization / Employer" hint="Optional">
+                <Input value={profile.father?.organization || ''} placeholder="Company, department, or firm name" onChange={e => set('father.organization', e.target.value)} />
+              </FormField>
+              <FormField label="Annual Income">
+                <select className="input" value={profile.father?.annualIncome || ''} onChange={e => set('father.annualIncome', e.target.value)}>
+                  <option value="">Select income range</option>
+                  {INCOME_BRACKETS.map(b => <option key={b}>{b}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Mobile Number">
+                <Input value={profile.father?.phone || ''} placeholder="10-digit mobile number" onChange={e => set('father.phone', e.target.value)} />
+              </FormField>
+              <FormField label="Email Address" hint="Optional">
+                <Input type="email" value={profile.father?.email || ''} placeholder="father@example.com" onChange={e => set('father.email', e.target.value)} />
+              </FormField>
+              <FormField label="Aadhaar Number" hint="Optional">
+                <Input value={profile.father?.aadhaar || ''} placeholder="12-digit Aadhaar" maxLength={12} onChange={e => set('father.aadhaar', e.target.value.replace(/\D/g, ''))} />
+              </FormField>
+            </div>
+          </SectionCard>
+
+          {/* ── Mother's Details ── */}
+          <SectionCard icon={Heart} title="Mother's Details" subtitle="Employment and contact information for the mother">
+            <div className="form-grid">
+              <FormField label="Full Name">
+                <Input value={profile.mother?.name || ''} placeholder="Mother's full name" onChange={e => set('mother.name', e.target.value)} />
+              </FormField>
+              <FormField label="Date of Birth">
+                <Input type="date" value={profile.mother?.dob || ''} onChange={e => set('mother.dob', e.target.value)} />
+              </FormField>
+              <FormField label="Highest Qualification">
+                <select className="input" value={profile.mother?.qualification || ''} onChange={e => set('mother.qualification', e.target.value)}>
+                  <option value="">Select qualification</option>
+                  {QUALIFICATIONS.map(q => <option key={q}>{q}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Occupation / Profession">
+                <Input value={profile.mother?.occupation || ''} placeholder="e.g. Homemaker, Teacher, Business" onChange={e => set('mother.occupation', e.target.value)} />
+              </FormField>
+              <FormField label="Organization / Employer" hint="Optional">
+                <Input value={profile.mother?.organization || ''} placeholder="If employed — company or department" onChange={e => set('mother.organization', e.target.value)} />
+              </FormField>
+              <FormField label="Annual Income" hint="Optional — include if applicable">
+                <select className="input" value={profile.mother?.annualIncome || ''} onChange={e => set('mother.annualIncome', e.target.value)}>
+                  <option value="">Select income range</option>
+                  {INCOME_BRACKETS.map(b => <option key={b}>{b}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Mobile Number">
+                <Input value={profile.mother?.phone || ''} placeholder="10-digit mobile number" onChange={e => set('mother.phone', e.target.value)} />
+              </FormField>
+              <FormField label="Email Address" hint="Optional">
+                <Input type="email" value={profile.mother?.email || ''} placeholder="mother@example.com" onChange={e => set('mother.email', e.target.value)} />
+              </FormField>
+              <FormField label="Aadhaar Number" hint="Optional">
+                <Input value={profile.mother?.aadhaar || ''} placeholder="12-digit Aadhaar" maxLength={12} onChange={e => set('mother.aadhaar', e.target.value.replace(/\D/g, ''))} />
+              </FormField>
+            </div>
+          </SectionCard>
+
+          {/* ── Guardian (conditional) ── */}
+          <SectionCard icon={Users} title="Guardian Details" subtitle="Fill only if your legal guardian is someone other than your parents">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 14 }}>
+              <input
+                type="checkbox"
+                checked={!!profile.hasGuardian}
+                onChange={e => set('hasGuardian', e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: 'var(--accent)', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>
+                My legal guardian is different from my parents
+              </span>
+            </label>
+            {profile.hasGuardian && (
+              <div className="form-grid">
+                <FormField label="Guardian's Full Name">
+                  <Input value={profile.guardian?.name || ''} placeholder="Full name" onChange={e => set('guardian.name', e.target.value)} />
+                </FormField>
+                <FormField label="Relation to Student">
+                  <Input value={profile.guardian?.relation || ''} placeholder="e.g. Uncle, Grandparent, Elder Sibling" onChange={e => set('guardian.relation', e.target.value)} />
+                </FormField>
+                <FormField label="Mobile Number">
+                  <Input value={profile.guardian?.phone || ''} placeholder="10-digit mobile" onChange={e => set('guardian.phone', e.target.value)} />
+                </FormField>
+                <FormField label="Guardian's Address" hint="If different from student's address">
+                  <Input value={profile.guardian?.address || ''} placeholder="Full address" onChange={e => set('guardian.address', e.target.value)} />
+                </FormField>
+              </div>
+            )}
+          </SectionCard>
+
+          {/* ── Previous School ── */}
+          <SectionCard icon={BookOpen} title="Previous Academic Record" subtitle="School attended before joining this institution">
+            <div className="form-grid">
+              <FormField label="Previous School Name">
+                <Input value={profile.previousSchool?.name || ''} placeholder="Name of the last school attended" onChange={e => set('previousSchool.name', e.target.value)} />
+              </FormField>
+              <FormField label="Board / Affiliation">
+                <select className="input" value={profile.previousSchool?.board || ''} onChange={e => set('previousSchool.board', e.target.value)}>
+                  <option value="">Select board</option>
+                  {['CBSE', 'ICSE', 'IGCSE', 'IB', 'State Board', 'Madrassa', 'Other'].map(b => <option key={b}>{b}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Last Class Attended">
+                <Input value={profile.previousSchool?.lastClass || ''} placeholder="e.g. Class 5, KG-2" onChange={e => set('previousSchool.lastClass', e.target.value)} />
+              </FormField>
+              <FormField label="Year of Leaving">
+                <Input value={profile.previousSchool?.yearOfPassing || ''} placeholder="e.g. 2024" maxLength={4} onChange={e => set('previousSchool.yearOfPassing', e.target.value)} />
+              </FormField>
+              <FormField label="Transfer Certificate No.">
+                <Input value={profile.previousSchool?.tcNumber || ''} placeholder="TC / LC number issued by previous school" onChange={e => set('previousSchool.tcNumber', e.target.value)} />
+              </FormField>
+              <FormField label="Reason for Transfer">
+                <Input value={profile.previousSchool?.reasonForTransfer || ''} placeholder="e.g. Relocation, better opportunities" onChange={e => set('previousSchool.reasonForTransfer', e.target.value)} />
+              </FormField>
+            </div>
+          </SectionCard>
+
+          {/* ── Health Information ── */}
+          <SectionCard icon={Activity} title="Health Information" subtitle="Medical details for the school nurse and administration">
+            <div className="form-grid">
+              <FormField label="Height (cm)" hint="Measured at time of enrollment">
+                <Input type="number" value={profile.health?.height || ''} placeholder="e.g. 152" onChange={e => set('health.height', e.target.value)} />
+              </FormField>
+              <FormField label="Weight (kg)" hint="Measured at time of enrollment">
+                <Input type="number" value={profile.health?.weight || ''} placeholder="e.g. 42" onChange={e => set('health.weight', e.target.value)} />
+              </FormField>
+              <FormField label="Vision Correction">
+                <select className="input" value={profile.health?.vision || ''} onChange={e => set('health.vision', e.target.value)}>
+                  <option value="">Select</option>
+                  <option>None — Normal vision</option>
+                  <option>Spectacles</option>
+                  <option>Contact Lens</option>
+                </select>
+              </FormField>
+              <FormField label="Hearing Impairment">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!profile.health?.hearingIssues}
+                    onChange={e => set('health.hearingIssues', e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: 'var(--accent)' }}
+                  />
+                  <span style={{ fontSize: 14 }}>Has hearing impairment</span>
+                </label>
+              </FormField>
+              <FormField label="Chronic Medical Conditions" hint="e.g. Asthma, Diabetes, Epilepsy — write 'None' if not applicable">
+                <Input value={profile.health?.medicalConditions || ''} placeholder="List any chronic conditions or None" onChange={e => set('health.medicalConditions', e.target.value)} />
+              </FormField>
+              <FormField label="Known Allergies" hint="e.g. Peanuts, Dust, Penicillin — write 'None' if not applicable">
+                <Input value={profile.health?.allergies || ''} placeholder="List allergies or None" onChange={e => set('health.allergies', e.target.value)} />
+              </FormField>
+              <FormField label="Emergency Medical Notes" hint="Critical info for school nurse — medication, special needs, etc.">
+                <Input value={profile.health?.emergencyNotes || ''} placeholder="Any critical medical notes for staff" onChange={e => set('health.emergencyNotes', e.target.value)} />
+              </FormField>
+            </div>
+          </SectionCard>
+
+          {/* ── Siblings in School ── */}
+          <SectionCard icon={Users} title="Siblings in This School" subtitle="List other family members currently enrolled here">
+            <SiblingEditor
+              siblings={profile.siblings || []}
+              onChange={v => setProfile(p => ({ ...p, siblings: v }))}
+            />
+            {(!profile.siblings || profile.siblings.length === 0) && (
+              <p style={{ fontSize: 13, color: 'var(--ink-3)', fontStyle: 'italic' }}>
+                No siblings added — tap the button above if any apply.
+              </p>
+            )}
+          </SectionCard>
+
+          {/* Bottom save button */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button className="btn accent" onClick={handleSave} disabled={saving} style={{ minWidth: 160 }}>
+              {saving ? 'Saving…' : 'Update Profile'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

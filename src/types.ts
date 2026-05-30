@@ -731,3 +731,89 @@ export interface ActivityLog {
   userAgent?: string;
   metadata?: any;
 }
+
+// ─── Extended Student Profile ─────────────────────────────────────────────────
+export interface ExtendedStudentProfile {
+  studentId: string;
+  // Personal
+  dateOfBirth?: string;
+  bloodGroup?: 'A+' | 'A-' | 'B+' | 'B-' | 'O+' | 'O-' | 'AB+' | 'AB-' | '';
+  religion?: string;
+  category?: 'General' | 'OBC' | 'SC' | 'ST' | 'EWS' | '';
+  nationality?: string;
+  motherTongue?: string;
+  languagesKnown?: string;
+  identificationMarks?: string;
+  aadhaarNumber?: string;
+  passportNumber?: string;
+  // Permanent Address
+  permanentAddress?: {
+    house?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    pinCode?: string;
+    country?: string;
+  };
+  // Family
+  father?: {
+    name?: string;
+    dob?: string;
+    qualification?: string;
+    occupation?: string;
+    organization?: string;
+    annualIncome?: string;
+    phone?: string;
+    email?: string;
+    aadhaar?: string;
+  };
+  mother?: {
+    name?: string;
+    dob?: string;
+    qualification?: string;
+    occupation?: string;
+    organization?: string;
+    annualIncome?: string;
+    phone?: string;
+    email?: string;
+    aadhaar?: string;
+  };
+  hasGuardian?: boolean;
+  guardian?: {
+    name?: string;
+    relation?: string;
+    phone?: string;
+    address?: string;
+  };
+  // Academic background
+  previousSchool?: {
+    name?: string;
+    board?: string;
+    lastClass?: string;
+    yearOfPassing?: string;
+    tcNumber?: string;
+    reasonForTransfer?: string;
+  };
+  // Health
+  health?: {
+    height?: string;
+    weight?: string;
+    medicalConditions?: string;
+    allergies?: string;
+    vision?: string;
+    hearingIssues?: boolean;
+    emergencyNotes?: string;
+  };
+  // Siblings in school
+  siblings?: { name: string; admissionNumber: string; class: string }[];
+  // ID card photos (mandatory)
+  idCardFrontUrl?: string;
+  idCardFrontPath?: string;
+  idCardBackUrl?: string;
+  idCardBackPath?: string;
+  // Metadata
+  completionPercentage?: number;
+  updatedAt?: string;
+  updatedBy?: string;
+  updatedByName?: string;
+}

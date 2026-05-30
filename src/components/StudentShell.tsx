@@ -55,6 +55,12 @@ const NAV_SECTIONS = [
       { label: 'Calendar', icon: Calendar, path: '/calendar' },
     ],
   },
+  {
+    heading: 'My Profile',
+    items: [
+      { label: 'Student Profile', icon: User, path: '/my-profile' },
+    ],
+  },
 ];
 
 const TABS = [
