@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../firebase';
-import { UserProfile, Student, ExtendedStudentProfile } from '../../types';
+import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { db, storage, auth } from '../../firebase';
+import { UserProfile, Student, ExtendedStudentProfile, House } from '../../types';
 import { FormField, Input } from '../../components/ui';
 import {
   User, Heart, Home as HomeIcon, Briefcase, BookOpen, Activity,
   Users, CreditCard, Camera, CheckCircle, AlertCircle, Plus, X,
+  Lock, Eye, EyeOff, Loader2, GraduationCap, Hash, Mail,
 } from 'lucide-react';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -128,6 +130,23 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
   const frontRef = useRef<HTMLInputElement>(null);
   const backRef = useRef<HTMLInputElement>(null);
 
+  // Profile photo (avatar)
+  const [photoURL, setPhotoURL] = useState(user.photoURL || '');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoMsg, setPhotoMsg] = useState('');
+  const photoRef = useRef<HTMLInputElement>(null);
+
+  // Identity context
+  const [className, setClassName] = useState('');
+  const [houseName, setHouseName] = useState('');
+
+  // Password change
+  const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' });
+  const [showPwd, setShowPwd] = useState({ current: false, next: false });
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdError, setPwdError] = useState('');
+  const [pwdSuccess, setPwdSuccess] = useState('');
+
   useEffect(() => {
     if (!student?.id) { setLoading(false); return; }
     getDoc(doc(db, 'studentProfiles', student.id)).then(snap => {
@@ -148,6 +167,72 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
       }
     }).catch(() => {}).finally(() => setLoading(false));
   }, [student?.id]);
+
+  useEffect(() => {
+    if (!student) return;
+    if (student.classId) {
+      getDoc(doc(db, 'classes', student.classId))
+        .then(s => setClassName(s.exists() ? s.data().name : student.classId))
+        .catch(() => {});
+    }
+    if (student.houseId) {
+      getDoc(doc(db, 'houses', student.houseId))
+        .then(s => { if (s.exists()) setHouseName((s.data() as House).name); })
+        .catch(() => {});
+    }
+  }, [student?.classId, student?.houseId]);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setPhotoMsg('Please choose an image file.'); return; }
+    if (file.size > 2 * 1024 * 1024) { setPhotoMsg('Image must be under 2 MB.'); return; }
+    setUploadingPhoto(true);
+    setPhotoMsg('');
+    try {
+      const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      await updateDoc(doc(db, 'users', user.uid), { photoURL: url, updatedAt: new Date().toISOString() });
+      if (student?.id) {
+        try { await updateDoc(doc(db, 'students', student.id), { photoURL: url, updatedAt: new Date().toISOString() }); } catch { /* non-fatal */ }
+      }
+      setPhotoURL(url);
+      setPhotoMsg('Photo updated!');
+      setTimeout(() => setPhotoMsg(''), 3000);
+    } catch {
+      setPhotoMsg('Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdError('');
+    setPwdSuccess('');
+    if (pwd.next !== pwd.confirm) { setPwdError('New passwords do not match.'); return; }
+    if (pwd.next.length < 6) { setPwdError('Password must be at least 6 characters.'); return; }
+    setPwdLoading(true);
+    try {
+      const cu = auth.currentUser;
+      if (!cu || !cu.email) throw new Error('No user logged in.');
+      const credential = EmailAuthProvider.credential(cu.email, pwd.current);
+      await reauthenticateWithCredential(cu, credential);
+      await updatePassword(cu, pwd.next);
+      setPwdSuccess('Password updated successfully!');
+      setPwd({ current: '', next: '', confirm: '' });
+      setTimeout(() => setPwdSuccess(''), 3000);
+    } catch (err: any) {
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setPwdError('Current password is incorrect.');
+      } else {
+        setPwdError(err.message || 'Failed to update password.');
+      }
+    } finally {
+      setPwdLoading(false);
+    }
+  };
 
   const set = (path: string, value: any) => {
     setProfile(prev => {
@@ -264,6 +349,68 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
             </div>
           )}
 
+          {/* ── Profile header: photo + identity ── */}
+          <div className="card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                {uploadingPhoto ? (
+                  <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--cream-2)', display: 'grid', placeItems: 'center' }}>
+                    <Loader2 size={28} style={{ color: 'var(--accent)' }} className="animate-spin" />
+                  </div>
+                ) : photoURL ? (
+                  <img src={photoURL} alt={user.name} style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--line)' }} />
+                ) : (
+                  <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--ink)', color: 'var(--cream)', display: 'grid', placeItems: 'center', fontFamily: 'var(--display)', fontWeight: 700, fontSize: 28 }}>
+                    {(user.name || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => photoRef.current?.click()}
+                  title="Change photo"
+                  style={{ position: 'absolute', bottom: -2, right: -2, width: 30, height: 30, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--paper)', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                >
+                  <Camera size={14} style={{ color: 'var(--accent-ink)' }} />
+                </button>
+                <input ref={photoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p className="display" style={{ fontWeight: 700, fontSize: 20, lineHeight: 1.1, color: 'var(--ink)' }}>{user.name}</p>
+                <p className="mono" style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 4 }}>{student.admissionNumber || student.schoolNumber || '—'}</p>
+                <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {className && (
+                    <span className="chip solid" style={{ fontSize: 11 }}>
+                      Class {className}{student.section ? `–${student.section}` : ''}
+                    </span>
+                  )}
+                  {houseName && <span className="chip" style={{ fontSize: 11 }}>{houseName}</span>}
+                </div>
+                {photoMsg && (
+                  <p style={{ fontSize: 12, color: photoMsg.includes('Failed') || photoMsg.includes('must') || photoMsg.includes('image') ? 'var(--coral)' : 'var(--leaf)', marginTop: 8 }}>
+                    {photoMsg}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Identity rows */}
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--line-2)' }}>
+              {[
+                { icon: Hash, label: 'Admission No.', value: student.admissionNumber || student.schoolNumber || '—' },
+                { icon: GraduationCap, label: 'Class & Section', value: className ? `Class ${className}${student.section ? ` · ${student.section}` : ''}` : '—' },
+                { icon: HomeIcon, label: 'House', value: houseName || 'Not Assigned' },
+                { icon: Mail, label: 'Email', value: user.email },
+              ].map((row, i, arr) => (
+                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--line-2)' : 'none' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--ink-3)' }}>
+                    <row.icon size={14} /> {row.label}
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 500, textAlign: 'right', color: 'var(--ink)', maxWidth: '60%', wordBreak: 'break-all' }}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Completion indicator */}
           <div className="card">
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -282,6 +429,14 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* ── Additional Details heading ── */}
+          <div style={{ paddingTop: 4 }}>
+            <p className="eyebrow" style={{ marginBottom: 4 }}>Additional Details</p>
+            <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>
+              Complete the sections below to keep your school records up to date. Tap “Update Profile” when you’re done.
+            </p>
           </div>
 
           {/* ── ID Card Photos (Mandatory) ── */}
@@ -605,6 +760,63 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
               {saving ? 'Saving…' : 'Update Profile'}
             </button>
           </div>
+
+          {/* ── Account Security ── */}
+          <div style={{ paddingTop: 8 }}>
+            <p className="eyebrow" style={{ marginBottom: 4 }}>Account Security</p>
+          </div>
+          <SectionCard icon={Lock} title="Change Password" subtitle="Update the password you use to sign in">
+            <form onSubmit={handlePasswordChange}>
+              <div className="stack">
+                <FormField label="Current Password" required>
+                  <div style={{ position: 'relative' }}>
+                    <Input
+                      type={showPwd.current ? 'text' : 'password'}
+                      placeholder="Enter current password"
+                      required
+                      value={pwd.current}
+                      onChange={e => setPwd({ ...pwd, current: e.target.value })}
+                    />
+                    <button type="button" onClick={() => setShowPwd(s => ({ ...s, current: !s.current }))}
+                      style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', display: 'flex' }}>
+                      {showPwd.current ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </FormField>
+                <FormField label="New Password" required>
+                  <div style={{ position: 'relative' }}>
+                    <Input
+                      type={showPwd.next ? 'text' : 'password'}
+                      placeholder="Min. 6 characters"
+                      required
+                      value={pwd.next}
+                      onChange={e => setPwd({ ...pwd, next: e.target.value })}
+                    />
+                    <button type="button" onClick={() => setShowPwd(s => ({ ...s, next: !s.next }))}
+                      style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', display: 'flex' }}>
+                      {showPwd.next ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </FormField>
+                <FormField label="Confirm New Password" required>
+                  <Input
+                    type="password"
+                    placeholder="Repeat new password"
+                    required
+                    value={pwd.confirm}
+                    onChange={e => setPwd({ ...pwd, confirm: e.target.value })}
+                  />
+                </FormField>
+                {pwdError && <p style={{ fontSize: 13, color: 'var(--coral)' }}>{pwdError}</p>}
+                {pwdSuccess && <p style={{ fontSize: 13, color: 'var(--leaf)' }}>{pwdSuccess}</p>}
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button type="submit" className="btn" disabled={pwdLoading}>
+                    {pwdLoading ? 'Updating…' : 'Change Password'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </SectionCard>
         </div>
       </div>
     </div>

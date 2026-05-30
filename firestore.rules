@@ -116,7 +116,7 @@ service cloud.firestore {
       allow create: if isSignedIn() && (isAnyAdmin() || isAccountant());
       allow update: if isSignedIn() && (isAnyAdmin() || isAccountant() || isGrievanceOfficer() || (
         isLinkedToStudent(studentId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feeStatus', 'updatedAt', 'fcmTokens', 'lastLogin'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feeStatus', 'updatedAt', 'fcmTokens', 'lastLogin', 'photoURL'])
       ));
       allow delete: if isAdmin();
     }
