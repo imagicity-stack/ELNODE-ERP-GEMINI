@@ -9,7 +9,6 @@ import StudentAttendance from './StudentAttendance';
 import StudentLeaves from './StudentLeaves';
 import StudentSubjects from './StudentSubjects';
 import StudentNotes from './StudentNotes';
-import ProfileSettings from '../shared/ProfileSettings';
 import ExtendedProfile from './ExtendedProfile';
 import ResultView from '../shared/ResultView';
 import AcademicCalendar from '../admin/AcademicCalendar';
@@ -31,12 +30,11 @@ export default function StudentPortal({ user }: { user: UserProfile }) {
         <Route path="/leaves" element={<StudentLeaves user={user} />} />
         <Route path="/subjects" element={<StudentSubjects user={user} />} />
         <Route path="/notes" element={<StudentNotes user={user} />} />
-        <Route path="/profile" element={<ProfileSettings user={user} />} />
+        <Route path="/profile" element={<ExtendedProfile user={user} student={student || null} />} />
         <Route path="/exams" element={student ? <ResultView student={student} /> : null} />
         <Route path="/calendar" element={<AcademicCalendar user={user} />} />
         <Route path="/notices" element={<NoticeBoard user={user} />} />
         <Route path="/diary" element={<LessonLogs user={user} student={student || undefined} />} />
-        <Route path="/my-profile" element={<ExtendedProfile user={user} student={student || null} />} />
         <Route path="*" element={<Navigate to="/student" />} />
       </Routes>
     </StudentShell>
