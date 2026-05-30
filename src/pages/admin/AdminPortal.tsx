@@ -37,6 +37,7 @@ import NotificationManager from './NotificationManager';
 import GrievanceTracker from '../grievance/GrievanceTracker';
 import FeeFollowup from '../grievance/FeeFollowup';
 import BroadcastCenter from '../grievance/BroadcastCenter';
+import StudentProfileAnalytics from './StudentProfileAnalytics';
 
 export default function AdminPortal({ user }: { user: UserProfile }) {
   return (
@@ -78,6 +79,7 @@ export default function AdminPortal({ user }: { user: UserProfile }) {
         <Route path="/fee-followup" element={<FeeFollowup user={user} />} />
         <Route path="/broadcast" element={<BroadcastCenter user={user} />} />
         <Route path="/profile" element={<ProfileSettings user={user} />} />
+        <Route path="/student-profile-analytics" element={<StudentProfileAnalytics user={user} />} />
         <Route path="*" element={<Navigate to="/superadmin" />} />
       </Routes>
     </AdminShell>

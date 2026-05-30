@@ -29,6 +29,7 @@ const NAV_SECTIONS = [
     heading: 'People',
     items: [
       { label: 'Students', icon: Users, path: '/students' },
+      { label: 'Profile Analytics', icon: BarChart3, path: '/student-profile-analytics' },
       { label: 'Teachers', icon: GraduationCap, path: '/teachers' },
       { label: 'Staff', icon: UserCheck, path: '/staff' },
       { label: 'Houses', icon: Building2, path: '/houses' },

@@ -263,3 +263,10 @@
 
 @keyframes eh-slideup { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .eh-app .more-sheet { animation: eh-slideup 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+@keyframes eh-slidein { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.eh-app .profile-drawer { animation: eh-slidein 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+.eh-app .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+@media (max-width: 640px) { .eh-app .form-grid { grid-template-columns: 1fr; } }
+.eh-app .section-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--cream-2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.eh-app .profile-completion-bar { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.eh-app .profile-completion-fill { height: 100%; border-radius: 99px; transition: width 0.5s ease; }

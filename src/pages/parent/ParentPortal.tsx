@@ -16,6 +16,7 @@ import AcademicCalendar from '../admin/AcademicCalendar';
 import NoticeBoard from '../admin/NoticeBoard';
 import LessonLogs from '../shared/LessonLogs';
 import ParentGrievance from './ParentGrievance';
+import ParentChildProfile from './ParentChildProfile';
 
 export default function ParentPortal({ user }: { user: UserProfile }) {
   const [students, setStudents] = useState<Student[]>([]);
@@ -70,6 +71,7 @@ export default function ParentPortal({ user }: { user: UserProfile }) {
         <Route path="/notices" element={<NoticeBoard user={user} />} />
         <Route path="/diary" element={<LessonLogs user={user} student={selectedStudent || undefined} />} />
         <Route path="/grievances" element={<ParentGrievance user={user} selectedStudent={selectedStudent} />} />
+        <Route path="/child-profile" element={<ParentChildProfile user={user} selectedStudent={selectedStudent} />} />
         <Route path="*" element={<Navigate to="/parent" />} />
       </Routes>
     </ParentShell>
