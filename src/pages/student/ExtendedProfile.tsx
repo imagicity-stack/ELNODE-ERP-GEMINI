@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { db, storage, auth } from '../../firebase';
 import { UserProfile, Student, ExtendedStudentProfile, House } from '../../types';
@@ -8,7 +8,7 @@ import { FormField, Input } from '../../components/ui';
 import {
   User, Heart, Home as HomeIcon, Briefcase, BookOpen, Activity,
   Users, CreditCard, Camera, CheckCircle, AlertCircle, Plus, X,
-  Lock, Eye, EyeOff, Loader2, GraduationCap, Hash, Mail,
+  Lock, Eye, EyeOff, Loader2, GraduationCap, Hash, Mail, Image as ImageIcon,
 } from 'lucide-react';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -125,16 +125,23 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
   const [saving, setSaving] = useState(false);
   const [uploadingFront, setUploadingFront] = useState(false);
   const [uploadingBack, setUploadingBack] = useState(false);
+  const [frontProgress, setFrontProgress] = useState(0);
+  const [backProgress, setBackProgress] = useState(0);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
-  const frontRef = useRef<HTMLInputElement>(null);
-  const backRef = useRef<HTMLInputElement>(null);
+  // Separate refs for gallery picker vs. direct camera capture
+  const frontGalleryRef = useRef<HTMLInputElement>(null);
+  const frontCameraRef = useRef<HTMLInputElement>(null);
+  const backGalleryRef = useRef<HTMLInputElement>(null);
+  const backCameraRef = useRef<HTMLInputElement>(null);
 
   // Profile photo (avatar)
   const [photoURL, setPhotoURL] = useState(user.photoURL || '');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoProgress, setPhotoProgress] = useState(0);
   const [photoMsg, setPhotoMsg] = useState('');
-  const photoRef = useRef<HTMLInputElement>(null);
+  const photoGalleryRef = useRef<HTMLInputElement>(null);
+  const photoCameraRef = useRef<HTMLInputElement>(null);
 
   // Identity context
   const [className, setClassName] = useState('');
@@ -184,14 +191,24 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // reset so picking the same file again re-fires onChange
     if (!file) return;
     if (!file.type.startsWith('image/')) { setPhotoMsg('Please choose an image file.'); return; }
-    if (file.size > 2 * 1024 * 1024) { setPhotoMsg('Image must be under 2 MB.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setPhotoMsg('Image must be under 5 MB.'); return; }
     setUploadingPhoto(true);
+    setPhotoProgress(0);
     setPhotoMsg('');
     try {
-      const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
+      const safeName = file.name.replace(/[^\w.\-]/g, '_');
+      const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${safeName}`);
+      const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
+      await new Promise<void>((resolve, reject) => {
+        task.on('state_changed',
+          snap => setPhotoProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
+          reject,
+          () => resolve(),
+        );
+      });
       const url = await getDownloadURL(storageRef);
       await updateDoc(doc(db, 'users', user.uid), { photoURL: url, updatedAt: new Date().toISOString() });
       if (student?.id) {
@@ -200,10 +217,13 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
       setPhotoURL(url);
       setPhotoMsg('Photo updated!');
       setTimeout(() => setPhotoMsg(''), 3000);
-    } catch {
-      setPhotoMsg('Failed to upload photo. Please try again.');
+    } catch (err: any) {
+      setPhotoMsg(err?.code === 'storage/unauthorized'
+        ? 'Upload not permitted. Please contact administration.'
+        : `Failed to upload photo${err?.message ? `: ${err.message}` : ''}. Please try again.`);
     } finally {
       setUploadingPhoto(false);
+      setPhotoProgress(0);
     }
   };
 
@@ -251,22 +271,36 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
 
   const uploadPhoto = async (file: File, side: 'front' | 'back') => {
     if (!student?.id) return;
+    if (!file.type.startsWith('image/')) { setError('Please choose an image file for the ID card.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setError('ID card image must be under 5 MB.'); return; }
     const setUploading = side === 'front' ? setUploadingFront : setUploadingBack;
+    const setProgress = side === 'front' ? setFrontProgress : setBackProgress;
     setUploading(true);
+    setProgress(0);
     setError('');
     try {
       const path = `studentProfiles/${student.id}/idCard-${side}-${Date.now()}`;
       const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, file);
+      const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
+      await new Promise<void>((resolve, reject) => {
+        task.on('state_changed',
+          snap => setProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
+          reject,
+          () => resolve(),
+        );
+      });
       const url = await getDownloadURL(storageRef);
       setProfile(prev => ({
         ...prev,
         ...(side === 'front' ? { idCardFrontUrl: url, idCardFrontPath: path } : { idCardBackUrl: url, idCardBackPath: path }),
       }));
-    } catch {
-      setError('Photo upload failed. Please try again.');
+    } catch (err: any) {
+      setError(err?.code === 'storage/unauthorized'
+        ? 'ID card upload not permitted. Please contact administration.'
+        : `Photo upload failed${err?.message ? `: ${err.message}` : ''}. Please try again.`);
     } finally {
       setUploading(false);
+      setProgress(0);
     }
   };
 
@@ -354,8 +388,9 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 {uploadingPhoto ? (
-                  <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--cream-2)', display: 'grid', placeItems: 'center' }}>
-                    <Loader2 size={28} style={{ color: 'var(--accent)' }} className="animate-spin" />
+                  <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--cream-2)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                    <Loader2 size={20} style={{ color: 'var(--accent)' }} className="animate-spin" />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>{photoProgress}%</span>
                   </div>
                 ) : photoURL ? (
                   <img src={photoURL} alt={user.name} style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--line)' }} />
@@ -366,13 +401,16 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                 )}
                 <button
                   type="button"
-                  onClick={() => photoRef.current?.click()}
-                  title="Change photo"
-                  style={{ position: 'absolute', bottom: -2, right: -2, width: 30, height: 30, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--paper)', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                  disabled={uploadingPhoto}
+                  onClick={() => photoCameraRef.current?.click()}
+                  title="Take photo with camera"
+                  style={{ position: 'absolute', bottom: -2, right: -2, width: 30, height: 30, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--paper)', display: 'grid', placeItems: 'center', cursor: uploadingPhoto ? 'wait' : 'pointer' }}
                 >
                   <Camera size={14} style={{ color: 'var(--accent-ink)' }} />
                 </button>
-                <input ref={photoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
+                {/* Hidden inputs: camera capture + gallery picker */}
+                <input ref={photoCameraRef} type="file" accept="image/*" capture="user" style={{ display: 'none' }} onChange={handlePhotoUpload} />
+                <input ref={photoGalleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p className="display" style={{ fontWeight: 700, fontSize: 20, lineHeight: 1.1, color: 'var(--ink)' }}>{user.name}</p>
@@ -385,8 +423,22 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                   )}
                   {houseName && <span className="chip" style={{ fontSize: 11 }}>{houseName}</span>}
                 </div>
+                {/* Camera / Gallery action buttons */}
+                <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn ghost" disabled={uploadingPhoto} style={{ fontSize: 12, padding: '5px 12px', width: 'auto' }} onClick={() => photoCameraRef.current?.click()}>
+                    <Camera size={13} /> Camera
+                  </button>
+                  <button type="button" className="btn ghost" disabled={uploadingPhoto} style={{ fontSize: 12, padding: '5px 12px', width: 'auto' }} onClick={() => photoGalleryRef.current?.click()}>
+                    <ImageIcon size={13} /> {photoURL ? 'Change Photo' : 'Gallery'}
+                  </button>
+                </div>
+                {uploadingPhoto && (
+                  <div className="profile-completion-bar" style={{ marginTop: 8 }}>
+                    <div className="profile-completion-fill" style={{ width: `${photoProgress}%`, background: 'var(--accent)' }} />
+                  </div>
+                )}
                 {photoMsg && (
-                  <p style={{ fontSize: 12, color: photoMsg.includes('Failed') || photoMsg.includes('must') || photoMsg.includes('image') ? 'var(--coral)' : 'var(--leaf)', marginTop: 8 }}>
+                  <p style={{ fontSize: 12, color: photoMsg.includes('Failed') || photoMsg.includes('must') || photoMsg.includes('image') || photoMsg.includes('not permitted') ? 'var(--coral)' : 'var(--leaf)', marginTop: 8 }}>
                     {photoMsg}
                   </p>
                 )}
@@ -445,24 +497,39 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
               {(['front', 'back'] as const).map(side => {
                 const url = side === 'front' ? profile.idCardFrontUrl : profile.idCardBackUrl;
                 const uploading = side === 'front' ? uploadingFront : uploadingBack;
-                const inputRef = side === 'front' ? frontRef : backRef;
+                const progress = side === 'front' ? frontProgress : backProgress;
+                const galleryRef = side === 'front' ? frontGalleryRef : backGalleryRef;
+                const cameraRef = side === 'front' ? frontCameraRef : backCameraRef;
+                const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (f) uploadPhoto(f, side);
+                };
                 return (
                   <div key={side}>
                     <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       {side === 'front' ? 'Front Side' : 'Back Side'} <span style={{ color: 'var(--coral)' }}>*</span>
                     </p>
                     <div
-                      onClick={() => !uploading && inputRef.current?.click()}
+                      onClick={() => !uploading && !url && cameraRef.current?.click()}
                       style={{
                         border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`,
                         borderRadius: 12, minHeight: 130,
                         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                        cursor: uploading ? 'wait' : 'pointer', overflow: 'hidden', position: 'relative',
+                        cursor: uploading ? 'wait' : url ? 'default' : 'pointer', overflow: 'hidden', position: 'relative',
                         background: url ? 'transparent' : 'var(--cream)',
-                        transition: 'border-color 0.2s',
+                        transition: 'border-color 0.2s', padding: 10,
                       }}
                     >
-                      {url ? (
+                      {uploading ? (
+                        <>
+                          <Loader2 size={24} style={{ color: 'var(--accent)', marginBottom: 8 }} className="animate-spin" />
+                          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>Uploading… {progress}%</p>
+                          <div className="profile-completion-bar" style={{ width: '80%' }}>
+                            <div className="profile-completion-fill" style={{ width: `${progress}%`, background: 'var(--accent)' }} />
+                          </div>
+                        </>
+                      ) : url ? (
                         <>
                           <img src={url} alt={`ID ${side}`} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
                           <div style={{ position: 'absolute', bottom: 6, right: 6, background: 'var(--leaf)', color: '#fff', borderRadius: 99, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>
@@ -473,19 +540,24 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                         <>
                           <Camera size={26} style={{ color: 'var(--ink-3)', marginBottom: 6 }} />
                           <p style={{ fontSize: 12, color: 'var(--ink-3)', textAlign: 'center', fontWeight: 600 }}>
-                            {uploading ? 'Uploading…' : 'Tap to upload photo'}
+                            Tap to capture photo
                           </p>
-                          <p style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', marginTop: 2 }}>JPG or PNG</p>
+                          <p style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', marginTop: 2 }}>JPG or PNG · max 5 MB</p>
                         </>
                       )}
                     </div>
-                    <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }}
-                      onChange={e => e.target.files?.[0] && uploadPhoto(e.target.files[0], side)} />
-                    {url && (
-                      <button className="btn ghost" style={{ marginTop: 6, fontSize: 11, padding: '4px 10px' }}
-                        onClick={() => inputRef.current?.click()}>
-                        Replace
-                      </button>
+                    {/* Camera capture + gallery inputs */}
+                    <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onPick} />
+                    <input ref={galleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPick} />
+                    {!uploading && (
+                      <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '4px 10px', width: 'auto' }} onClick={() => cameraRef.current?.click()}>
+                          <Camera size={12} /> Camera
+                        </button>
+                        <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '4px 10px', width: 'auto' }} onClick={() => galleryRef.current?.click()}>
+                          <ImageIcon size={12} /> {url ? 'Replace' : 'Gallery'}
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
