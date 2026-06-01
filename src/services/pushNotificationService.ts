@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { getApp } from 'firebase/app';
-import { doc, setDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
 import { UserProfile } from '../types';
 import { audienceTokensForUser } from './notificationCenterService';
@@ -18,13 +18,13 @@ const VAPID_KEY = (import.meta as any).env?.VITE_FCM_VAPID_KEY || '';
 export async function syncAudienceTokens(user: UserProfile): Promise<void> {
   try {
     const tokens = audienceTokensForUser(user);
-    await setDoc(
-      doc(db, 'users', user.uid),
-      { audienceTokens: tokens, updatedAt: new Date().toISOString() },
-      { merge: true }
-    );
+    await updateDoc(doc(db, 'users', user.uid), {
+      audienceTokens: tokens,
+      updatedAt: new Date().toISOString(),
+    });
+    console.info('[push] audienceTokens synced for', user.uid, tokens);
   } catch (e) {
-    console.warn('Failed to sync audience tokens:', e);
+    console.warn('[push] Failed to sync audience tokens:', e);
   }
 }
 
@@ -75,21 +75,39 @@ export async function requestPushPermission(): Promise<boolean> {
 // Registers the FCM service worker, retrieves a web push token, and stores it on
 // the user's fcmTokens array (the same field the send-push API queries).
 async function registerWebPush(user: UserProfile): Promise<void> {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window)) return;
-  if (Notification.permission !== 'granted') return;
-  if (!VAPID_KEY) {
-    console.warn('[push] VITE_FCM_VAPID_KEY is not set — web push notifications are disabled.');
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window)) {
+    console.warn('[push] Web push not supported in this environment');
     return;
   }
+  if (Notification.permission !== 'granted') {
+    console.info('[push] Notification permission not granted:', Notification.permission);
+    return;
+  }
+  if (!VAPID_KEY) {
+    console.warn('[push] VITE_FCM_VAPID_KEY is not set — web push notifications are disabled. Set this in Vercel env vars from Firebase Console > Project Settings > Cloud Messaging > Web Push certificates.');
+    return;
+  }
+  console.info('[push] Starting web push registration for uid:', user.uid);
   try {
     const { isSupported, getMessaging, getToken, onMessage } = await import('firebase/messaging');
-    if (!(await isSupported().catch(() => false))) return;
+    const supported = await isSupported().catch(() => false);
+    if (!supported) {
+      console.warn('[push] Firebase Messaging not supported in this browser');
+      return;
+    }
 
     const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    await navigator.serviceWorker.ready;
+    console.info('[push] Service worker registered:', swReg.scope);
+
     const messaging = getMessaging(getApp());
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
     if (token) {
-      await setDoc(doc(db, 'users', user.uid), { fcmTokens: arrayUnion(token) }, { merge: true });
+      console.info('[push] FCM token obtained, storing in Firestore…');
+      await updateDoc(doc(db, 'users', user.uid), { fcmTokens: arrayUnion(token) });
+      console.info('[push] FCM token stored successfully. Push notifications are active.');
+    } else {
+      console.warn('[push] getToken returned empty — push not registered. Check VAPID key matches Firebase Console.');
     }
 
     // Foreground messages: in-app NotificationCenter already reflects these via a
@@ -99,7 +117,7 @@ async function registerWebPush(user: UserProfile): Promise<void> {
       if (link) sessionStorage.setItem('push_nav_link', link);
     });
   } catch (e) {
-    console.warn('[push] Web push registration failed:', e);
+    console.error('[push] Web push registration failed:', e);
   }
 }
 
@@ -116,13 +134,9 @@ export async function registerForPush(user: UserProfile): Promise<void> {
 
     PushNotifications.addListener('registration', async (token) => {
       try {
-        await setDoc(
-          doc(db, 'users', user.uid),
-          { fcmTokens: arrayUnion(token.value) },
-          { merge: true }
-        );
+        await updateDoc(doc(db, 'users', user.uid), { fcmTokens: arrayUnion(token.value) });
       } catch (e) {
-        console.warn('Failed to store FCM token:', e);
+        console.warn('[push] Failed to store native FCM token:', e);
       }
     });
 
