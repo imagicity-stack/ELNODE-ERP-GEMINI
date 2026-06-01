@@ -76,7 +76,7 @@ async function queryFcmTokens(
   projectId: string,
   token: string,
   audience: string[]
-): Promise<string[]> {
+): Promise<{ tokens: string[]; matchedUsers: number }> {
   const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 
   // Build ARRAY_CONTAINS_ANY filter over audienceTokens
@@ -125,16 +125,19 @@ async function queryFcmTokens(
 
   const rows = await res.json() as Array<{ document?: { fields?: Record<string, FirestoreValue> } }>;
   const tokens = new Set<string>();
+  let matchedUsers = 0;
 
   for (const row of rows) {
-    const fcmField = row.document?.fields?.fcmTokens;
+    if (!row.document) continue;
+    matchedUsers++;
+    const fcmField = row.document.fields?.fcmTokens;
     const values = fcmField?.arrayValue?.values ?? [];
     for (const v of values) {
       if (v.stringValue) tokens.add(v.stringValue);
     }
   }
 
-  return Array.from(tokens);
+  return { tokens: Array.from(tokens), matchedUsers };
 }
 
 // ─── FCM v1 send ─────────────────────────────────────────────────────────────
@@ -247,10 +250,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const accessToken = await getAccessToken(sa);
 
-    const fcmTokens = await queryFcmTokens(sa.project_id, accessToken, audience);
+    const { tokens: fcmTokens, matchedUsers } = await queryFcmTokens(sa.project_id, accessToken, audience);
 
     if (fcmTokens.length === 0) {
-      return res.status(200).json({ sent: 0, failed: 0, message: 'No FCM tokens found for audience' });
+      const message = matchedUsers === 0
+        ? 'No users matched the audience (audienceTokens not synced — user must log in once after the latest deploy)'
+        : `${matchedUsers} user(s) matched but none have a push token — VITE_FCM_VAPID_KEY may not be set, or they have not granted notification permission`;
+      return res.status(200).json({ sent: 0, failed: 0, matchedUsers, message });
     }
 
     const result = await sendFcmBatch(sa.project_id, accessToken, fcmTokens, {
@@ -267,6 +273,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({
       ...result,
+      matchedUsers,
       recipients: fcmTokens.length,
     });
   } catch (err: any) {
