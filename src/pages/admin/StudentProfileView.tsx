@@ -373,8 +373,8 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
                           {side === 'front' ? 'Front' : 'Back'} {!url && <span style={{ color: 'var(--coral)' }}>Missing</span>}
                         </p>
                         <div
-                          onClick={() => editMode && !uploading && !url && setPickerFor(side)}
-                          style={{ border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`, borderRadius: 10, minHeight: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: editMode && !url ? 'pointer' : 'default', overflow: 'hidden', position: 'relative', background: 'var(--cream)', padding: 8 }}
+                          onClick={() => !uploading && !url && setPickerFor(side)}
+                          style={{ border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`, borderRadius: 10, minHeight: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: !url ? 'pointer' : 'default', overflow: 'hidden', position: 'relative', background: 'var(--cream)', padding: 8 }}
                         >
                           {uploading ? (
                             <>
@@ -389,7 +389,7 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
                           ) : (
                             <div style={{ textAlign: 'center' }}>
                               <Camera size={20} style={{ color: 'var(--ink-3)', margin: '0 auto 4px' }} />
-                              <p style={{ fontSize: 11, color: 'var(--ink-3)' }}>{editMode ? 'Click to upload' : 'Not uploaded'}</p>
+                              <p style={{ fontSize: 11, color: 'var(--ink-3)' }}>Click to upload</p>
                             </div>
                           )}
                         </div>
@@ -397,7 +397,7 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
                         <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onPick} />
                         <input ref={galleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPick} />
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-                          {editMode && !uploading && (
+                          {!uploading && (
                             <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '3px 10px', width: 'auto' }} onClick={() => setPickerFor(side)}>
                               <Camera size={11} /> {url ? 'Replace' : 'Upload'}
                             </button>
