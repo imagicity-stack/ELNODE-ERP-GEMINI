@@ -9,6 +9,7 @@ import {
   subscribeFeed, subscribeReadState, markAllRead, dismissNotification, NOTIFICATION_CATEGORIES,
 } from '../services/notificationCenterService';
 import { requestNotificationPermission } from '../services/notificationService';
+import { registerForPush } from '../services/pushNotificationService';
 import { cn } from '../lib/utils';
 
 const CATEGORY_ICON: Record<string, any> = {
@@ -77,7 +78,9 @@ export default function NotificationCenter({ user }: { user: UserProfile }) {
   const handleEnableNotifications = async () => {
     const granted = await requestNotificationPermission();
     if (notifSupported) setPermission(Notification.permission);
-    if (granted) { /* listeners already running; nothing else needed */ }
+    // Register an FCM web-push token so server-sent pushes can reach this device
+    // (in-app listeners were already running; this enables background delivery).
+    if (granted) registerForPush(user).catch(() => {});
   };
 
   const onItemClick = (n: AppNotification) => {

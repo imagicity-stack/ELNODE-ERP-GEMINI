@@ -7,7 +7,7 @@ import { UserProfile, Student, ExtendedStudentProfile, House } from '../../types
 import { FormField, Input } from '../../components/ui';
 import {
   User, Heart, Home as HomeIcon, Briefcase, BookOpen, Activity,
-  Users, CreditCard, Camera, CheckCircle, AlertCircle, Plus, X,
+  Users, CreditCard, Camera, CheckCircle, AlertCircle,
   Lock, Eye, EyeOff, Loader2, GraduationCap, Hash, Mail, Image as ImageIcon, ExternalLink,
 } from 'lucide-react';
 
@@ -81,34 +81,6 @@ function SectionCard({ icon: Icon, title, subtitle, children }: {
         </div>
       </div>
       {children}
-    </div>
-  );
-}
-
-function SiblingEditor({ siblings, onChange }: {
-  siblings: { name: string; admissionNumber: string; class: string }[];
-  onChange: (v: { name: string; admissionNumber: string; class: string }[]) => void;
-}) {
-  const add = () => onChange([...siblings, { name: '', admissionNumber: '', class: '' }]);
-  const remove = (i: number) => onChange(siblings.filter((_, idx) => idx !== i));
-  const update = (i: number, key: 'name' | 'admissionNumber' | 'class', val: string) => {
-    const next = [...siblings];
-    next[i] = { ...next[i], [key]: val };
-    onChange(next);
-  };
-  return (
-    <div>
-      {siblings.map((s, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
-          <FormField label="Name"><Input value={s.name} placeholder="Sibling name" onChange={e => update(i, 'name', e.target.value)} /></FormField>
-          <FormField label="Adm. No."><Input value={s.admissionNumber} placeholder="e.g. 2023001" onChange={e => update(i, 'admissionNumber', e.target.value)} /></FormField>
-          <FormField label="Class"><Input value={s.class} placeholder="e.g. 8A" onChange={e => update(i, 'class', e.target.value)} /></FormField>
-          <button className="icon-btn" style={{ color: 'var(--coral)', marginBottom: 2 }} onClick={() => remove(i)}><X size={14} /></button>
-        </div>
-      ))}
-      <button className="btn ghost" style={{ marginTop: 4, fontSize: 13 }} type="button" onClick={add}>
-        <Plus size={14} /> Add Sibling
-      </button>
     </div>
   );
 }
@@ -575,7 +547,7 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
           <div style={{ paddingTop: 4 }}>
             <p className="eyebrow" style={{ marginBottom: 4 }}>Additional Details</p>
             <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>
-              Complete the sections below to keep your school records up to date. Tap “Update Profile” when you’re done.
+              Complete the sections below to keep your school records up to date. Tap “Update Profile” when you're done.
             </p>
           </div>
 
@@ -908,15 +880,19 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
             </div>
           </SectionCard>
 
-          {/* ── Siblings in School ── */}
-          <SectionCard icon={Users} title="Siblings in This School" subtitle="List other family members currently enrolled here">
-            <SiblingEditor
-              siblings={profile.siblings || []}
-              onChange={v => setProfile(p => ({ ...p, siblings: v }))}
-            />
-            {(!profile.siblings || profile.siblings.length === 0) && (
+          {/* ── Siblings in School (auto-detected) ── */}
+          <SectionCard icon={Users} title="Siblings in This School" subtitle="Automatically detected from other students linked to your parent">
+            {(profile.siblings || []).length > 0 ? (
+              (profile.siblings || []).map((s, i) => (
+                <div key={i} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line-2)', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{s.name}</span>
+                  <span style={{ fontSize: 12, color: 'var(--ink-3)' }} className="mono">{s.admissionNumber}</span>
+                  <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{s.class}</span>
+                </div>
+              ))
+            ) : (
               <p style={{ fontSize: 13, color: 'var(--ink-3)', fontStyle: 'italic' }}>
-                No siblings added — tap the button above if any apply.
+                No siblings detected. If a sibling studies here, it will appear once their record is linked to the same parent.
               </p>
             )}
           </SectionCard>
@@ -988,44 +964,44 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
       </div>
 
       {/* Shared hidden inputs for all ID card uploads */}
-      <input ref={idCardCameraRef} type="file" accept="image/*" capture="environment" style={{ display: ‘none’ }} onChange={handleIdCardPick} />
-      <input ref={idCardGalleryRef} type="file" accept="image/*" style={{ display: ‘none’ }} onChange={handleIdCardPick} />
+      <input ref={idCardCameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleIdCardPick} />
+      <input ref={idCardGalleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleIdCardPick} />
 
       {/* ── Camera / Gallery chooser popup ── */}
       {pickerFor && (
         <div
           onClick={() => setPickerFor(null)}
-          style={{ position: ‘fixed’, inset: 0, background: ‘rgba(0,0,0,0.45)’, zIndex: 1000, display: ‘flex’, alignItems: ‘flex-end’, justifyContent: ‘center’ }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
         >
           <div
             onClick={e => e.stopPropagation()}
             className="card"
-            style={{ width: ‘100%’, maxWidth: 420, margin: 12, borderRadius: 18, padding: 18, animation: ‘eh-slidein 0.18s ease-out’ }}
+            style={{ width: '100%', maxWidth: 420, margin: 12, borderRadius: 18, padding: 18, animation: 'eh-slidein 0.18s ease-out' }}
           >
-            <p style={{ fontWeight: 700, fontSize: 15, color: ‘var(--ink)’, marginBottom: 2 }}>
-              {pickerFor === ‘photo’ ? ‘Update Profile Photo’ : {
-                ‘student-front’: "Student’s ID Card — Front",
-                ‘student-back’: "Student’s ID Card — Back",
-                ‘father-front’: "Father’s ID Card — Front",
-                ‘father-back’: "Father’s ID Card — Back",
-                ‘mother-front’: "Mother’s ID Card — Front",
-                ‘mother-back’: "Mother’s ID Card — Back",
-                ‘guardian-front’: "Guardian’s ID Card — Front",
-                ‘guardian-back’: "Guardian’s ID Card — Back",
-              }[pickerFor] || ‘Upload Photo’}
+            <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', marginBottom: 2 }}>
+              {pickerFor === 'photo' ? 'Update Profile Photo' : {
+                'student-front': "Student's ID Card — Front",
+                'student-back': "Student's ID Card — Back",
+                'father-front': "Father's ID Card — Front",
+                'father-back': "Father's ID Card — Back",
+                'mother-front': "Mother's ID Card — Front",
+                'mother-back': "Mother's ID Card — Back",
+                'guardian-front': "Guardian's ID Card — Front",
+                'guardian-back': "Guardian's ID Card — Back",
+              }[pickerFor] || 'Upload Photo'}
             </p>
-            <p style={{ fontSize: 12, color: ‘var(--ink-3)’, marginBottom: 16 }}>Choose how you’d like to add the image.</p>
-            <div style={{ display: ‘flex’, gap: 10 }}>
-              <button type="button" className="btn" style={{ flex: 1, flexDirection: ‘column’, gap: 6, padding: ‘16px 10px’, height: ‘auto’ }} onClick={() => openPicker(‘camera’)}>
+            <p style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 16 }}>Choose how you'd like to add the image.</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="btn" style={{ flex: 1, flexDirection: 'column', gap: 6, padding: '16px 10px', height: 'auto' }} onClick={() => openPicker('camera')}>
                 <Camera size={22} />
                 <span style={{ fontSize: 13, fontWeight: 600 }}>Camera</span>
               </button>
-              <button type="button" className="btn" style={{ flex: 1, flexDirection: ‘column’, gap: 6, padding: ‘16px 10px’, height: ‘auto’ }} onClick={() => openPicker(‘gallery’)}>
+              <button type="button" className="btn" style={{ flex: 1, flexDirection: 'column', gap: 6, padding: '16px 10px', height: 'auto' }} onClick={() => openPicker('gallery')}>
                 <ImageIcon size={22} />
                 <span style={{ fontSize: 13, fontWeight: 600 }}>Gallery</span>
               </button>
             </div>
-            <button type="button" className="btn ghost" style={{ marginTop: 12, width: ‘100%’ }} onClick={() => setPickerFor(null)}>
+            <button type="button" className="btn ghost" style={{ marginTop: 12, width: '100%' }} onClick={() => setPickerFor(null)}>
               Cancel
             </button>
           </div>

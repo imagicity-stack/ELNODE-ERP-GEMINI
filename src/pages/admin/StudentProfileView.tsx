@@ -3,10 +3,11 @@ import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
 import { UserProfile, Student, ExtendedStudentProfile } from '../../types';
+import { getSiblingsByParent, SiblingInfo } from '../../services/siblingsService';
 import { FormField, Input } from '../../components/ui';
 import {
   X, Edit2, Save, User, Heart, Home as HomeIcon, Briefcase, BookOpen,
-  Activity, Users, CreditCard, Camera, CheckCircle, AlertCircle, Plus,
+  Activity, Users, CreditCard, Camera, CheckCircle, AlertCircle,
   ExternalLink, Loader2, Image as ImageIcon,
 } from 'lucide-react';
 
@@ -138,6 +139,28 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
       setEditedProfile({});
     }).finally(() => setLoading(false));
   }, [student.id]);
+
+  // Auto-detected siblings (other students sharing this student's parent).
+  const [autoSiblings, setAutoSiblings] = useState<SiblingInfo[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    getSiblingsByParent(student).then(sibs => {
+      if (cancelled) return;
+      setAutoSiblings(sibs);
+      // Persist onto this student's profile so the student's own portal (which
+      // cannot enumerate the roster) can display siblings too.
+      const stored = (profile?.siblings || []).map(s => s.admissionNumber).sort().join('|');
+      const fresh = sibs.map(s => s.admissionNumber).sort().join('|');
+      if (sibs.length > 0 && stored !== fresh) {
+        setDoc(
+          doc(db, 'studentProfiles', student.id),
+          { siblings: sibs.map(({ name, admissionNumber, class: cls }) => ({ name, admissionNumber, class: cls })) },
+          { merge: true },
+        ).catch(() => {});
+      }
+    });
+    return () => { cancelled = true; };
+  }, [student.id, profile]);
 
   const displayed = editMode ? editedProfile : (profile || {});
 
@@ -805,37 +828,26 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
                 )}
               </div>
 
-              {/* Siblings */}
-              {((displayed.siblings && displayed.siblings.length > 0) || editMode) && (
-                <div className="card">
-                  <SectionTitle icon={Users} title="Siblings in School" />
-                  {editMode ? (
-                    <div style={{ marginTop: 10 }}>
-                      {(editedProfile.siblings || []).map((s, i) => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'flex-end' }}>
-                          <FormField label="Name"><Input value={s.name} onChange={e => { const next = [...(editedProfile.siblings || [])]; next[i] = { ...next[i], name: e.target.value }; set('siblings', next); }} /></FormField>
-                          <FormField label="Adm. No."><Input value={s.admissionNumber} onChange={e => { const next = [...(editedProfile.siblings || [])]; next[i] = { ...next[i], admissionNumber: e.target.value }; set('siblings', next); }} /></FormField>
-                          <FormField label="Class"><Input value={s.class} onChange={e => { const next = [...(editedProfile.siblings || [])]; next[i] = { ...next[i], class: e.target.value }; set('siblings', next); }} /></FormField>
-                          <button className="icon-btn" style={{ color: 'var(--coral)', marginBottom: 2 }} onClick={() => set('siblings', (editedProfile.siblings || []).filter((_, idx) => idx !== i))}><X size={14} /></button>
-                        </div>
-                      ))}
-                      <button className="btn ghost" style={{ fontSize: 13, marginTop: 4 }} type="button" onClick={() => set('siblings', [...(editedProfile.siblings || []), { name: '', admissionNumber: '', class: '' }])}>
-                        <Plus size={14} /> Add Sibling
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={{ marginTop: 10 }}>
-                      {(displayed.siblings || []).map((s, i) => (
-                        <div key={i} style={{ display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--line-2)' }}>
-                          <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{s.name}</span>
-                          <span style={{ fontSize: 12, color: 'var(--ink-3)' }} className="mono">{s.admissionNumber}</span>
-                          <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{s.class}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Siblings — auto-detected from students sharing the same parent */}
+              <div className="card">
+                <SectionTitle icon={Users} title="Siblings in School" />
+                <p style={{ fontSize: 11, color: 'var(--ink-4)', margin: '4px 0 8px' }}>
+                  Automatically detected from other students linked to the same parent.
+                </p>
+                {autoSiblings.length > 0 ? (
+                  <div style={{ marginTop: 4 }}>
+                    {autoSiblings.map(s => (
+                      <div key={s.id} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line-2)', alignItems: 'center' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{s.name}</span>
+                        <span style={{ fontSize: 12, color: 'var(--ink-3)' }} className="mono">{s.admissionNumber}</span>
+                        <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{s.class}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 13, color: 'var(--ink-3)', fontStyle: 'italic' }}>No siblings found in school.</p>
+                )}
+              </div>
 
               {/* Last updated */}
               {profile?.updatedAt && (

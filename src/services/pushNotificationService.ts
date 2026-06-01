@@ -1,10 +1,16 @@
 import { Capacitor } from '@capacitor/core';
+import { getApp } from 'firebase/app';
 import { doc, setDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
 import { UserProfile } from '../types';
 import { audienceTokensForUser } from './notificationCenterService';
 
 export type PushPermissionStatus = 'granted' | 'denied' | 'prompt' | 'unsupported';
+
+// Web Push (VAPID) certificate public key — Firebase Console ▸ Project Settings ▸
+// Cloud Messaging ▸ Web configuration ▸ "Web Push certificates". Required for
+// browser/PWA push; without it web push is silently disabled.
+const VAPID_KEY = (import.meta as any).env?.VITE_FCM_VAPID_KEY || '';
 
 // ─── Audience token sync ────────────────────────────────────────────────────
 // Stores the precomputed audience tokens on the user doc so the send-push API
@@ -24,7 +30,15 @@ export async function syncAudienceTokens(user: UserProfile): Promise<void> {
 
 // ─── Permission helpers ─────────────────────────────────────────────────────
 export async function getPushPermissionStatus(): Promise<PushPermissionStatus> {
-  if (!Capacitor.isNativePlatform()) return 'unsupported';
+  // Web / PWA path
+  if (!Capacitor.isNativePlatform()) {
+    if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
+      return 'unsupported';
+    }
+    const p = Notification.permission;
+    return p === 'granted' ? 'granted' : p === 'denied' ? 'denied' : 'prompt';
+  }
+  // Native path
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications');
     const { receive } = await PushNotifications.checkPermissions();
@@ -37,7 +51,17 @@ export async function getPushPermissionStatus(): Promise<PushPermissionStatus> {
 }
 
 export async function requestPushPermission(): Promise<boolean> {
-  if (!Capacitor.isNativePlatform()) return false;
+  // Web / PWA path
+  if (!Capacitor.isNativePlatform()) {
+    if (typeof window === 'undefined' || !('Notification' in window)) return false;
+    try {
+      const res = await Notification.requestPermission();
+      return res === 'granted';
+    } catch {
+      return false;
+    }
+  }
+  // Native path
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications');
     const { receive } = await PushNotifications.requestPermissions();
@@ -47,11 +71,46 @@ export async function requestPushPermission(): Promise<boolean> {
   }
 }
 
+// ─── Web (PWA) registration ───────────────────────────────────────────────────
+// Registers the FCM service worker, retrieves a web push token, and stores it on
+// the user's fcmTokens array (the same field the send-push API queries).
+async function registerWebPush(user: UserProfile): Promise<void> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  if (!VAPID_KEY) {
+    console.warn('[push] VITE_FCM_VAPID_KEY is not set — web push notifications are disabled.');
+    return;
+  }
+  try {
+    const { isSupported, getMessaging, getToken, onMessage } = await import('firebase/messaging');
+    if (!(await isSupported().catch(() => false))) return;
+
+    const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const messaging = getMessaging(getApp());
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
+    if (token) {
+      await setDoc(doc(db, 'users', user.uid), { fcmTokens: arrayUnion(token) }, { merge: true });
+    }
+
+    // Foreground messages: in-app NotificationCenter already reflects these via a
+    // Firestore listener, so we just store the nav link for click handling.
+    onMessage(messaging, (payload) => {
+      const link = payload?.data?.link;
+      if (link) sessionStorage.setItem('push_nav_link', link);
+    });
+  } catch (e) {
+    console.warn('[push] Web push registration failed:', e);
+  }
+}
+
 // ─── Registration ───────────────────────────────────────────────────────────
 // Registers for FCM, saves the token, and sets up notification listeners.
 // Safe to call multiple times — Capacitor deduplicates listener registration.
 export async function registerForPush(user: UserProfile): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
+  if (!Capacitor.isNativePlatform()) {
+    await registerWebPush(user);
+    return;
+  }
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications');
 
