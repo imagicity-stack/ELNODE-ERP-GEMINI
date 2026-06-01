@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
 import { UserProfile, Student, ExtendedStudentProfile } from '../../types';
+import { getSiblingsForParent, SiblingInfo } from '../../services/siblingsService';
 import { FormField, Input } from '../../components/ui';
 import {
   User, Heart, Home as HomeIcon, Briefcase, BookOpen, Activity,
@@ -202,6 +203,9 @@ export default function ParentChildProfile({ user, selectedStudent }: Props) {
     if (f && target) uploadParentIdCard(target.section, target.side, f);
   };
 
+  // Auto-detected siblings — the parent's other linked children.
+  const [autoSiblings, setAutoSiblings] = useState<SiblingInfo[]>([]);
+
   useEffect(() => {
     if (!selectedStudent?.id) return;
     setLoading(true);
@@ -209,6 +213,24 @@ export default function ParentChildProfile({ user, selectedStudent }: Props) {
       setProfile(snap.exists() ? snap.data() as ExtendedStudentProfile : null);
     }).catch(() => setProfile(null)).finally(() => setLoading(false));
   }, [selectedStudent?.id]);
+
+  useEffect(() => {
+    if (!selectedStudent?.id) { setAutoSiblings([]); return; }
+    let cancelled = false;
+    getSiblingsForParent(selectedStudent.id, user.studentIds || []).then(sibs => {
+      if (cancelled) return;
+      setAutoSiblings(sibs);
+      // Persist onto the child's profile so the student's own portal can show siblings.
+      if (sibs.length > 0) {
+        setDoc(
+          doc(db, 'studentProfiles', selectedStudent.id),
+          { siblings: sibs.map(({ name, admissionNumber, class: cls }) => ({ name, admissionNumber, class: cls })) },
+          { merge: true },
+        ).catch(() => {});
+      }
+    });
+    return () => { cancelled = true; };
+  }, [selectedStudent?.id, user.studentIds]);
 
   const startEdit = (section: 'father' | 'mother') => {
     setEditSection(section);
@@ -531,11 +553,11 @@ export default function ParentChildProfile({ user, selectedStudent }: Props) {
                   </SectionCard>
                 )}
 
-                {/* Siblings */}
-                {(profile.siblings || []).length > 0 && (
+                {/* Siblings — auto-detected from your other linked children */}
+                {autoSiblings.length > 0 && (
                   <SectionCard icon={Users} title="Siblings in School">
-                    {(profile.siblings || []).map((s, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--line-2)' }}>
+                    {autoSiblings.map(s => (
+                      <div key={s.id} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line-2)', alignItems: 'center' }}>
                         <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{s.name}</span>
                         <span style={{ fontSize: 12, color: 'var(--ink-3)' }} className="mono">{s.admissionNumber}</span>
                         <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>{s.class}</span>
