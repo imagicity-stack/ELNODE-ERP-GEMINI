@@ -8,7 +8,7 @@ import { FormField, Input } from '../../components/ui';
 import {
   User, Heart, Home as HomeIcon, Briefcase, BookOpen, Activity,
   Users, CreditCard, Camera, CheckCircle, AlertCircle, Plus, X,
-  Lock, Eye, EyeOff, Loader2, GraduationCap, Hash, Mail, Image as ImageIcon,
+  Lock, Eye, EyeOff, Loader2, GraduationCap, Hash, Mail, Image as ImageIcon, ExternalLink,
 } from 'lucide-react';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -113,6 +113,67 @@ function SiblingEditor({ siblings, onChange }: {
   );
 }
 
+// Reusable front+back ID card upload block used inside family sections
+function IdCardTilesBlock({ label, person, frontUrl, backUrl, uploadingTarget, progress, onTileClick }: {
+  label: string; person: string; frontUrl?: string; backUrl?: string;
+  uploadingTarget: string | null; progress: number; onTileClick: (target: string) => void;
+}) {
+  return (
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--line-2)' }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label} <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)' }}>(Aadhaar / PAN — front &amp; back)</span>
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        {(['front', 'back'] as const).map(side => {
+          const target = `${person}-${side}`;
+          const url = side === 'front' ? frontUrl : backUrl;
+          const uploading = uploadingTarget === target;
+          const pct = uploading ? progress : 0;
+          return (
+            <div key={side}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {side === 'front' ? 'Front Side' : 'Back Side'}
+              </p>
+              <div
+                onClick={() => !uploading && !url && onTileClick(target)}
+                style={{ border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`, borderRadius: 12, minHeight: 110, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: uploading ? 'wait' : url ? 'default' : 'pointer', overflow: 'hidden', position: 'relative', background: url ? 'transparent' : 'var(--cream)', padding: 8 }}
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 size={20} style={{ color: 'var(--accent)', marginBottom: 6 }} className="animate-spin" />
+                    <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 6 }}>Uploading… {pct}%</p>
+                    <div className="profile-completion-bar" style={{ width: '80%' }}>
+                      <div className="profile-completion-fill" style={{ width: `${pct}%`, background: 'var(--accent)' }} />
+                    </div>
+                  </>
+                ) : url ? (
+                  <>
+                    <img src={url} alt={`${person} ID ${side}`} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+                    <div style={{ position: 'absolute', bottom: 6, right: 6, background: 'var(--leaf)', color: '#fff', borderRadius: 99, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>Uploaded ✓</div>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard size={22} style={{ color: 'var(--ink-3)', marginBottom: 6 }} />
+                    <p style={{ fontSize: 12, color: 'var(--ink-3)', textAlign: 'center', fontWeight: 600 }}>Tap to upload</p>
+                  </>
+                )}
+              </div>
+              {!uploading && (
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '4px 12px', width: 'auto' }} onClick={() => onTileClick(target)}>
+                    <Camera size={12} /> {url ? 'Replace' : 'Upload Photo'}
+                  </button>
+                  {url && <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><ExternalLink size={10} /> View</a>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 interface ExtendedProfileProps {
   user: UserProfile;
@@ -123,17 +184,15 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
   const [profile, setProfile] = useState<Partial<ExtendedStudentProfile>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadingFront, setUploadingFront] = useState(false);
-  const [uploadingBack, setUploadingBack] = useState(false);
-  const [frontProgress, setFrontProgress] = useState(0);
-  const [backProgress, setBackProgress] = useState(0);
+  const [uploadingIdCard, setUploadingIdCard] = useState<string | null>(null); // e.g. 'student-front', 'father-back'
+  const [idCardProgress, setIdCardProgress] = useState(0);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
-  // Separate refs for gallery picker vs. direct camera capture
-  const frontGalleryRef = useRef<HTMLInputElement>(null);
-  const frontCameraRef = useRef<HTMLInputElement>(null);
-  const backGalleryRef = useRef<HTMLInputElement>(null);
-  const backCameraRef = useRef<HTMLInputElement>(null);
+  // Single shared pair of refs for all ID card uploads (routed via pendingPickerRef)
+  const idCardCameraRef = useRef<HTMLInputElement>(null);
+  const idCardGalleryRef = useRef<HTMLInputElement>(null);
+  // Stores the target key while the chooser popup is open / file dialog is active
+  const pendingPickerRef = useRef<string | null>(null);
 
   // Profile photo (avatar)
   const [photoURL, setPhotoURL] = useState(user.photoURL || '');
@@ -143,17 +202,17 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
   const photoGalleryRef = useRef<HTMLInputElement>(null);
   const photoCameraRef = useRef<HTMLInputElement>(null);
 
-  // Which upload target's "Camera / Gallery" chooser is currently open
-  const [pickerFor, setPickerFor] = useState<null | 'photo' | 'front' | 'back'>(null);
+  // Which upload target's "Camera / Gallery" chooser is currently open ('photo' or e.g. 'father-front')
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
   const openPicker = (kind: 'camera' | 'gallery') => {
     const target = pickerFor;
     setPickerFor(null);
-    const map = {
-      photo: { camera: photoCameraRef, gallery: photoGalleryRef },
-      front: { camera: frontCameraRef, gallery: frontGalleryRef },
-      back: { camera: backCameraRef, gallery: backGalleryRef },
-    } as const;
-    if (target) map[target][kind].current?.click();
+    if (target === 'photo') {
+      (kind === 'camera' ? photoCameraRef : photoGalleryRef).current?.click();
+    } else {
+      pendingPickerRef.current = target;
+      (kind === 'camera' ? idCardCameraRef : idCardGalleryRef).current?.click();
+    }
   };
 
   // Identity context
@@ -283,43 +342,57 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
     });
   };
 
-  const uploadPhoto = async (file: File, side: 'front' | 'back') => {
+  // Generic ID card upload — target is e.g. 'student-front', 'father-back', 'guardian-front'
+  const uploadIdCard = async (file: File, target: string) => {
     if (!student?.id) return;
     const mimeType = file.type || 'image/jpeg';
-    if (!mimeType.startsWith('image/')) { setError('Please choose an image file for the ID card.'); return; }
-    if (file.size > 5 * 1024 * 1024) { setError('ID card image must be under 5 MB.'); return; }
-    const setUploading = side === 'front' ? setUploadingFront : setUploadingBack;
-    const setProgress = side === 'front' ? setFrontProgress : setBackProgress;
-    setUploading(true);
-    setProgress(0);
+    if (!mimeType.startsWith('image/')) { setError('Please choose an image file.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setError('Image must be under 5 MB.'); return; }
+    const dashIdx = target.indexOf('-');
+    const person = target.slice(0, dashIdx); // 'student' | 'father' | 'mother' | 'guardian'
+    const side = target.slice(dashIdx + 1) as 'front' | 'back';
+    setUploadingIdCard(target);
+    setIdCardProgress(0);
     setError('');
     try {
-      // Use profiles/{uid}/idCards/ path — avoids needing a Firestore lookup in the
-      // Storage rule (the simpler rule checks request.auth.uid == userId directly).
-      const safeName = (file.name || `idCard-${side}`).replace(/[^\w.\-]/g, '_');
-      const path = `profiles/${user.uid}/idCards/idCard-${side}-${Date.now()}_${safeName}`;
+      const safeName = (file.name || `${target}-id`).replace(/[^\w.\-]/g, '_');
+      const path = `profiles/${user.uid}/idCards/${target}-${Date.now()}_${safeName}`;
       const storageRef = ref(storage, path);
       const task = uploadBytesResumable(storageRef, file, { contentType: mimeType });
       await new Promise<void>((resolve, reject) => {
         task.on('state_changed',
-          snap => setProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
+          snap => setIdCardProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
           reject,
           () => resolve(),
         );
       });
       const url = await getDownloadURL(storageRef);
-      setProfile(prev => ({
-        ...prev,
-        ...(side === 'front' ? { idCardFrontUrl: url, idCardFrontPath: path } : { idCardBackUrl: url, idCardBackPath: path }),
-      }));
+      const urlKey = side === 'front' ? 'idCardFrontUrl' : 'idCardBackUrl';
+      const pathKey = side === 'front' ? 'idCardFrontPath' : 'idCardBackPath';
+      if (person === 'student') {
+        setProfile(prev => ({ ...prev, [urlKey]: url, [pathKey]: path }));
+      } else {
+        setProfile(prev => ({
+          ...prev,
+          [person]: { ...(prev as any)[person], [urlKey]: url, [pathKey]: path },
+        }));
+      }
     } catch (err: any) {
       setError(err?.code === 'storage/unauthorized'
         ? 'Upload not permitted — please sign out and sign in again, then retry.'
         : `Photo upload failed${err?.message ? `: ${err.message}` : ''}. Please try again.`);
     } finally {
-      setUploading(false);
-      setProgress(0);
+      setUploadingIdCard(null);
+      setIdCardProgress(0);
     }
+  };
+
+  const handleIdCardPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    const target = pendingPickerRef.current;
+    pendingPickerRef.current = null;
+    if (f && target) uploadIdCard(f, target);
   };
 
   const handleSave = async () => {
@@ -506,69 +579,50 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
             </p>
           </div>
 
-          {/* ── ID Card Photos (Mandatory) ── */}
-          <SectionCard icon={CreditCard} title="Identity Documents" subtitle="Upload both sides of your School ID card or Aadhaar — mandatory">
+          {/* ── Student ID Card Photos (Mandatory) ── */}
+          <SectionCard icon={CreditCard} title="Student's Identity Document" subtitle="Upload both sides of your School ID card or Aadhaar — mandatory">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               {(['front', 'back'] as const).map(side => {
+                const target = `student-${side}`;
                 const url = side === 'front' ? profile.idCardFrontUrl : profile.idCardBackUrl;
-                const uploading = side === 'front' ? uploadingFront : uploadingBack;
-                const progress = side === 'front' ? frontProgress : backProgress;
-                const galleryRef = side === 'front' ? frontGalleryRef : backGalleryRef;
-                const cameraRef = side === 'front' ? frontCameraRef : backCameraRef;
-                const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-                  const f = e.target.files?.[0];
-                  e.target.value = '';
-                  if (f) uploadPhoto(f, side);
-                };
+                const uploading = uploadingIdCard === target;
+                const pct = uploading ? idCardProgress : 0;
                 return (
                   <div key={side}>
                     <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       {side === 'front' ? 'Front Side' : 'Back Side'} <span style={{ color: 'var(--coral)' }}>*</span>
                     </p>
                     <div
-                      onClick={() => !uploading && !url && setPickerFor(side)}
-                      style={{
-                        border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`,
-                        borderRadius: 12, minHeight: 130,
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                        cursor: uploading ? 'wait' : url ? 'default' : 'pointer', overflow: 'hidden', position: 'relative',
-                        background: url ? 'transparent' : 'var(--cream)',
-                        transition: 'border-color 0.2s', padding: 10,
-                      }}
+                      onClick={() => !uploading && !url && setPickerFor(target)}
+                      style={{ border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`, borderRadius: 12, minHeight: 130, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: uploading ? 'wait' : url ? 'default' : 'pointer', overflow: 'hidden', position: 'relative', background: url ? 'transparent' : 'var(--cream)', transition: 'border-color 0.2s', padding: 10 }}
                     >
                       {uploading ? (
                         <>
                           <Loader2 size={24} style={{ color: 'var(--accent)', marginBottom: 8 }} className="animate-spin" />
-                          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>Uploading… {progress}%</p>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>Uploading… {pct}%</p>
                           <div className="profile-completion-bar" style={{ width: '80%' }}>
-                            <div className="profile-completion-fill" style={{ width: `${progress}%`, background: 'var(--accent)' }} />
+                            <div className="profile-completion-fill" style={{ width: `${pct}%`, background: 'var(--accent)' }} />
                           </div>
                         </>
                       ) : url ? (
                         <>
                           <img src={url} alt={`ID ${side}`} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
-                          <div style={{ position: 'absolute', bottom: 6, right: 6, background: 'var(--leaf)', color: '#fff', borderRadius: 99, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>
-                            Uploaded ✓
-                          </div>
+                          <div style={{ position: 'absolute', bottom: 6, right: 6, background: 'var(--leaf)', color: '#fff', borderRadius: 99, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>Uploaded ✓</div>
                         </>
                       ) : (
                         <>
                           <Camera size={26} style={{ color: 'var(--ink-3)', marginBottom: 6 }} />
-                          <p style={{ fontSize: 12, color: 'var(--ink-3)', textAlign: 'center', fontWeight: 600 }}>
-                            Tap to capture photo
-                          </p>
+                          <p style={{ fontSize: 12, color: 'var(--ink-3)', textAlign: 'center', fontWeight: 600 }}>Tap to capture photo</p>
                           <p style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', marginTop: 2 }}>JPG or PNG · max 5 MB</p>
                         </>
                       )}
                     </div>
-                    {/* Camera capture + gallery inputs */}
-                    <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onPick} />
-                    <input ref={galleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPick} />
                     {!uploading && (
-                      <div style={{ marginTop: 6 }}>
-                        <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '4px 12px', width: 'auto' }} onClick={() => setPickerFor(side)}>
+                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '4px 12px', width: 'auto' }} onClick={() => setPickerFor(target)}>
                           <Camera size={12} /> {url ? 'Replace Photo' : 'Upload Photo'}
                         </button>
+                        {url && <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><ExternalLink size={10} /> View</a>}
                       </div>
                     )}
                   </div>
@@ -686,6 +740,15 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                 <Input value={profile.father?.aadhaar || ''} placeholder="12-digit Aadhaar" maxLength={12} onChange={e => set('father.aadhaar', e.target.value.replace(/\D/g, ''))} />
               </FormField>
             </div>
+            <IdCardTilesBlock
+              label="Father's ID Card"
+              person="father"
+              frontUrl={profile.father?.idCardFrontUrl}
+              backUrl={profile.father?.idCardBackUrl}
+              uploadingTarget={uploadingIdCard}
+              progress={idCardProgress}
+              onTileClick={setPickerFor}
+            />
           </SectionCard>
 
           {/* ── Mother's Details ── */}
@@ -725,6 +788,15 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                 <Input value={profile.mother?.aadhaar || ''} placeholder="12-digit Aadhaar" maxLength={12} onChange={e => set('mother.aadhaar', e.target.value.replace(/\D/g, ''))} />
               </FormField>
             </div>
+            <IdCardTilesBlock
+              label="Mother's ID Card"
+              person="mother"
+              frontUrl={profile.mother?.idCardFrontUrl}
+              backUrl={profile.mother?.idCardBackUrl}
+              uploadingTarget={uploadingIdCard}
+              progress={idCardProgress}
+              onTileClick={setPickerFor}
+            />
           </SectionCard>
 
           {/* ── Guardian (conditional) ── */}
@@ -755,6 +827,17 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                   <Input value={profile.guardian?.address || ''} placeholder="Full address" onChange={e => set('guardian.address', e.target.value)} />
                 </FormField>
               </div>
+            )}
+            {profile.hasGuardian && (
+              <IdCardTilesBlock
+                label="Guardian's ID Card"
+                person="guardian"
+                frontUrl={profile.guardian?.idCardFrontUrl}
+                backUrl={profile.guardian?.idCardBackUrl}
+                uploadingTarget={uploadingIdCard}
+                progress={idCardProgress}
+                onTileClick={setPickerFor}
+              />
             )}
           </SectionCard>
 
@@ -904,32 +987,45 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
         </div>
       </div>
 
+      {/* Shared hidden inputs for all ID card uploads */}
+      <input ref={idCardCameraRef} type="file" accept="image/*" capture="environment" style={{ display: ‘none’ }} onChange={handleIdCardPick} />
+      <input ref={idCardGalleryRef} type="file" accept="image/*" style={{ display: ‘none’ }} onChange={handleIdCardPick} />
+
       {/* ── Camera / Gallery chooser popup ── */}
       {pickerFor && (
         <div
           onClick={() => setPickerFor(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+          style={{ position: ‘fixed’, inset: 0, background: ‘rgba(0,0,0,0.45)’, zIndex: 1000, display: ‘flex’, alignItems: ‘flex-end’, justifyContent: ‘center’ }}
         >
           <div
             onClick={e => e.stopPropagation()}
             className="card"
-            style={{ width: '100%', maxWidth: 420, margin: 12, borderRadius: 18, padding: 18, animation: 'eh-slidein 0.18s ease-out' }}
+            style={{ width: ‘100%’, maxWidth: 420, margin: 12, borderRadius: 18, padding: 18, animation: ‘eh-slidein 0.18s ease-out’ }}
           >
-            <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', marginBottom: 2 }}>
-              {pickerFor === 'photo' ? 'Update Profile Photo' : `Upload ID Card — ${pickerFor === 'front' ? 'Front' : 'Back'}`}
+            <p style={{ fontWeight: 700, fontSize: 15, color: ‘var(--ink)’, marginBottom: 2 }}>
+              {pickerFor === ‘photo’ ? ‘Update Profile Photo’ : {
+                ‘student-front’: "Student’s ID Card — Front",
+                ‘student-back’: "Student’s ID Card — Back",
+                ‘father-front’: "Father’s ID Card — Front",
+                ‘father-back’: "Father’s ID Card — Back",
+                ‘mother-front’: "Mother’s ID Card — Front",
+                ‘mother-back’: "Mother’s ID Card — Back",
+                ‘guardian-front’: "Guardian’s ID Card — Front",
+                ‘guardian-back’: "Guardian’s ID Card — Back",
+              }[pickerFor] || ‘Upload Photo’}
             </p>
-            <p style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 16 }}>Choose how you’d like to add the image.</p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" className="btn" style={{ flex: 1, flexDirection: 'column', gap: 6, padding: '16px 10px', height: 'auto' }} onClick={() => openPicker('camera')}>
+            <p style={{ fontSize: 12, color: ‘var(--ink-3)’, marginBottom: 16 }}>Choose how you’d like to add the image.</p>
+            <div style={{ display: ‘flex’, gap: 10 }}>
+              <button type="button" className="btn" style={{ flex: 1, flexDirection: ‘column’, gap: 6, padding: ‘16px 10px’, height: ‘auto’ }} onClick={() => openPicker(‘camera’)}>
                 <Camera size={22} />
                 <span style={{ fontSize: 13, fontWeight: 600 }}>Camera</span>
               </button>
-              <button type="button" className="btn" style={{ flex: 1, flexDirection: 'column', gap: 6, padding: '16px 10px', height: 'auto' }} onClick={() => openPicker('gallery')}>
+              <button type="button" className="btn" style={{ flex: 1, flexDirection: ‘column’, gap: 6, padding: ‘16px 10px’, height: ‘auto’ }} onClick={() => openPicker(‘gallery’)}>
                 <ImageIcon size={22} />
                 <span style={{ fontSize: 13, fontWeight: 600 }}>Gallery</span>
               </button>
             </div>
-            <button type="button" className="btn ghost" style={{ marginTop: 12, width: '100%' }} onClick={() => setPickerFor(null)}>
+            <button type="button" className="btn ghost" style={{ marginTop: 12, width: ‘100%’ }} onClick={() => setPickerFor(null)}>
               Cancel
             </button>
           </div>
