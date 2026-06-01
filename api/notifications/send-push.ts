@@ -76,7 +76,7 @@ async function queryFcmTokens(
   projectId: string,
   token: string,
   audience: string[]
-): Promise<{ tokens: string[]; matchedUsers: number }> {
+): Promise<{ tokens: string[]; matchedUsers: number; debug: Array<{ uid: string; tokenCount: number }> }> {
   // The app stores data in a named Firestore database (not "(default)").
   // Matches the fallback used by the working razorpay verify-payment APIs.
   const databaseId = process.env.FIRESTORE_DATABASE_ID ?? 'ai-studio-cb22793f-2766-4225-bb0a-411c4a36f1b5';
@@ -126,21 +126,25 @@ async function queryFcmTokens(
     throw new Error(`Firestore runQuery failed: ${res.status} ${err}`);
   }
 
-  const rows = await res.json() as Array<{ document?: { fields?: Record<string, FirestoreValue> } }>;
+  const rows = await res.json() as Array<{ document?: { name?: string; fields?: Record<string, FirestoreValue> } }>;
   const tokens = new Set<string>();
   let matchedUsers = 0;
+  const debug: Array<{ uid: string; tokenCount: number }> = [];
 
   for (const row of rows) {
     if (!row.document) continue;
     matchedUsers++;
+    const uid = (row.document.name || '').split('/').pop() || '?';
     const fcmField = row.document.fields?.fcmTokens;
     const values = fcmField?.arrayValue?.values ?? [];
+    let count = 0;
     for (const v of values) {
-      if (v.stringValue) tokens.add(v.stringValue);
+      if (v.stringValue) { tokens.add(v.stringValue); count++; }
     }
+    debug.push({ uid, tokenCount: count });
   }
 
-  return { tokens: Array.from(tokens), matchedUsers };
+  return { tokens: Array.from(tokens), matchedUsers, debug };
 }
 
 // ─── FCM v1 send ─────────────────────────────────────────────────────────────
@@ -253,13 +257,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const accessToken = await getAccessToken(sa);
 
-    const { tokens: fcmTokens, matchedUsers } = await queryFcmTokens(sa.project_id, accessToken, audience);
+    const { tokens: fcmTokens, matchedUsers, debug } = await queryFcmTokens(sa.project_id, accessToken, audience);
 
     if (fcmTokens.length === 0) {
       const message = matchedUsers === 0
         ? 'No users matched the audience (audienceTokens not synced — user must log in once after the latest deploy)'
         : `${matchedUsers} user(s) matched but none have a push token — VITE_FCM_VAPID_KEY may not be set, or they have not granted notification permission`;
-      return res.status(200).json({ sent: 0, failed: 0, matchedUsers, message });
+      return res.status(200).json({ sent: 0, failed: 0, matchedUsers, debug, message });
     }
 
     const result = await sendFcmBatch(sa.project_id, accessToken, fcmTokens, {
@@ -277,6 +281,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       ...result,
       matchedUsers,
+      debug,
       recipients: fcmTokens.length,
     });
   } catch (err: any) {
