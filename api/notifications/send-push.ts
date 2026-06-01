@@ -78,8 +78,8 @@ async function queryFcmTokens(
   audience: string[]
 ): Promise<{ tokens: string[]; matchedUsers: number }> {
   // The app stores data in a named Firestore database (not "(default)").
-  // FIRESTORE_DATABASE_ID must match firebase-applet-config.json's firestoreDatabaseId.
-  const databaseId = process.env.FIRESTORE_DATABASE_ID || '(default)';
+  // Matches the fallback used by the working razorpay verify-payment APIs.
+  const databaseId = process.env.FIRESTORE_DATABASE_ID ?? 'ai-studio-cb22793f-2766-4225-bb0a-411c4a36f1b5';
   const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents`;
 
   // Build ARRAY_CONTAINS_ANY filter over audienceTokens
