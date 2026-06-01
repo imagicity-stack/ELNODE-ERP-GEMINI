@@ -193,15 +193,16 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
     const file = e.target.files?.[0];
     e.target.value = ''; // reset so picking the same file again re-fires onChange
     if (!file) return;
-    if (!file.type.startsWith('image/')) { setPhotoMsg('Please choose an image file.'); return; }
+    const mimeType = file.type || 'image/jpeg'; // camera capture on some Android returns empty type
+    if (!mimeType.startsWith('image/')) { setPhotoMsg('Please choose an image file.'); return; }
     if (file.size > 5 * 1024 * 1024) { setPhotoMsg('Image must be under 5 MB.'); return; }
     setUploadingPhoto(true);
     setPhotoProgress(0);
     setPhotoMsg('');
     try {
-      const safeName = file.name.replace(/[^\w.\-]/g, '_');
+      const safeName = (file.name || 'photo').replace(/[^\w.\-]/g, '_');
       const storageRef = ref(storage, `profiles/${user.uid}/${Date.now()}_${safeName}`);
-      const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
+      const task = uploadBytesResumable(storageRef, file, { contentType: mimeType });
       await new Promise<void>((resolve, reject) => {
         task.on('state_changed',
           snap => setPhotoProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
@@ -271,7 +272,8 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
 
   const uploadPhoto = async (file: File, side: 'front' | 'back') => {
     if (!student?.id) return;
-    if (!file.type.startsWith('image/')) { setError('Please choose an image file for the ID card.'); return; }
+    const mimeType = file.type || 'image/jpeg';
+    if (!mimeType.startsWith('image/')) { setError('Please choose an image file for the ID card.'); return; }
     if (file.size > 5 * 1024 * 1024) { setError('ID card image must be under 5 MB.'); return; }
     const setUploading = side === 'front' ? setUploadingFront : setUploadingBack;
     const setProgress = side === 'front' ? setFrontProgress : setBackProgress;
@@ -279,9 +281,12 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
     setProgress(0);
     setError('');
     try {
-      const path = `studentProfiles/${student.id}/idCard-${side}-${Date.now()}`;
+      // Use profiles/{uid}/idCards/ path — avoids needing a Firestore lookup in the
+      // Storage rule (the simpler rule checks request.auth.uid == userId directly).
+      const safeName = (file.name || `idCard-${side}`).replace(/[^\w.\-]/g, '_');
+      const path = `profiles/${user.uid}/idCards/idCard-${side}-${Date.now()}_${safeName}`;
       const storageRef = ref(storage, path);
-      const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
+      const task = uploadBytesResumable(storageRef, file, { contentType: mimeType });
       await new Promise<void>((resolve, reject) => {
         task.on('state_changed',
           snap => setProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
@@ -296,7 +301,7 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
       }));
     } catch (err: any) {
       setError(err?.code === 'storage/unauthorized'
-        ? 'ID card upload not permitted. Please contact administration.'
+        ? 'Upload not permitted — please sign out and sign in again, then retry.'
         : `Photo upload failed${err?.message ? `: ${err.message}` : ''}. Please try again.`);
     } finally {
       setUploading(false);
