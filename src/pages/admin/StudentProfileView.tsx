@@ -95,16 +95,14 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [uploadingFront, setUploadingFront] = useState(false);
-  const [uploadingBack, setUploadingBack] = useState(false);
-  const [frontProgress, setFrontProgress] = useState(0);
-  const [backProgress, setBackProgress] = useState(0);
+  const [uploadingIdCard, setUploadingIdCard] = useState<string | null>(null); // e.g. 'student-front', 'father-back'
+  const [idCardProgress, setIdCardProgress] = useState(0);
   const [error, setError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const frontGalleryRef = React.useRef<HTMLInputElement>(null);
-  const frontCameraRef = React.useRef<HTMLInputElement>(null);
-  const backGalleryRef = React.useRef<HTMLInputElement>(null);
-  const backCameraRef = React.useRef<HTMLInputElement>(null);
+  // Shared pair for all ID card uploads, routed via pendingPickerRef
+  const idCardCameraRef = React.useRef<HTMLInputElement>(null);
+  const idCardGalleryRef = React.useRef<HTMLInputElement>(null);
+  const pendingPickerRef = React.useRef<string | null>(null);
 
   // Student profile photo (avatar)
   const [photoURL, setPhotoURL] = useState(student.photoURL || '');
@@ -113,17 +111,17 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
   const photoGalleryRef = React.useRef<HTMLInputElement>(null);
   const photoCameraRef = React.useRef<HTMLInputElement>(null);
 
-  // Camera / Gallery chooser
-  const [pickerFor, setPickerFor] = useState<null | 'photo' | 'front' | 'back'>(null);
+  // Camera / Gallery chooser ('photo' or e.g. 'student-front', 'father-back')
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
   const openPicker = (kind: 'camera' | 'gallery') => {
     const target = pickerFor;
     setPickerFor(null);
-    const map = {
-      photo: { camera: photoCameraRef, gallery: photoGalleryRef },
-      front: { camera: frontCameraRef, gallery: frontGalleryRef },
-      back: { camera: backCameraRef, gallery: backGalleryRef },
-    } as const;
-    if (target) map[target][kind].current?.click();
+    if (target === 'photo') {
+      (kind === 'camera' ? photoCameraRef : photoGalleryRef).current?.click();
+    } else {
+      pendingPickerRef.current = target;
+      (kind === 'camera' ? idCardCameraRef : idCardGalleryRef).current?.click();
+    }
   };
 
   useEffect(() => {
@@ -173,31 +171,52 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
     );
   });
 
-  const uploadPhoto = async (file: File, side: 'front' | 'back') => {
+  const uploadIdCard = async (file: File, target: string) => {
     const mimeType = file.type || 'image/jpeg';
     if (!mimeType.startsWith('image/')) { setError('Please choose an image file.'); return; }
     if (file.size > 5 * 1024 * 1024) { setError('Image must be under 5 MB.'); return; }
-    const setUploading = side === 'front' ? setUploadingFront : setUploadingBack;
-    const setProgress = side === 'front' ? setFrontProgress : setBackProgress;
-    setUploading(true);
-    setProgress(0);
+    const dashIdx = target.indexOf('-');
+    const person = target.slice(0, dashIdx); // 'student' | 'father' | 'mother' | 'guardian'
+    const side = target.slice(dashIdx + 1) as 'front' | 'back';
+    setUploadingIdCard(target);
+    setIdCardProgress(0);
     setError('');
     try {
-      const safeName = (file.name || `idCard-${side}`).replace(/[^\w.\-]/g, '_');
-      const path = `profiles/${user.uid}/studentIdCards/${student.id}/idCard-${side}-${Date.now()}_${safeName}`;
-      const url = await resumableUpload(file, path, setProgress);
-      setEditedProfile(prev => ({
-        ...prev,
-        ...(side === 'front' ? { idCardFrontUrl: url, idCardFrontPath: path } : { idCardBackUrl: url, idCardBackPath: path }),
-      }));
+      const safeName = (file.name || `${target}-id`).replace(/[^\w.\-]/g, '_');
+      const path = `profiles/${user.uid}/studentIdCards/${student.id}/${target}-${Date.now()}_${safeName}`;
+      const url = await resumableUpload(file, path, setIdCardProgress);
+      const urlKey = side === 'front' ? 'idCardFrontUrl' : 'idCardBackUrl';
+      const pathKey = side === 'front' ? 'idCardFrontPath' : 'idCardBackPath';
+      if (person === 'student') {
+        setEditedProfile(prev => ({ ...prev, [urlKey]: url, [pathKey]: path }));
+        // Also update displayed profile so it reflects immediately even outside editMode
+        setProfile(prev => prev ? { ...prev, [urlKey]: url, [pathKey]: path } : prev);
+      } else {
+        setEditedProfile(prev => ({
+          ...prev,
+          [person]: { ...(prev as any)[person], [urlKey]: url, [pathKey]: path },
+        }));
+        setProfile(prev => prev ? {
+          ...prev,
+          [person]: { ...(prev as any)[person], [urlKey]: url, [pathKey]: path },
+        } : prev);
+      }
     } catch (err: any) {
       setError(err?.code === 'storage/unauthorized'
         ? 'Upload not permitted. Please re-login and retry.'
         : `Photo upload failed${err?.message ? `: ${err.message}` : ''}.`);
     } finally {
-      setUploading(false);
-      setProgress(0);
+      setUploadingIdCard(null);
+      setIdCardProgress(0);
     }
+  };
+
+  const handleIdCardPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    const target = pendingPickerRef.current;
+    pendingPickerRef.current = null;
+    if (f && target) uploadIdCard(f, target);
   };
 
   const uploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -352,28 +371,22 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
                 </div>
               )}
 
-              {/* ID Card Photos */}
+              {/* Student's ID Card Photos — always visible to admin */}
               <div className="card">
-                <SectionTitle icon={CreditCard} title="Identity Documents" />
+                <SectionTitle icon={CreditCard} title="Student's Identity Document" />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
                   {(['front', 'back'] as const).map(side => {
+                    const target = `student-${side}`;
                     const url = side === 'front' ? displayed.idCardFrontUrl : displayed.idCardBackUrl;
-                    const uploading = side === 'front' ? uploadingFront : uploadingBack;
-                    const progress = side === 'front' ? frontProgress : backProgress;
-                    const cameraRef = side === 'front' ? frontCameraRef : backCameraRef;
-                    const galleryRef = side === 'front' ? frontGalleryRef : backGalleryRef;
-                    const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-                      const f = e.target.files?.[0];
-                      e.target.value = '';
-                      if (f) uploadPhoto(f, side);
-                    };
+                    const uploading = uploadingIdCard === target;
+                    const progress = uploading ? idCardProgress : 0;
                     return (
                       <div key={side}>
                         <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 6, textTransform: 'uppercase' }}>
                           {side === 'front' ? 'Front' : 'Back'} {!url && <span style={{ color: 'var(--coral)' }}>Missing</span>}
                         </p>
                         <div
-                          onClick={() => !uploading && !url && setPickerFor(side)}
+                          onClick={() => !uploading && !url && setPickerFor(target)}
                           style={{ border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`, borderRadius: 10, minHeight: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: !url ? 'pointer' : 'default', overflow: 'hidden', position: 'relative', background: 'var(--cream)', padding: 8 }}
                         >
                           {uploading ? (
@@ -393,12 +406,9 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
                             </div>
                           )}
                         </div>
-                        {/* Camera + gallery inputs */}
-                        <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onPick} />
-                        <input ref={galleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPick} />
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
                           {!uploading && (
-                            <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '3px 10px', width: 'auto' }} onClick={() => setPickerFor(side)}>
+                            <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '3px 10px', width: 'auto' }} onClick={() => setPickerFor(target)}>
                               <Camera size={11} /> {url ? 'Replace' : 'Upload'}
                             </button>
                           )}
@@ -522,6 +532,51 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
                     <InfoRow label="Aadhaar" value={displayed.father?.aadhaar} />
                   </div>
                 )}
+                {/* Father ID card — upload in edit mode, view-only otherwise */}
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-2)' }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Father's ID Card <span style={{ color: 'var(--ink-4)', fontWeight: 500, textTransform: 'none' }}>(Aadhaar / PAN)</span>
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    {(['front', 'back'] as const).map(side => {
+                      const target = `father-${side}`;
+                      const url = displayed.father?.[side === 'front' ? 'idCardFrontUrl' : 'idCardBackUrl'];
+                      const uploading = uploadingIdCard === target;
+                      const pct = uploading ? idCardProgress : 0;
+                      return (
+                        <div key={side}>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 4, textTransform: 'uppercase' }}>{side === 'front' ? 'Front' : 'Back'}</p>
+                          <div style={{ border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`, borderRadius: 8, minHeight: 80, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative', background: 'var(--cream)', padding: 6 }}>
+                            {uploading ? (
+                              <>
+                                <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent)', marginBottom: 4 }} />
+                                <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)' }}>{pct}%</p>
+                                <div className="profile-completion-bar" style={{ width: '80%', marginTop: 4 }}>
+                                  <div className="profile-completion-fill" style={{ width: `${pct}%`, background: 'var(--accent)' }} />
+                                </div>
+                              </>
+                            ) : url ? (
+                              <img src={url} alt={`Father ID ${side}`} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+                            ) : (
+                              <div style={{ textAlign: 'center' }}>
+                                <CreditCard size={16} style={{ color: 'var(--ink-4)', margin: '0 auto 2px' }} />
+                                <p style={{ fontSize: 10, color: 'var(--ink-4)' }}>{editMode ? 'Click Upload' : 'Not uploaded'}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                            {editMode && !uploading && (
+                              <button type="button" className="btn ghost" style={{ fontSize: 10, padding: '2px 8px', width: 'auto' }} onClick={() => setPickerFor(target)}>
+                                <Camera size={10} /> {url ? 'Replace' : 'Upload'}
+                              </button>
+                            )}
+                            {url && <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 2 }}><ExternalLink size={9} /> View</a>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               {/* Mother */}
@@ -560,6 +615,51 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
                     <InfoRow label="Aadhaar" value={displayed.mother?.aadhaar} />
                   </div>
                 )}
+                {/* Mother ID card */}
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-2)' }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Mother's ID Card <span style={{ color: 'var(--ink-4)', fontWeight: 500, textTransform: 'none' }}>(Aadhaar / PAN)</span>
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    {(['front', 'back'] as const).map(side => {
+                      const target = `mother-${side}`;
+                      const url = displayed.mother?.[side === 'front' ? 'idCardFrontUrl' : 'idCardBackUrl'];
+                      const uploading = uploadingIdCard === target;
+                      const pct = uploading ? idCardProgress : 0;
+                      return (
+                        <div key={side}>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 4, textTransform: 'uppercase' }}>{side === 'front' ? 'Front' : 'Back'}</p>
+                          <div style={{ border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`, borderRadius: 8, minHeight: 80, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative', background: 'var(--cream)', padding: 6 }}>
+                            {uploading ? (
+                              <>
+                                <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent)', marginBottom: 4 }} />
+                                <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)' }}>{pct}%</p>
+                                <div className="profile-completion-bar" style={{ width: '80%', marginTop: 4 }}>
+                                  <div className="profile-completion-fill" style={{ width: `${pct}%`, background: 'var(--accent)' }} />
+                                </div>
+                              </>
+                            ) : url ? (
+                              <img src={url} alt={`Mother ID ${side}`} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+                            ) : (
+                              <div style={{ textAlign: 'center' }}>
+                                <CreditCard size={16} style={{ color: 'var(--ink-4)', margin: '0 auto 2px' }} />
+                                <p style={{ fontSize: 10, color: 'var(--ink-4)' }}>{editMode ? 'Click Upload' : 'Not uploaded'}</p>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                            {editMode && !uploading && (
+                              <button type="button" className="btn ghost" style={{ fontSize: 10, padding: '2px 8px', width: 'auto' }} onClick={() => setPickerFor(target)}>
+                                <Camera size={10} /> {url ? 'Replace' : 'Upload'}
+                              </button>
+                            )}
+                            {url && <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 2 }}><ExternalLink size={9} /> View</a>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               {/* Guardian (if any) */}
@@ -588,6 +688,52 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
                         <InfoRow label="Address" value={displayed.guardian?.address} />
                       </div>
                     )
+                  )}
+                  {displayed.hasGuardian && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-2)' }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Guardian's ID Card <span style={{ color: 'var(--ink-4)', fontWeight: 500, textTransform: 'none' }}>(Aadhaar / PAN)</span>
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        {(['front', 'back'] as const).map(side => {
+                          const target = `guardian-${side}`;
+                          const url = displayed.guardian?.[side === 'front' ? 'idCardFrontUrl' : 'idCardBackUrl'];
+                          const uploading = uploadingIdCard === target;
+                          const pct = uploading ? idCardProgress : 0;
+                          return (
+                            <div key={side}>
+                              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 4, textTransform: 'uppercase' }}>{side === 'front' ? 'Front' : 'Back'}</p>
+                              <div style={{ border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`, borderRadius: 8, minHeight: 80, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative', background: 'var(--cream)', padding: 6 }}>
+                                {uploading ? (
+                                  <>
+                                    <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent)', marginBottom: 4 }} />
+                                    <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)' }}>{pct}%</p>
+                                    <div className="profile-completion-bar" style={{ width: '80%', marginTop: 4 }}>
+                                      <div className="profile-completion-fill" style={{ width: `${pct}%`, background: 'var(--accent)' }} />
+                                    </div>
+                                  </>
+                                ) : url ? (
+                                  <img src={url} alt={`Guardian ID ${side}`} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+                                ) : (
+                                  <div style={{ textAlign: 'center' }}>
+                                    <CreditCard size={16} style={{ color: 'var(--ink-4)', margin: '0 auto 2px' }} />
+                                    <p style={{ fontSize: 10, color: 'var(--ink-4)' }}>{editMode ? 'Click Upload' : 'Not uploaded'}</p>
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                                {editMode && !uploading && (
+                                  <button type="button" className="btn ghost" style={{ fontSize: 10, padding: '2px 8px', width: 'auto' }} onClick={() => setPickerFor(target)}>
+                                    <Camera size={10} /> {url ? 'Replace' : 'Upload'}
+                                  </button>
+                                )}
+                                {url && <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 2 }}><ExternalLink size={9} /> View</a>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -702,6 +848,10 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
         </div>
       </div>
 
+      {/* Shared hidden inputs for all ID card uploads */}
+      <input ref={idCardCameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleIdCardPick} />
+      <input ref={idCardGalleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleIdCardPick} />
+
       {/* ── Camera / Gallery chooser popup ── */}
       {pickerFor && (
         <div
@@ -714,7 +864,16 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
             style={{ width: '100%', maxWidth: 420, margin: 12, borderRadius: 18, padding: 18 }}
           >
             <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', marginBottom: 2 }}>
-              {pickerFor === 'photo' ? 'Update Student Photo' : `Upload ID Card — ${pickerFor === 'front' ? 'Front' : 'Back'}`}
+              {pickerFor === 'photo' ? 'Update Student Photo' : {
+                'student-front': "Student's ID Card — Front",
+                'student-back': "Student's ID Card — Back",
+                'father-front': "Father's ID Card — Front",
+                'father-back': "Father's ID Card — Back",
+                'mother-front': "Mother's ID Card — Front",
+                'mother-back': "Mother's ID Card — Back",
+                'guardian-front': "Guardian's ID Card — Front",
+                'guardian-back': "Guardian's ID Card — Back",
+              }[pickerFor] || 'Upload Photo'}
             </p>
             <p style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 16 }}>Choose how you’d like to add the image.</p>
             <div style={{ display: 'flex', gap: 10 }}>

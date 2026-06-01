@@ -78,7 +78,7 @@ function IdCardSide({ sideLabel, url, uploading, progress, onUploadClick }: {
 
 function ParentIdCardUpload({ label, section, parentData, uploadingKey, progress, onUploadClick }: {
   label: string;
-  section: 'father' | 'mother';
+  section: 'father' | 'mother' | 'guardian';
   parentData?: { idCardFrontUrl?: string; idCardBackUrl?: string };
   uploadingKey: string | null; // `${section}-${side}` currently uploading
   progress: number;
@@ -138,11 +138,11 @@ export default function ParentChildProfile({ user, selectedStudent }: Props) {
   // Parent ID card upload (front & back per parent)
   const [uploadingIdCard, setUploadingIdCard] = useState<string | null>(null); // `${section}-${side}`
   const [idCardProgress, setIdCardProgress] = useState(0);
-  const [pickerFor, setPickerFor] = useState<{ section: 'father' | 'mother'; side: 'front' | 'back' } | null>(null);
+  const [pickerFor, setPickerFor] = useState<{ section: 'father' | 'mother' | 'guardian'; side: 'front' | 'back' } | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   // Holds the target while the chooser popup is open / file dialog is active
-  const pendingTargetRef = useRef<{ section: 'father' | 'mother'; side: 'front' | 'back' } | null>(null);
+  const pendingTargetRef = useRef<{ section: 'father' | 'mother' | 'guardian'; side: 'front' | 'back' } | null>(null);
 
   const openPicker = (kind: 'camera' | 'gallery') => {
     pendingTargetRef.current = pickerFor;
@@ -150,7 +150,7 @@ export default function ParentChildProfile({ user, selectedStudent }: Props) {
     (kind === 'camera' ? cameraRef : galleryRef).current?.click();
   };
 
-  const uploadParentIdCard = async (section: 'father' | 'mother', side: 'front' | 'back', file: File) => {
+  const uploadParentIdCard = async (section: 'father' | 'mother' | 'guardian', side: 'front' | 'back', file: File) => {
     if (!selectedStudent?.id) return;
     const mimeType = file.type || 'image/jpeg';
     if (!mimeType.startsWith('image/')) { setError('Please choose an image file.'); return; }
@@ -197,7 +197,7 @@ export default function ParentChildProfile({ user, selectedStudent }: Props) {
   const handleIdCardPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = '';
-    const target = pendingTargetRef.current;
+    const target = pendingTargetRef.current as { section: 'father' | 'mother' | 'guardian'; side: 'front' | 'back' } | null;
     pendingTargetRef.current = null;
     if (f && target) uploadParentIdCard(target.section, target.side, f);
   };
@@ -513,6 +513,24 @@ export default function ParentChildProfile({ user, selectedStudent }: Props) {
                   />
                 </div>
 
+                {/* Guardian (if set) */}
+                {profile.hasGuardian && profile.guardian && (
+                  <SectionCard icon={Users} title="Guardian Details">
+                    <InfoRow label="Name" value={profile.guardian.name} />
+                    <InfoRow label="Relation" value={profile.guardian.relation} />
+                    <InfoRow label="Mobile" value={profile.guardian.phone} />
+                    <InfoRow label="Address" value={profile.guardian.address} />
+                    <ParentIdCardUpload
+                      label="Guardian's ID Card"
+                      section="guardian"
+                      parentData={profile.guardian}
+                      uploadingKey={uploadingIdCard}
+                      progress={idCardProgress}
+                      onUploadClick={side => setPickerFor({ section: 'guardian', side })}
+                    />
+                  </SectionCard>
+                )}
+
                 {/* Siblings */}
                 {(profile.siblings || []).length > 0 && (
                   <SectionCard icon={Users} title="Siblings in School">
@@ -553,7 +571,7 @@ export default function ParentChildProfile({ user, selectedStudent }: Props) {
             style={{ width: '100%', maxWidth: 420, margin: 12, borderRadius: 18, padding: 18, animation: 'eh-slidein 0.18s ease-out' }}
           >
             <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', marginBottom: 2 }}>
-              Upload {pickerFor.section === 'father' ? "Father's" : "Mother's"} ID Card — {pickerFor.side === 'front' ? 'Front' : 'Back'}
+              Upload {pickerFor.section === 'father' ? "Father's" : pickerFor.section === 'mother' ? "Mother's" : "Guardian's"} ID Card — {pickerFor.side === 'front' ? 'Front' : 'Back'}
             </p>
             <p style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 16 }}>
               Upload your Aadhaar card, PAN card, or any government-issued photo ID.

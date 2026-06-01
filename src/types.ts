@@ -792,6 +792,10 @@ export interface ExtendedStudentProfile {
     relation?: string;
     phone?: string;
     address?: string;
+    idCardFrontUrl?: string;
+    idCardFrontPath?: string;
+    idCardBackUrl?: string;
+    idCardBackPath?: string;
   };
   // Academic background
   previousSchool?: {
