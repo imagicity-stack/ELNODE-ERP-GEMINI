@@ -766,8 +766,10 @@ export interface ExtendedStudentProfile {
     phone?: string;
     email?: string;
     aadhaar?: string;
-    idCardUrl?: string;
-    idCardPath?: string;
+    idCardFrontUrl?: string;
+    idCardFrontPath?: string;
+    idCardBackUrl?: string;
+    idCardBackPath?: string;
   };
   mother?: {
     name?: string;
@@ -779,8 +781,10 @@ export interface ExtendedStudentProfile {
     phone?: string;
     email?: string;
     aadhaar?: string;
-    idCardUrl?: string;
-    idCardPath?: string;
+    idCardFrontUrl?: string;
+    idCardFrontPath?: string;
+    idCardBackUrl?: string;
+    idCardBackPath?: string;
   };
   hasGuardian?: boolean;
   guardian?: {
