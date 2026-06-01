@@ -77,7 +77,10 @@ async function queryFcmTokens(
   token: string,
   audience: string[]
 ): Promise<{ tokens: string[]; matchedUsers: number }> {
-  const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+  // The app stores data in a named Firestore database (not "(default)").
+  // FIRESTORE_DATABASE_ID must match firebase-applet-config.json's firestoreDatabaseId.
+  const databaseId = process.env.FIRESTORE_DATABASE_ID || '(default)';
+  const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents`;
 
   // Build ARRAY_CONTAINS_ANY filter over audienceTokens
   const filter = audience.length === 1
