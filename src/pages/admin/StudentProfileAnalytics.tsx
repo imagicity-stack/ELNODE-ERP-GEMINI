@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { UserProfile, ExtendedStudentProfile } from '../../types';
-import { BarChart3, Users, CheckCircle, AlertCircle, TrendingUp, Heart, Activity, BookOpen, Briefcase } from 'lucide-react';
+import { BarChart3, Users, CheckCircle, AlertCircle, TrendingUp, Heart, Activity, BookOpen, Briefcase, CreditCard } from 'lucide-react';
 
 interface Props { user: UserProfile }
 
