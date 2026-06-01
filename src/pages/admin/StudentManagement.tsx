@@ -445,6 +445,9 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     await saveText(lines.join('\n'), 'student_import_template.csv');
   };
 
+  // Strip ".0" suffix that Excel adds when saving numeric IDs to CSV (e.g. 1234 → "1234.0")
+  const normalizeId = (v: string) => /^\d+\.0+$/.test(v) ? String(parseInt(v, 10)) : v;
+
   const parseCSV = (text: string): Record<string, string>[] => {
     const lines = text.trim().split('\n').filter(Boolean);
     if (lines.length < 2) return [];
@@ -459,7 +462,11 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         else cur += ch;
       }
       values.push(cur.trim());
-      return Object.fromEntries(headers.map((h, i) => [h, (values[i] || '').replace(/^"|"$/g, '').trim()]));
+      const record = Object.fromEntries(headers.map((h, i) => [h, (values[i] || '').replace(/^"|"$/g, '').trim()]));
+      // Normalize numeric ID fields so Excel-exported floats ("1234.0") match stored strings
+      if (record.admissionnumber) record.admissionnumber = normalizeId(record.admissionnumber);
+      if (record.schoolnumber) record.schoolnumber = normalizeId(record.schoolnumber);
+      return record;
     });
   };
 
@@ -507,7 +514,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       const rowWarnings: Record<number, string[]> = {};
 
       const existingAdmNos = new Set(
-        students.flatMap(s => [s.admissionNumber, s.schoolNumber].filter(Boolean))
+        students.flatMap(s => [s.admissionNumber, s.schoolNumber].filter(Boolean).map(normalizeId))
       );
       const seenInFile = new Map<string, number>();
 
@@ -539,7 +546,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     // Fresh duplicate check from DB at import time (in case DB changed since CSV was loaded)
     const existingSnap = await getDocs(collection(db, 'students'));
     const existingAdmNos = new Set(
-      existingSnap.docs.flatMap(d => [d.data().admissionNumber, d.data().schoolNumber].filter(Boolean))
+      existingSnap.docs.flatMap(d => [d.data().admissionNumber, d.data().schoolNumber].filter(Boolean).map(normalizeId))
     );
     const seenInFile = new Map<string, number>();
 
