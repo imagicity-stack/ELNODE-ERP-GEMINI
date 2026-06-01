@@ -185,6 +185,19 @@ async function sendFcmBatch(
                   sound: 'default',
                 },
               },
+              webpush: {
+                headers: {
+                  Urgency: payload.priority === 'high' ? 'high' : 'normal',
+                },
+                notification: {
+                  icon: '/logo high res tp-01.png',
+                  badge: '/logo high res tp-01.png',
+                  requireInteraction: payload.priority === 'high',
+                },
+                fcm_options: {
+                  link: payload.data.link || '/',
+                },
+              },
             },
           }),
         }).then((r) => {

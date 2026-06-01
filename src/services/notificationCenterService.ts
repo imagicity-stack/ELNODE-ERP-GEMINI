@@ -129,7 +129,7 @@ export async function sendNotification(payload: {
 
   // Phase 2: fire-and-forget push notification via Vercel API
   try {
-    await fetch('/api/notifications/send-push', {
+    const pushRes = await fetch('/api/notifications/send-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -142,9 +142,15 @@ export async function sendNotification(payload: {
         link: payload.link,
       }),
     });
+    const pushData = await pushRes.json().catch(() => ({}));
+    if (!pushRes.ok) {
+      console.warn('[push] send-push API error:', pushData);
+    } else {
+      console.info('[push] result:', pushData);
+    }
   } catch (e) {
     // Push delivery failure must not block the in-app notification
-    console.warn('Push API call failed (non-critical):', e);
+    console.warn('[push] API call failed (non-critical):', e);
   }
 }
 
