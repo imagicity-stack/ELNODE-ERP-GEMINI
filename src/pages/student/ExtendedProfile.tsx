@@ -143,6 +143,19 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
   const photoGalleryRef = useRef<HTMLInputElement>(null);
   const photoCameraRef = useRef<HTMLInputElement>(null);
 
+  // Which upload target's "Camera / Gallery" chooser is currently open
+  const [pickerFor, setPickerFor] = useState<null | 'photo' | 'front' | 'back'>(null);
+  const openPicker = (kind: 'camera' | 'gallery') => {
+    const target = pickerFor;
+    setPickerFor(null);
+    const map = {
+      photo: { camera: photoCameraRef, gallery: photoGalleryRef },
+      front: { camera: frontCameraRef, gallery: frontGalleryRef },
+      back: { camera: backCameraRef, gallery: backGalleryRef },
+    } as const;
+    if (target) map[target][kind].current?.click();
+  };
+
   // Identity context
   const [className, setClassName] = useState('');
   const [houseName, setHouseName] = useState('');
@@ -407,8 +420,8 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                 <button
                   type="button"
                   disabled={uploadingPhoto}
-                  onClick={() => photoCameraRef.current?.click()}
-                  title="Take photo with camera"
+                  onClick={() => setPickerFor('photo')}
+                  title="Change photo"
                   style={{ position: 'absolute', bottom: -2, right: -2, width: 30, height: 30, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--paper)', display: 'grid', placeItems: 'center', cursor: uploadingPhoto ? 'wait' : 'pointer' }}
                 >
                   <Camera size={14} style={{ color: 'var(--accent-ink)' }} />
@@ -428,13 +441,10 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                   )}
                   {houseName && <span className="chip" style={{ fontSize: 11 }}>{houseName}</span>}
                 </div>
-                {/* Camera / Gallery action buttons */}
+                {/* Single trigger — opens Camera / Gallery chooser */}
                 <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button type="button" className="btn ghost" disabled={uploadingPhoto} style={{ fontSize: 12, padding: '5px 12px', width: 'auto' }} onClick={() => photoCameraRef.current?.click()}>
-                    <Camera size={13} /> Camera
-                  </button>
-                  <button type="button" className="btn ghost" disabled={uploadingPhoto} style={{ fontSize: 12, padding: '5px 12px', width: 'auto' }} onClick={() => photoGalleryRef.current?.click()}>
-                    <ImageIcon size={13} /> {photoURL ? 'Change Photo' : 'Gallery'}
+                  <button type="button" className="btn ghost" disabled={uploadingPhoto} style={{ fontSize: 12, padding: '5px 12px', width: 'auto' }} onClick={() => setPickerFor('photo')}>
+                    <Camera size={13} /> {photoURL ? 'Change Photo' : 'Add Photo'}
                   </button>
                 </div>
                 {uploadingPhoto && (
@@ -516,7 +526,7 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                       {side === 'front' ? 'Front Side' : 'Back Side'} <span style={{ color: 'var(--coral)' }}>*</span>
                     </p>
                     <div
-                      onClick={() => !uploading && !url && cameraRef.current?.click()}
+                      onClick={() => !uploading && !url && setPickerFor(side)}
                       style={{
                         border: `2px dashed ${url ? 'var(--leaf)' : 'var(--line)'}`,
                         borderRadius: 12, minHeight: 130,
@@ -555,12 +565,9 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
                     <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onPick} />
                     <input ref={galleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPick} />
                     {!uploading && (
-                      <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '4px 10px', width: 'auto' }} onClick={() => cameraRef.current?.click()}>
-                          <Camera size={12} /> Camera
-                        </button>
-                        <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '4px 10px', width: 'auto' }} onClick={() => galleryRef.current?.click()}>
-                          <ImageIcon size={12} /> {url ? 'Replace' : 'Gallery'}
+                      <div style={{ marginTop: 6 }}>
+                        <button type="button" className="btn ghost" style={{ fontSize: 11, padding: '4px 12px', width: 'auto' }} onClick={() => setPickerFor(side)}>
+                          <Camera size={12} /> {url ? 'Replace Photo' : 'Upload Photo'}
                         </button>
                       </div>
                     )}
@@ -896,6 +903,38 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
           </SectionCard>
         </div>
       </div>
+
+      {/* ── Camera / Gallery chooser popup ── */}
+      {pickerFor && (
+        <div
+          onClick={() => setPickerFor(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="card"
+            style={{ width: '100%', maxWidth: 420, margin: 12, borderRadius: 18, padding: 18, animation: 'eh-slidein 0.18s ease-out' }}
+          >
+            <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', marginBottom: 2 }}>
+              {pickerFor === 'photo' ? 'Update Profile Photo' : `Upload ID Card — ${pickerFor === 'front' ? 'Front' : 'Back'}`}
+            </p>
+            <p style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 16 }}>Choose how you’d like to add the image.</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="btn" style={{ flex: 1, flexDirection: 'column', gap: 6, padding: '16px 10px', height: 'auto' }} onClick={() => openPicker('camera')}>
+                <Camera size={22} />
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Camera</span>
+              </button>
+              <button type="button" className="btn" style={{ flex: 1, flexDirection: 'column', gap: 6, padding: '16px 10px', height: 'auto' }} onClick={() => openPicker('gallery')}>
+                <ImageIcon size={22} />
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Gallery</span>
+              </button>
+            </div>
+            <button type="button" className="btn ghost" style={{ marginTop: 12, width: '100%' }} onClick={() => setPickerFor(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

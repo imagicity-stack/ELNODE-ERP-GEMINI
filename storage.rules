@@ -101,18 +101,26 @@ service firebase.storage {
       allow write: if isSignedIn() && isValidFileSize() && isAllowedContentType() && isAnyAdmin();
     }
 
+    // True when the signed-in user is linked to this student (own student doc,
+    // or a parent whose studentIds contains it). Guarded with exists() so a
+    // missing user doc returns false instead of throwing (which would deny).
+    function isLinkedToStudent(studentId) {
+      return isSignedIn() &&
+             firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) && (
+               firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('studentId', '') == studentId ||
+               studentId in firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('studentIds', [])
+             );
+    }
+
     // Student profile photos — ID card front/back uploaded by student or admin
     match /studentProfiles/{studentId}/{allPaths=**} {
-      // Admins and the linked student/parent can read
-      allow read: if isSignedIn() && (isAnyAdmin() || request.auth.uid == studentId ||
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('studentId','') == studentId ||
-        studentId in firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('studentIds',[]));
-      // Student (matched by studentId in their user doc) or admin can write
+      // Admins, the student themselves, or a linked parent/student can read
+      allow read: if isSignedIn() && (isAnyAdmin() || request.auth.uid == studentId || isLinkedToStudent(studentId));
+      // Admin, the student themselves, or a linked student/parent can write
       allow write: if isSignedIn() &&
                       isValidFileSize() &&
                       isAllowedContentType() &&
-                      (isAnyAdmin() ||
-                       firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('studentId','') == studentId);
+                      (isAnyAdmin() || request.auth.uid == studentId || isLinkedToStudent(studentId));
     }
 
     // Deny everything else
