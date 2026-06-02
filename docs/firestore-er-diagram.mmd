@@ -1,0 +1,391 @@
+erDiagram
+    %% ─── Identity & Access ───────────────────────────────
+    users {
+        string uid PK
+        string email
+        string name
+        string role
+        string schoolNumber
+        string classId
+        string section
+        string parentId
+        string studentId
+        string teacherId
+        string_array studentIds
+        string_array fcmTokens
+        string_array audienceTokens
+    }
+    rolePermissions {
+        string id PK "role name"
+        map modules
+        string updatedAt
+    }
+
+    %% ─── Students & Staff ────────────────────────────────
+    students {
+        string id PK
+        string schoolNumber
+        string admissionNumber
+        string name
+        string classId FK
+        string section
+        string parentId FK
+        string houseId FK
+        string feeStatus
+        string gender
+    }
+    studentProfiles {
+        string studentId PK
+        string dateOfBirth
+        string bloodGroup
+        string aadhaarNumber
+        object father
+        object mother
+        object guardian
+        number completionPercentage
+    }
+    teachers {
+        string id PK
+        string employeeId
+        string name
+        string email
+        string_array subjects FK
+        string_array classes FK
+        number salaryStructure
+        number version
+    }
+    staff {
+        string id PK
+        string employeeId
+        string name
+        string role
+        number salary
+        string status
+        number version
+    }
+
+    %% ─── Academic Structure ──────────────────────────────
+    classes {
+        string id PK
+        string name
+        array sections
+        string_array subjects FK
+    }
+    subjects {
+        string id PK
+        string name
+        string code
+        string type
+        string teacherId FK
+    }
+    houses {
+        string id PK
+        string name
+        string color
+        string teacherInchargeId FK
+    }
+    gradingScales {
+        string id PK
+        string name
+        array ranges
+    }
+    timetable {
+        string id PK
+        string classId FK
+        array schedule
+        number version
+        string academicYear
+    }
+    timetableArchive {
+        string id PK
+        string classId FK
+        number version
+        string archivedAt
+    }
+    timetableSettings {
+        string id PK
+        array slots
+        string_array days
+    }
+
+    %% ─── Teaching & Assessment ───────────────────────────
+    homework {
+        string id PK
+        string classId FK
+        string subjectId FK
+        string teacherId FK
+        string dueDate
+        array submissions
+    }
+    lessonLogs {
+        string id PK
+        string classId FK
+        string subjectId FK
+        string teacherId FK
+        string date
+        string topic
+        number version
+    }
+    studyMaterials {
+        string id PK
+        string teacherId FK
+        string classId FK
+    }
+    exams {
+        string id PK
+        string name
+        string_array classIds FK
+        string subjectId FK
+        string gradingScaleId FK
+        number maxMarks
+        bool published
+        string createdBy FK
+    }
+    examResults {
+        string id PK
+        string examId FK
+        string studentId FK
+        string classId FK
+        array subjectResults
+        number percentage
+        bool published
+        number version
+    }
+
+    %% ─── Fees & Finance ──────────────────────────────────
+    feeHeads {
+        string id PK
+        string name
+        number amount
+    }
+    feeStructures {
+        string id PK
+        string classId FK
+        array heads
+    }
+    fees {
+        string id PK
+        string studentId FK
+        array structure
+        string status
+    }
+    feeRequests {
+        string id PK
+        string studentId FK
+        string classId FK
+        string month
+        array heads
+        number totalAmount
+        number paidAmount
+        string status
+        string dueDate
+    }
+    feePayments {
+        string id PK
+        string studentId FK
+        string classId FK
+        string feeRequestId FK
+        string feeHead
+        number amount
+        array allocations
+        string receiptNumber
+        string advancePaymentId FK
+    }
+    advancePayments {
+        string id PK
+        string studentId FK
+        string classId FK
+        string parentId FK
+        array monthlyBreakdown
+        number totalAmount
+        string status
+    }
+    fineConfig {
+        string id PK
+        bool isEnabled
+        number gracePeriodDays
+        array slabs
+    }
+    feeFollowups {
+        string id PK
+        string feeRequestId FK
+        string studentId FK
+        array logs
+        bool isEscalated
+    }
+    counters {
+        string id PK
+        number value
+    }
+    expenses {
+        string id PK
+        string category
+        string biller
+        number amount
+        string status
+    }
+    salaries {
+        string id PK
+        string employeeId FK
+        string month
+        number netAmount
+        number paidAmount
+        string status
+    }
+    payrollConfig {
+        string id PK
+        number workingDaysInYear
+        number pfRate
+        number professionalTax
+    }
+
+    %% ─── Attendance & Leave ──────────────────────────────
+    attendance {
+        string id PK
+        string date
+        string studentId FK
+        string status
+        string type
+        string classId FK
+    }
+    studentLeaves {
+        string id PK
+        string studentId FK
+        string parentId FK
+        string classId FK
+        string leaveType
+        string status
+        number totalDays
+    }
+    teacherLeaves {
+        string id PK
+        string teacherId FK
+        string leaveType
+        string status
+        number totalDays
+    }
+    substituteAssignments {
+        string id PK
+        string leaveId FK
+        string slotId
+        string classId FK
+        string originalTeacherId FK
+        string substituteTeacherId FK
+    }
+
+    %% ─── Communication ───────────────────────────────────
+    notices {
+        string id PK
+        string title
+        string_array targetRoles
+        string priority
+        array attachments
+    }
+    notifications {
+        string id PK
+        string title
+        string body
+        string category
+        string_array audience
+        string targetType
+    }
+    userNotificationState {
+        string uid PK
+        string lastReadAt
+        string_array dismissedIds
+    }
+    events {
+        string id PK
+        string title
+        string startDate
+        string endDate
+        string type
+    }
+    grievances {
+        string id PK
+        string studentId FK
+        string parentId FK
+        string category
+        string priority
+        string status
+        array notes
+    }
+    broadcastLogs {
+        string id PK
+        string templateName
+        string audience
+        number totalSent
+    }
+    whatsappLogs {
+        string id PK
+        string content
+    }
+
+    %% ─── System ──────────────────────────────────────────
+    settings {
+        string id PK
+        map config
+    }
+    activityLogs {
+        string id PK
+        string userId FK
+        string action
+        string section
+        string aiDescription
+    }
+    admission_leads {
+        string id PK
+        string name
+        string status
+    }
+
+    %% ═══ RELATIONSHIPS ═══════════════════════════════════
+    users ||--o| students : "studentId / studentIds"
+    users ||--o| teachers : "teacherId"
+    users ||--o| userNotificationState : "uid"
+    rolePermissions ||--o{ users : "role"
+
+    classes ||--o{ students : "classId"
+    classes ||--o{ subjects : "subjects[]"
+    houses ||--o{ students : "houseId"
+    students ||--|| studentProfiles : "studentId"
+
+    classes ||--o{ timetable : "classId"
+    timetable ||--o{ timetableArchive : "versions"
+    timetableSettings ||--o{ timetable : "slots"
+
+    classes ||--o{ homework : "classId"
+    subjects ||--o{ homework : "subjectId"
+    teachers ||--o{ homework : "teacherId"
+    classes ||--o{ lessonLogs : "classId"
+    teachers ||--o{ lessonLogs : "teacherId"
+    teachers ||--o{ studyMaterials : "teacherId"
+
+    classes ||--o{ exams : "classIds[]"
+    subjects ||--o{ exams : "subjectId"
+    gradingScales ||--o{ exams : "gradingScaleId"
+    exams ||--o{ examResults : "examId"
+    students ||--o{ examResults : "studentId"
+
+    classes ||--o{ feeStructures : "classId"
+    feeHeads ||--o{ feeStructures : "heads"
+    students ||--o{ fees : "studentId"
+    students ||--o{ feeRequests : "studentId"
+    feeRequests ||--o{ feePayments : "feeRequestId"
+    students ||--o{ feePayments : "studentId"
+    students ||--o{ advancePayments : "studentId"
+    advancePayments ||--o{ feePayments : "advancePaymentId"
+    feeRequests ||--o{ feeFollowups : "feeRequestId"
+
+    teachers ||--o{ salaries : "employeeId"
+    staff ||--o{ salaries : "employeeId"
+
+    students ||--o{ attendance : "studentId"
+    classes ||--o{ attendance : "classId"
+    students ||--o{ studentLeaves : "studentId"
+    teachers ||--o{ teacherLeaves : "teacherId"
+    teacherLeaves ||--o{ substituteAssignments : "leaveId"
+    teachers ||--o{ substituteAssignments : "substituteTeacherId"
+
+    students ||--o{ grievances : "studentId"
+    users ||--o{ activityLogs : "userId"
