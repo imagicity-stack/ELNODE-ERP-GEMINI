@@ -17,7 +17,7 @@ import { db, storage, handleFirestoreError, OperationType } from '../../firebase
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { savePdf } from '../../lib/download';
-import { fmtMonthYear, fmtDate } from '../../lib/utils';
+import { fmtMonthYear, fmtDate, sortByClassName, sortByName } from '../../lib/utils';
 import { useToast } from '../../components/Toast';
 import { PaymentSuccess, StaggeredList } from '../../components/animations';
 import { logActivity } from '../../services/activityService';
@@ -116,7 +116,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     const onErr = (err: any) => { handleFirestoreError(err, OperationType.LIST, 'feeRequests'); setLoading(false); };
 
     const unsubs = [
-      onSnapshot(collection(db, 'students'), (s) => setStudents(s.docs.map(d => ({ id: d.id, ...d.data() } as Student))), onErr),
+      onSnapshot(collection(db, 'students'), (s) => setStudents(sortByName(s.docs.map(d => ({ id: d.id, ...d.data() } as Student)))), onErr),
       onSnapshot(collection(db, 'feeRequests'), (s) => { setFeeRequests(s.docs.map(d => ({ id: d.id, ...d.data() } as FeeRequest))); setLoading(false); }, onErr),
       onSnapshot(collection(db, 'feePayments'), (s) => {
         const sorted = s.docs.map(d => ({ id: d.id, ...d.data() } as FeePayment))
@@ -124,7 +124,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         setPayments(sorted);
       }, onErr),
       onSnapshot(collection(db, 'feeStructures'), (s) => setFeeStructures(s.docs.map(d => ({ id: d.id, ...d.data() } as FeeStructure))), onErr),
-      onSnapshot(collection(db, 'classes'), (s) => setClasses(s.docs.map(d => ({ id: d.id, ...d.data() } as Class))), onErr),
+      onSnapshot(collection(db, 'classes'), (s) => setClasses(sortByClassName(s.docs.map(d => ({ id: d.id, ...d.data() } as Class)))), onErr),
       onSnapshot(collection(db, 'feeHeads'), (s) => setGlobalHeads(s.docs.map(d => ({ ...d.data() } as FeeHead))), onErr),
     ];
 

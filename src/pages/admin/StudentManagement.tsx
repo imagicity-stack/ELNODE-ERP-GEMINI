@@ -41,7 +41,7 @@ import {
   Filter as FilterIcon,
   Search,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn, sortByClassName, sortByName } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
@@ -159,8 +159,8 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         getDocs(collection(db, 'houses'))
       ]);
 
-      setStudents(studentSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student)));
-      setClasses(classSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class)));
+      setStudents(sortByName(studentSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student))));
+      setClasses(sortByClassName(classSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class))));
       setHouses(houseSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as House)));
     } catch (err) {
       handleFirestoreError(err, OperationType.LIST, 'students/classes/houses');
@@ -173,7 +173,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     fetchData();
     // Real-time class list so newly added classes appear instantly in dropdowns/filters
     const unsubClasses = onSnapshot(collection(db, 'classes'), (snap) => {
-      setClasses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Class)));
+      setClasses(sortByClassName(snap.docs.map(d => ({ id: d.id, ...d.data() } as Class))));
     });
     return () => unsubClasses();
   }, []);

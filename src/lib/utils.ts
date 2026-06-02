@@ -5,6 +5,58 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// ─── Sorting helpers ──────────────────────────────────────────────────────────
+
+// Pre-primary grades that should sort before numbered classes, in this order.
+const GRADE_ORDER: Record<string, number> = {
+  'pre-nursery': -5, 'prenursery': -5,
+  'play': -4, 'playgroup': -4, 'pg': -4,
+  'nursery': -3, 'nur': -3,
+  'lkg': -2, 'pre-kg': -2, 'prekg': -2,
+  'ukg': -1, 'kg': -1,
+};
+
+/**
+ * Compare two class names in natural school order:
+ * Pre-Nursery → Play → Nursery → LKG → UKG → 1 → 2 → … → 12,
+ * then anything else alphabetically. Numeric classes sort numerically
+ * ("2" before "10"), not lexically.
+ */
+export function compareClassName(a: string, b: string): number {
+  const na = (a || '').trim().toLowerCase();
+  const nb = (b || '').trim().toLowerCase();
+
+  const ra = GRADE_ORDER[na];
+  const rb = GRADE_ORDER[nb];
+  if (ra !== undefined && rb !== undefined) return ra - rb;
+  if (ra !== undefined) return -1; // named grades come first
+  if (rb !== undefined) return 1;
+
+  // Numeric class numbers — sort numerically
+  const ia = parseInt(na, 10);
+  const ib = parseInt(nb, 10);
+  const aIsNum = !Number.isNaN(ia) && /^\d/.test(na);
+  const bIsNum = !Number.isNaN(ib) && /^\d/.test(nb);
+  if (aIsNum && bIsNum) return ia - ib;
+  if (aIsNum) return -1;
+  if (bIsNum) return 1;
+
+  // Fallback: natural alphabetical with embedded-number awareness
+  return na.localeCompare(nb, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+/** Sort an array of objects with a `name` field by school class order. */
+export function sortByClassName<T extends { name?: string }>(items: T[]): T[] {
+  return [...items].sort((x, y) => compareClassName(x.name || '', y.name || ''));
+}
+
+/** Case-insensitive, number-aware A→Z sort by `name` (for students, teachers, etc.). */
+export function sortByName<T extends { name?: string }>(items: T[]): T[] {
+  return [...items].sort((x, y) =>
+    (x.name || '').localeCompare(y.name || '', undefined, { numeric: true, sensitivity: 'base' })
+  );
+}
+
 /**
  * Convert "YYYY-MM" (e.g. "2026-05") to "Month YYYY" (e.g. "May 2026").
  * Returns the input unchanged if format is not YYYY-MM.

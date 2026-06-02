@@ -32,7 +32,7 @@ import {
   Building2,
   Layers,
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn, sortByClassName, sortByName } from '../../lib/utils';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useToast } from '../../components/Toast';
 import { Modal, ConfirmModal, FormField, Input, Select, Button } from '../../components/ui';
@@ -82,13 +82,13 @@ export default function TeacherManagement({ user }: { user: UserProfile }) {
   const fetchData = async () => {
     try {
       const teacherSnapshot = await getDocs(collection(db, 'teachers'));
-      setTeachers(teacherSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Teacher)));
+      setTeachers(sortByName(teacherSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Teacher))));
 
       const subjectSnapshot = await getDocs(collection(db, 'subjects'));
       setSubjects(subjectSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Subject)));
 
       const classSnapshot = await getDocs(collection(db, 'classes'));
-      setClasses(classSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class)));
+      setClasses(sortByClassName(classSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class))));
 
       const houseSnapshot = await getDocs(collection(db, 'houses'));
       setHouses(houseSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as House)));

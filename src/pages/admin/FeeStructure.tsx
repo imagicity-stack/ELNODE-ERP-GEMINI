@@ -13,6 +13,7 @@ import { Class, FeeStructure as IFeeStructure, FeeHead, UserProfile } from '../.
 import { logActivity } from '../../services/activityService';
 import { useToast } from '../../components/Toast';
 import { Modal, FormField, Input, Button, IconButton } from '../../components/ui';
+import { sortByClassName } from '../../lib/utils';
 
 export default function FeeStructure({ user }: { user: UserProfile }) {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -33,7 +34,7 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
         getDocs(collection(db, 'classes')),
         getDocs(collection(db, 'feeHeads')),
       ]);
-      const classesList = classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class));
+      const classesList = sortByClassName(classesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class)));
       setClasses(classesList);
       setGlobalHeads(headsSnap.docs.map(doc => ({ ...doc.data() } as FeeHead)));
       if (classesList.length > 0 && !selectedClassId) {
