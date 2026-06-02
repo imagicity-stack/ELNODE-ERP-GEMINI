@@ -1380,7 +1380,19 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Fee Heads</h3>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Add/remove heads · discount with reason</span>
+              <div className="flex items-center gap-3">
+                {requestData.heads.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setRequestData({ ...requestData, heads: [] })}
+                    className="text-[10px] font-bold text-rose-500 hover:text-rose-600 uppercase tracking-wider"
+                    title="Remove all heads to build a custom-only request"
+                  >
+                    Clear all
+                  </button>
+                )}
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Add/remove heads · discount with reason</span>
+              </div>
             </div>
 
             <div className="rounded-xl border border-slate-200 overflow-hidden">
