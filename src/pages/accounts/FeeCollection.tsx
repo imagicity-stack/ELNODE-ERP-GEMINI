@@ -243,7 +243,20 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           setLoading(false);
           return;
         }
-        const headName = paymentData.openHead.trim() || 'Fees';
+        if (!paymentData.openHead || paymentData.openHead === '') {
+          showToast('Select a fee head', 'error');
+          setLoading(false);
+          return;
+        }
+        const rawHead = paymentData.openHead === '__other__'
+          ? (paymentData.remarks.startsWith('__customHead:') ? paymentData.remarks.replace('__customHead:', '').trim() : '')
+          : paymentData.openHead.trim();
+        if (!rawHead) {
+          showToast('Enter a custom fee head name', 'error');
+          setLoading(false);
+          return;
+        }
+        const headName = rawHead;
         const d = new Date(paymentData.date);
         const month = d.toLocaleString('default', { month: 'long', year: 'numeric' });
         const yr = d.getFullYear();
@@ -385,7 +398,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           method: paymentData.method,
           referenceNumber: paymentData.referenceNumber,
           receiptNumber,
-          remarks: paymentData.remarks,
+          remarks: paymentData.remarks.startsWith('__customHead:') ? '' : paymentData.remarks,
           ...(paymentData.method === 'cash' && paymentData.voucherNumber
             ? { voucherNumber: paymentData.voucherNumber }
             : {}),
@@ -979,8 +992,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     } else {
       setIsEditingRequest(false);
       setCurrentRequestId(null);
-      const structure = feeStructures.find(s => s.classId === student.classId);
-      const sourceHeads = (structure?.heads?.length ? structure.heads : globalHeads).map(h => ({
+      const sourceHeads = getAvailableHeadsForAdvance(student).map(h => ({
         name: h.name,
         amount: h.amount,
         discount: 0,
@@ -1089,15 +1101,15 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         </div>
 
         {/* ── Student fee cards ── */}
-        <div className="stack">
-          {filteredStudents.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-              <Users size={40} style={{ color: 'var(--line)', margin: '0 auto 0.75rem' }} />
-              <p style={{ fontWeight: 700, color: 'var(--ink)' }}>No students found</p>
-              <p className="muted" style={{ fontSize: '0.85rem' }}>Try a different search or class</p>
-            </div>
-          ) : (
-            filteredStudents.slice(0, 50).map((student) => {
+        {filteredStudents.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+            <Users size={40} style={{ color: 'var(--line)', margin: '0 auto 0.75rem' }} />
+            <p style={{ fontWeight: 700, color: 'var(--ink)' }}>No students found</p>
+            <p className="muted" style={{ fontSize: '0.85rem' }}>Try a different search or class</p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0.75rem' }}>
+            {filteredStudents.slice(0, 50).map((student) => {
               const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
               const studentRequest = studentRequests[0];
               const currentFine = studentRequest ? (fineConfig ? calculateFine(studentRequest, fineConfig) : 0) : 0;
@@ -1108,64 +1120,64 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
               const isOverdue = studentRequest?.dueDate && studentRequest.dueDate < today;
 
               return (
-                <div key={student.id} className="card">
-                  {/* Header row */}
-                  <div className="row" style={{ alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div key={student.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {/* Header: avatar + name + status badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
                       <Avatar name={student.name} size="sm" />
-                      <div>
-                        <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{student.name}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, color: 'var(--ink)', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name}</div>
                         <div className="mono tiny muted">{className} · {student.section} · #{student.schoolNumber}</div>
                       </div>
                     </div>
-                    {studentRequest && (
-                      <Badge
-                        variant={studentRequest.status === 'paid' ? 'success' : isOverdue ? 'error' : 'warning'}
-                      >
+                    {studentRequest ? (
+                      <Badge variant={studentRequest.status === 'paid' ? 'success' : isOverdue ? 'error' : 'warning'} style={{ flexShrink: 0 }}>
                         {isOverdue ? 'Overdue' : studentRequest.status.replace('_', ' ')}
                       </Badge>
+                    ) : (
+                      <span className="chip" style={{ fontSize: '0.7rem', flexShrink: 0, color: 'var(--ink)', opacity: 0.45 }}>No invoice</span>
                     )}
                   </div>
 
-                  {/* Fee heads summary */}
+                  {/* Amount pills — only when there's an open request */}
+                  {studentRequest && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.35rem' }}>
+                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.3rem 0.25rem' }}>
+                        <div className="eyebrow" style={{ fontSize: '0.6rem' }}>Total</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>₹{(studentRequest.totalAmount || 0).toLocaleString()}</div>
+                      </div>
+                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.3rem 0.25rem' }}>
+                        <div className="eyebrow" style={{ fontSize: '0.6rem', color: 'var(--leaf)' }}>Paid</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--leaf)' }}>₹{(studentRequest.paidAmount || 0).toLocaleString()}</div>
+                      </div>
+                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.3rem 0.25rem' }}>
+                        <div className="eyebrow" style={{ fontSize: '0.6rem', color: 'var(--coral)' }}>Due</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--coral)' }}>₹{balance.toLocaleString()}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Fee head chips */}
                   {studentRequest?.heads && studentRequest.heads.length > 0 && (
-                    <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
                       {studentRequest.heads.map((h, i) => (
-                        <span key={i} className="chip" style={{ fontSize: '0.72rem' }}>
+                        <span key={i} className="chip" style={{ fontSize: '0.68rem' }}>
                           {h.name}: ₹{(h.finalAmount || h.amount || 0).toLocaleString()}
                         </span>
                       ))}
                     </div>
                   )}
 
-                  {/* Amounts */}
-                  {studentRequest && (
-                    <div style={{ marginTop: '0.75rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.4rem 0' }}>
-                        <div className="eyebrow" style={{ fontSize: '0.65rem' }}>Total</div>
-                        <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>₹{(studentRequest.totalAmount || 0).toLocaleString()}</div>
-                      </div>
-                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.4rem 0' }}>
-                        <div className="eyebrow" style={{ fontSize: '0.65rem', color: 'var(--leaf)' }}>Paid</div>
-                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--leaf)' }}>₹{(studentRequest.paidAmount || 0).toLocaleString()}</div>
-                      </div>
-                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.4rem 0' }}>
-                        <div className="eyebrow" style={{ fontSize: '0.65rem', color: 'var(--coral)' }}>Balance</div>
-                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--coral)' }}>₹{balance.toLocaleString()}</div>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Action buttons */}
-                  <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '0.4rem', marginTop: 'auto' }}>
                     {!studentRequest ? (
                       <>
                         <button
                           className="btn accent"
                           onClick={() => openRequestModal(student)}
-                          style={{ flex: 1 }}
+                          style={{ flex: 1, fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
                         >
-                          <Plus size={14} /> Generate Request
+                          <Plus size={13} /> Generate
                         </button>
                         <button
                           className="btn ghost"
@@ -1186,8 +1198,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                             });
                             setIsModalOpen(true);
                           }}
+                          style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
                         >
-                          <History size={14} /> Past Payment
+                          <History size={13} /> Past
                         </button>
                       </>
                     ) : (
@@ -1195,17 +1208,19 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                         <button
                           className="btn ghost"
                           onClick={() => openRequestModal(student, studentRequest)}
+                          style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
+                          title="Edit request"
                         >
-                          <Receipt size={14} /> Edit
+                          <Receipt size={13} />
                         </button>
                         {studentRequest?.partialPaymentRequest?.status === 'pending' && user.role !== 'super_admin' ? (
-                          <div style={{ flex: 1, textAlign: 'center', fontSize: '0.75rem', color: 'var(--ink)', opacity: 0.6, padding: '0.5rem', border: '1px solid var(--line)', borderRadius: '0.5rem' }}>
+                          <div style={{ flex: 1, textAlign: 'center', fontSize: '0.72rem', color: 'var(--ink)', opacity: 0.55, padding: '0.4rem', border: '1px solid var(--line)', borderRadius: '0.5rem' }}>
                             Partial req pending
                           </div>
                         ) : (
                           <button
                             className="btn accent"
-                            style={{ flex: 1 }}
+                            style={{ flex: 1, fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
                             onClick={() => {
                               setSelectedStudent(student);
                               setIsOpenPayment(false);
@@ -1214,15 +1229,16 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                               setIsModalOpen(true);
                             }}
                           >
-                            <IndianRupee size={14} /> Collect ₹{(studentRequest?.totalAmount || 0).toLocaleString()}
+                            <IndianRupee size={13} /> ₹{balance.toLocaleString()}
                           </button>
                         )}
                         <button
                           className="btn ghost"
                           onClick={() => handleCancelRequest(studentRequest.id, student.id)}
                           title="Cancel request"
+                          style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem', color: 'var(--coral)' }}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={13} />
                         </button>
                       </>
                     )}
@@ -1231,30 +1247,30 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                   {/* Payment history toggle */}
                   <button
                     onClick={() => setExpandedStudentId(expandedStudentId === student.id ? null : student.id)}
-                    style={{ marginTop: '0.5rem', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', fontSize: '0.75rem', color: 'var(--ink)', opacity: 0.5, background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', fontSize: '0.72rem', color: 'var(--ink)', opacity: 0.45, background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem' }}
                   >
-                    <History size={13} />
-                    Payment History
-                    {expandedStudentId === student.id ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    <History size={12} />
+                    History
+                    {expandedStudentId === student.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                   </button>
 
                   {expandedStudentId === student.id && (() => {
                     const studentPayments = payments.filter(p => p.studentId === student.id);
                     return (
-                      <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--line)', paddingTop: '0.5rem' }}>
+                      <div style={{ borderTop: '1px solid var(--line)', paddingTop: '0.5rem' }}>
                         {studentPayments.length === 0 ? (
-                          <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--ink)', opacity: 0.4, padding: '0.5rem 0' }}>No payments recorded yet</p>
+                          <p style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--ink)', opacity: 0.4, padding: '0.35rem 0' }}>No payments recorded yet</p>
                         ) : studentPayments.map(p => (
-                          <div key={p.id} className="row" style={{ padding: '0.35rem 0', alignItems: 'center' }}>
+                          <div key={p.id} className="row" style={{ padding: '0.3rem 0', alignItems: 'center' }}>
                             <div>
-                              <span style={{ fontWeight: 700, fontSize: '0.8rem' }}>₹{(p.amount || 0).toLocaleString()}</span>
-                              <span className="mono tiny muted" style={{ marginLeft: '0.5rem' }}>{p.method} · {fmtDate(p.date)}</span>
+                              <span style={{ fontWeight: 700, fontSize: '0.78rem' }}>₹{(p.amount || 0).toLocaleString()}</span>
+                              <span className="mono tiny muted" style={{ marginLeft: '0.4rem' }}>{p.method} · {fmtDate(p.date)}</span>
                             </div>
-                            <div style={{ display: 'flex', gap: '0.3rem' }}>
-                              <button className="icon-btn" onClick={() => handleDownloadReceipt(p)} title="Download receipt"><Receipt size={13} /></button>
-                              <button className="icon-btn" onClick={() => handleSendWhatsApp(p)} title="Send WhatsApp"><MessageSquare size={13} /></button>
+                            <div style={{ display: 'flex', gap: '0.25rem' }}>
+                              <button className="icon-btn" onClick={() => handleDownloadReceipt(p)} title="Download receipt"><Receipt size={12} /></button>
+                              <button className="icon-btn" onClick={() => handleSendWhatsApp(p)} title="Send WhatsApp"><MessageSquare size={12} /></button>
                               {user.role === 'super_admin' && (
-                                <button className="icon-btn" onClick={() => handleDeletePayment(p.id)} title="Delete" style={{ color: 'var(--coral)' }}><Trash2 size={13} /></button>
+                                <button className="icon-btn" onClick={() => handleDeletePayment(p.id)} title="Delete" style={{ color: 'var(--coral)' }}><Trash2 size={12} /></button>
                               )}
                             </div>
                           </div>
@@ -1264,9 +1280,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                   })()}
                 </div>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+        )}
 
         {/* ── Export FAB ── */}
         <button
@@ -1554,15 +1570,29 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                   Recording a past payment — no open invoice needed. A fee record will be created automatically.
                 </p>
               </div>
-              <FormField label="Fee Head / Description" required>
-                <Input
-                  type="text"
-                  required
-                  placeholder="e.g. Tuition Fees, Transport, etc."
+              <FormField label="Fee Head" required>
+                <Select
                   value={paymentData.openHead}
                   onChange={(e) => setPaymentData({ ...paymentData, openHead: e.target.value })}
-                />
+                >
+                  <option value="">Select a fee head…</option>
+                  {getAvailableHeadsForAdvance(selectedStudent).map(h => (
+                    <option key={h.name} value={h.name}>{h.name}{h.amount ? ` — ₹${h.amount.toLocaleString()}` : ''}</option>
+                  ))}
+                  <option value="__other__">Other (enter manually)</option>
+                </Select>
               </FormField>
+              {paymentData.openHead === '__other__' && (
+                <FormField label="Custom Fee Head" required>
+                  <Input
+                    type="text"
+                    required
+                    placeholder="e.g. Library Fee, Exam Fee…"
+                    value={paymentData.remarks.startsWith('__customHead:') ? paymentData.remarks.replace('__customHead:', '') : ''}
+                    onChange={(e) => setPaymentData({ ...paymentData, remarks: `__customHead:${e.target.value}` })}
+                  />
+                </FormField>
+              )}
               <FormField label="Amount (₹)" required>
                 <Input
                   type="number"
