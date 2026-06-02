@@ -54,6 +54,13 @@ export default defineConfig(({ mode }) => {
     ],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      // Lets a Vercel env var (FIREBASE_DATABASE_ID) override which Firestore
+      // database the browser SDK talks to — set it per environment to test the
+      // ERP against a different database. Empty string falls back to the
+      // committed applet config in src/firebase.ts.
+      'process.env.FIREBASE_DATABASE_ID': JSON.stringify(
+        process.env.FIREBASE_DATABASE_ID || env.FIREBASE_DATABASE_ID || ''
+      ),
     },
     resolve: {
       alias: {
