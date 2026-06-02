@@ -149,7 +149,7 @@ export default function FeeStructure({ user }: { user: UserProfile }) {
         </div>
       </div>
 
-      <div className="pad stack" style={{ paddingBottom: 32 }}>
+      <div className="pad stack" style={{ paddingBottom: 32, maxWidth: 680, marginLeft: 'auto', marginRight: 'auto' }}>
         {/* Class selector chips */}
         <div className="hscroll" style={{ padding: 0 }}>
           {classes.map(cls => (
