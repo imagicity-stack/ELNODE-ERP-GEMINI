@@ -106,6 +106,11 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     dueDate: computeDefaultFeeDueDate(10),
     heads: [],
   });
+  // How requestData.month was determined, so the modal can surface it:
+  //  'auto'    — every fee head agreed on one billing month, used verbatim
+  //  'mixed'   — heads disagreed (or had none); fell back to current month, accountant should verify
+  //  null      — editing an existing request, or not applicable
+  const [monthHint, setMonthHint] = useState<'auto' | 'mixed' | null>(null);
 
   const fetchData = () => {
     // No-op: live data via onSnapshot. Kept so existing call sites still type-check.
@@ -976,6 +981,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     if (request) {
       setIsEditingRequest(true);
       setCurrentRequestId(request.id);
+      setMonthHint(null);
       setRequestData({
         month: request.month,
         dueDate: request.dueDate,
@@ -984,14 +990,28 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     } else {
       setIsEditingRequest(false);
       setCurrentRequestId(null);
-      const sourceHeads = getAvailableHeadsForAdvance(student).map(h => ({
+      const availableHeads = getAvailableHeadsForAdvance(student);
+      const sourceHeads = availableHeads.map(h => ({
         name: h.name,
         amount: h.amount,
         discount: 0,
         finalAmount: h.amount,
       }));
+      // Auto-populate billing month from fee heads if they all share the same one.
+      const billingMonths = [...new Set(availableHeads.map(h => h.billingMonth).filter(Boolean))];
+      if (billingMonths.length === 1) {
+        setMonthHint('auto');
+      } else if (billingMonths.length > 1) {
+        // Heads disagree on a month — accountant must pick; flag it rather than guess silently.
+        setMonthHint('mixed');
+      } else {
+        setMonthHint(null);
+      }
+      const autoMonth = billingMonths.length === 1
+        ? billingMonths[0]!
+        : new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
       setRequestData({
-        month: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
+        month: autoMonth,
         dueDate: computeDefaultFeeDueDate(defaultFeeDueDay),
         heads: sourceHeads,
       });
@@ -1345,8 +1365,14 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                 type="text"
                 required
                 value={requestData.month}
-                onChange={(e) => setRequestData({ ...requestData, month: e.target.value })}
+                onChange={(e) => { setRequestData({ ...requestData, month: e.target.value }); setMonthHint(null); }}
               />
+              {monthHint === 'auto' && (
+                <p className="text-[11px] text-emerald-600 mt-1">Auto-set to {requestData.month} from the fee head's billing month. Edit if needed.</p>
+              )}
+              {monthHint === 'mixed' && (
+                <p className="text-[11px] text-amber-600 mt-1">Fee heads have different billing months — defaulted to the current month. Please confirm this is correct.</p>
+              )}
             </FormField>
             <FormField label="Due Date" required>
               <Input
