@@ -243,20 +243,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           setLoading(false);
           return;
         }
-        if (!paymentData.openHead || paymentData.openHead === '') {
+        if (!paymentData.openHead) {
           showToast('Select a fee head', 'error');
           setLoading(false);
           return;
         }
-        const rawHead = paymentData.openHead === '__other__'
-          ? (paymentData.remarks.startsWith('__customHead:') ? paymentData.remarks.replace('__customHead:', '').trim() : '')
-          : paymentData.openHead.trim();
-        if (!rawHead) {
-          showToast('Enter a custom fee head name', 'error');
-          setLoading(false);
-          return;
-        }
-        const headName = rawHead;
+        const headName = paymentData.openHead.trim();
         const d = new Date(paymentData.date);
         const month = d.toLocaleString('default', { month: 'long', year: 'numeric' });
         const yr = d.getFullYear();
@@ -398,7 +390,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           method: paymentData.method,
           referenceNumber: paymentData.referenceNumber,
           receiptNumber,
-          remarks: paymentData.remarks.startsWith('__customHead:') ? '' : paymentData.remarks,
+          remarks: paymentData.remarks,
           ...(paymentData.method === 'cash' && paymentData.voucherNumber
             ? { voucherNumber: paymentData.voucherNumber }
             : {}),
@@ -1579,20 +1571,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                   {getAvailableHeadsForAdvance(selectedStudent).map(h => (
                     <option key={h.name} value={h.name}>{h.name}{h.amount ? ` — ₹${h.amount.toLocaleString()}` : ''}</option>
                   ))}
-                  <option value="__other__">Other (enter manually)</option>
                 </Select>
               </FormField>
-              {paymentData.openHead === '__other__' && (
-                <FormField label="Custom Fee Head" required>
-                  <Input
-                    type="text"
-                    required
-                    placeholder="e.g. Library Fee, Exam Fee…"
-                    value={paymentData.remarks.startsWith('__customHead:') ? paymentData.remarks.replace('__customHead:', '') : ''}
-                    onChange={(e) => setPaymentData({ ...paymentData, remarks: `__customHead:${e.target.value}` })}
-                  />
-                </FormField>
-              )}
               <FormField label="Amount (₹)" required>
                 <Input
                   type="number"
