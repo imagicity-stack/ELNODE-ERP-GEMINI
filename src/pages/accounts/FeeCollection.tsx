@@ -984,22 +984,14 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     } else {
       setIsEditingRequest(false);
       setCurrentRequestId(null);
-      const availableHeads = getAvailableHeadsForAdvance(student);
-      const sourceHeads = availableHeads.map(h => ({
+      const sourceHeads = getAvailableHeadsForAdvance(student).map(h => ({
         name: h.name,
         amount: h.amount,
         discount: 0,
         finalAmount: h.amount,
       }));
-      // Auto-populate billing month from the configured fee heads if they all share
-      // the same one. Custom heads are added manually below and never carry a billing
-      // month, so they don't influence this — they can be billed for any month.
-      const billingMonths = [...new Set(availableHeads.map(h => h.billingMonth).filter(Boolean))];
-      const autoMonth = billingMonths.length === 1
-        ? billingMonths[0]!
-        : new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
       setRequestData({
-        month: autoMonth,
+        month: new Date().toLocaleString('default', { month: 'long', year: 'numeric' }),
         dueDate: computeDefaultFeeDueDate(defaultFeeDueDay),
         heads: sourceHeads,
       });
