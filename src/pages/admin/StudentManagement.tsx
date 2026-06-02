@@ -256,6 +256,20 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
       if (!schoolNumber) {
         throw new Error('Admission / School Number is required.');
       }
+
+      // Duplicate check — prevent two students sharing the same school number
+      const dupSnap = await getDocs(
+        query(collection(db, 'students'),
+          where('admissionNumber', '==', schoolNumber)
+        )
+      );
+      if (!dupSnap.empty) {
+        const existing = dupSnap.docs[0].data() as Student;
+        throw new Error(
+          `School number ${schoolNumber} is already assigned to ${existing.name}. Each student must have a unique number.`
+        );
+      }
+
       const admissionNumber = schoolNumber;
       const studentEmail = `${schoolNumber}@${SCHOOL_DOMAIN}`;
       const parentEmail = `p${schoolNumber}@${SCHOOL_DOMAIN}`;
