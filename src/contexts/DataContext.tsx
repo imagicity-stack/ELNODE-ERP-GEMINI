@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile, Teacher, Student, Notice, TimetableConfig, Timetable, Class } from '../types';
+import { sortByClassName, sortByName } from '../lib/utils';
 
 interface DataContextType {
   teacherData: Teacher | null;
@@ -105,7 +106,7 @@ export function DataProvider({ children, user }: { children: React.ReactNode, us
           list.push({ id: d.id, ...d.data() } as Class);
         });
         setClassesMap(map);
-        setClasses(list);
+        setClasses(sortByClassName(list));
       }, 'classes');
       unsubscribes.push(unsubClasses);
 
@@ -117,14 +118,14 @@ export function DataProvider({ children, user }: { children: React.ReactNode, us
           list.push({ id: d.id, ...d.data() } as Teacher);
         });
         setTeachersMap(map);
-        setTeachers(list);
+        setTeachers(sortByName(list));
       }, 'teachers');
       unsubscribes.push(unsubTeachers);
 
       // Only roles with list permission on students collection
       if (user.role === 'admin' || user.role === 'accounts' || user.role === 'principal' || user.role === 'teacher') {
         const unsubStudents = safeOnSnapshot(collection(db, 'students'), (snapshot) => {
-          setStudents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Student)));
+          setStudents(sortByName(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Student))));
         }, 'students');
         unsubscribes.push(unsubStudents);
       }
