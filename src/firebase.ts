@@ -18,11 +18,17 @@ export const firebaseConfig = firebaseConfigImport;
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfigImport);
 
+// Which named Firestore database to connect to. A Vercel env var
+// (FIREBASE_DATABASE_ID, inlined at build time via vite.config.ts) takes
+// precedence so the ERP can be pointed at a different database per environment
+// for testing; otherwise it falls back to the committed applet config.
+const databaseId = process.env.FIREBASE_DATABASE_ID || firebaseConfig.firestoreDatabaseId;
+
 // Use initializeFirestore to configure experimentalForceLongPolling for better cross-network compatibility
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   experimentalForceLongPolling: true, // This helps in environments where WebSockets/gRPC might be blocked
-}, firebaseConfig.firestoreDatabaseId);
+}, databaseId);
 
 export const storage = getStorage(app);
 
