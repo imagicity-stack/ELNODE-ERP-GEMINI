@@ -54,6 +54,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [isEditingRequest, setIsEditingRequest] = useState(false);
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
+  const [captureForRequestId, setCaptureForRequestId] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const { showToast } = useToast();
@@ -233,7 +234,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
     setLoading(true);
     try {
-      let pendingRequest = feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid');
+      let pendingRequest = captureForRequestId
+        ? feeRequests.find(r => r.id === captureForRequestId)
+        : feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid');
 
       // ── Open / past payment: no linked fee request — create a stub on the fly ──
       if (!pendingRequest && isOpenPayment) {
@@ -490,11 +493,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       const duplicate = feeRequests.find(
         r => r.studentId === selectedStudent.id && r.month === requestData.month
       );
-      if (duplicate) {
-        showToast(
-          `A fee request for ${requestData.month} already exists for ${selectedStudent.name} (status: ${duplicate.status.replace('_', ' ')}). Edit the existing request instead.`,
-          'error'
-        );
+      if (duplicate && !window.confirm(
+        `A fee request for ${requestData.month} already exists for ${selectedStudent.name}.\n\nCreate a second invoice for the same month anyway? (e.g. a custom ad-hoc charge)`
+      )) {
         return;
       }
     }
@@ -1103,13 +1104,10 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0.75rem' }}>
             {filteredStudents.slice(0, 50).map((student) => {
               const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
-              const studentRequest = studentRequests[0];
-              const currentFine = studentRequest ? (fineConfig ? calculateFine(studentRequest, fineConfig) : 0) : 0;
-              const balance = studentRequest
-                ? Math.max(0, (studentRequest.totalAmount || 0) - (studentRequest.waivedAmount || 0) - (studentRequest.paidAmount || 0))
-                : 0;
               const className = classes.find(c => c.id === student.classId)?.name || student.classId;
-              const isOverdue = studentRequest?.dueDate && studentRequest.dueDate < today;
+              const hasOverdue = studentRequests.some(r => r.dueDate && r.dueDate < today);
+              const totalBalance = studentRequests.reduce((sum, r) =>
+                sum + Math.max(0, (r.totalAmount || 0) - (r.waivedAmount || 0) - (r.paidAmount || 0)), 0);
 
               return (
                 <div key={student.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -1122,118 +1120,121 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                         <div className="mono tiny muted">{className} · {student.section} · #{student.schoolNumber}</div>
                       </div>
                     </div>
-                    {studentRequest ? (
-                      <Badge variant={studentRequest.status === 'paid' ? 'success' : isOverdue ? 'error' : 'warning'} style={{ flexShrink: 0 }}>
-                        {isOverdue ? 'Overdue' : studentRequest.status.replace('_', ' ')}
+                    {studentRequests.length > 0 ? (
+                      <Badge variant={hasOverdue ? 'error' : 'warning'} style={{ flexShrink: 0 }}>
+                        {studentRequests.length > 1 ? `${studentRequests.length} pending` : (hasOverdue ? 'Overdue' : studentRequests[0].status.replace('_', ' '))}
                       </Badge>
                     ) : (
                       <span className="chip" style={{ fontSize: '0.7rem', flexShrink: 0, color: 'var(--ink)', opacity: 0.45 }}>No invoice</span>
                     )}
                   </div>
 
-                  {/* Amount pills — only when there's an open request */}
-                  {studentRequest && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.35rem' }}>
-                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.3rem 0.25rem' }}>
-                        <div className="eyebrow" style={{ fontSize: '0.6rem' }}>Total</div>
-                        <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>₹{(studentRequest.totalAmount || 0).toLocaleString()}</div>
-                      </div>
-                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.3rem 0.25rem' }}>
-                        <div className="eyebrow" style={{ fontSize: '0.6rem', color: 'var(--leaf)' }}>Paid</div>
-                        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--leaf)' }}>₹{(studentRequest.paidAmount || 0).toLocaleString()}</div>
-                      </div>
-                      <div style={{ textAlign: 'center', background: 'var(--cream)', borderRadius: '0.5rem', padding: '0.3rem 0.25rem' }}>
-                        <div className="eyebrow" style={{ fontSize: '0.6rem', color: 'var(--coral)' }}>Due</div>
-                        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--coral)' }}>₹{balance.toLocaleString()}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Fee head chips */}
-                  {studentRequest?.heads && studentRequest.heads.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-                      {studentRequest.heads.map((h, i) => (
-                        <span key={i} className="chip" style={{ fontSize: '0.68rem' }}>
-                          {h.name}: ₹{(h.finalAmount || h.amount || 0).toLocaleString()}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Action buttons */}
-                  <div style={{ display: 'flex', gap: '0.4rem', marginTop: 'auto' }}>
-                    {!studentRequest ? (
-                      <>
-                        <button
-                          className="btn accent"
-                          onClick={() => openRequestModal(student)}
-                          style={{ flex: 1, fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
-                        >
-                          <Plus size={13} /> Generate
-                        </button>
-                        <button
-                          className="btn ghost"
-                          title="Record a past or open payment without a fee request"
-                          onClick={() => {
-                            setSelectedStudent(student);
-                            setIsOpenPayment(true);
-                            setPaymentData({
-                              amount: '',
-                              head: 'Tuition Fees',
-                              openHead: '',
-                              method: 'cash',
-                              date: new Date().toISOString().split('T')[0],
-                              referenceNumber: '',
-                              remarks: '',
-                              voucherNumber: '',
-                              voucherImage: null,
-                            });
-                            setIsModalOpen(true);
-                          }}
-                          style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
-                        >
-                          <History size={13} /> Past
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          className="btn ghost"
-                          onClick={() => openRequestModal(student, studentRequest)}
-                          style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
-                          title="Edit request"
-                        >
-                          <Receipt size={13} />
-                        </button>
-                        {studentRequest?.partialPaymentRequest?.status === 'pending' && user.role !== 'super_admin' ? (
-                          <div style={{ flex: 1, textAlign: 'center', fontSize: '0.72rem', color: 'var(--ink)', opacity: 0.55, padding: '0.4rem', border: '1px solid var(--line)', borderRadius: '0.5rem' }}>
-                            Partial req pending
+                  {/* One row per pending request */}
+                  {studentRequests.map((req) => {
+                    const reqBalance = Math.max(0, (req.totalAmount || 0) - (req.waivedAmount || 0) - (req.paidAmount || 0));
+                    const reqIsOverdue = req.dueDate && req.dueDate < today;
+                    const reqFine = fineConfig ? calculateFine(req, fineConfig) : 0;
+                    return (
+                      <div key={req.id} style={{ borderRadius: '0.6rem', border: '1px solid var(--line)', overflow: 'hidden' }}>
+                        {/* Month + totals */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.25rem', padding: '0.35rem 0.5rem', background: 'var(--cream)' }}>
+                          <div style={{ textAlign: 'center' }}>
+                            <div className="eyebrow" style={{ fontSize: '0.58rem' }}>Month</div>
+                            <div style={{ fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{req.month}</div>
                           </div>
-                        ) : (
-                          <button
-                            className="btn accent"
-                            style={{ flex: 1, fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
-                            onClick={() => {
-                              setSelectedStudent(student);
-                              setIsOpenPayment(false);
-                              const defaultHead = studentRequest?.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
-                              setPaymentData({ ...paymentData, amount: balance.toString(), head: defaultHead, openHead: '' });
-                              setIsModalOpen(true);
-                            }}
-                          >
-                            <IndianRupee size={13} /> ₹{balance.toLocaleString()}
-                          </button>
+                          <div style={{ textAlign: 'center' }}>
+                            <div className="eyebrow" style={{ fontSize: '0.58rem' }}>Total</div>
+                            <div style={{ fontWeight: 700, fontSize: '0.72rem' }}>₹{(req.totalAmount || 0).toLocaleString()}</div>
+                          </div>
+                          <div style={{ textAlign: 'center' }}>
+                            <div className="eyebrow" style={{ fontSize: '0.58rem', color: 'var(--coral)' }}>Due</div>
+                            <div style={{ fontWeight: 700, fontSize: '0.72rem', color: 'var(--coral)' }}>₹{reqBalance.toLocaleString()}{reqFine > 0 ? ` +₹${reqFine}` : ''}</div>
+                          </div>
+                        </div>
+                        {/* Heads chips */}
+                        {req.heads && req.heads.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', padding: '0.35rem 0.5rem', borderTop: '1px solid var(--line-2)' }}>
+                            {req.heads.map((h, i) => (
+                              <span key={i} className="chip" style={{ fontSize: '0.64rem' }}>{h.name}: ₹{(h.finalAmount || h.amount || 0).toLocaleString()}</span>
+                            ))}
+                          </div>
                         )}
-                        <button
-                          className="btn ghost"
-                          onClick={() => handleCancelRequest(studentRequest.id, student.id)}
-                          title="Cancel request"
-                          style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem', color: 'var(--coral)' }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </>
-                    )}
+                        {/* Per-request action buttons */}
+                        <div style={{ display: 'flex', gap: '0.3rem', padding: '0.35rem 0.5rem', borderTop: '1px solid var(--line-2)' }}>
+                          <button
+                            className="btn ghost"
+                            onClick={() => openRequestModal(student, req)}
+                            style={{ fontSize: '0.72rem', padding: '0.3rem 0.5rem' }}
+                            title="Edit this invoice"
+                          >
+                            <Receipt size={12} />
+                          </button>
+                          {req.partialPaymentRequest?.status === 'pending' && user.role !== 'super_admin' ? (
+                            <div style={{ flex: 1, textAlign: 'center', fontSize: '0.68rem', color: 'var(--ink)', opacity: 0.55, padding: '0.3rem', border: '1px solid var(--line)', borderRadius: '0.5rem' }}>
+                              Partial req pending
+                            </div>
+                          ) : (
+                            <button
+                              className="btn accent"
+                              style={{ flex: 1, fontSize: '0.72rem', padding: '0.3rem 0.5rem' }}
+                              onClick={() => {
+                                setSelectedStudent(student);
+                                setCaptureForRequestId(req.id);
+                                setIsOpenPayment(false);
+                                const defaultHead = req.heads?.[0]?.name || globalHeads[0]?.name || 'Tuition Fees';
+                                setPaymentData({ ...paymentData, amount: reqBalance.toString(), head: defaultHead, openHead: '' });
+                                setIsModalOpen(true);
+                              }}
+                            >
+                              <IndianRupee size={12} /> ₹{reqBalance.toLocaleString()}{reqIsOverdue ? ' ⚠' : ''}
+                            </button>
+                          )}
+                          <button
+                            className="btn ghost"
+                            onClick={() => handleCancelRequest(req.id, student.id)}
+                            title="Cancel this invoice"
+                            style={{ fontSize: '0.72rem', padding: '0.3rem 0.5rem', color: 'var(--coral)' }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Generate + Past — always shown */}
+                  <div style={{ display: 'flex', gap: '0.4rem', marginTop: 'auto' }}>
+                    <button
+                      className="btn accent"
+                      onClick={() => openRequestModal(student)}
+                      style={{ flex: 1, fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
+                    >
+                      <Plus size={13} /> Generate
+                    </button>
+                    <button
+                      className="btn ghost"
+                      title="Record a past or open payment without a fee request"
+                      onClick={() => {
+                        setSelectedStudent(student);
+                        setCaptureForRequestId(null);
+                        setIsOpenPayment(true);
+                        setPaymentData({
+                          amount: '',
+                          head: 'Tuition Fees',
+                          openHead: '',
+                          method: 'cash',
+                          date: new Date().toISOString().split('T')[0],
+                          referenceNumber: '',
+                          remarks: '',
+                          voucherNumber: '',
+                          voucherImage: null,
+                        });
+                        setIsModalOpen(true);
+                      }}
+                      style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
+                    >
+                      <History size={13} /> Past
+                    </button>
                   </div>
 
                   {/* Payment history toggle */}
@@ -1550,7 +1551,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       {/* Capture Payment Modal */}
       <Modal
         isOpen={isModalOpen && !!selectedStudent}
-        onClose={() => { setIsModalOpen(false); setIsOpenPayment(false); }}
+        onClose={() => { setIsModalOpen(false); setIsOpenPayment(false); setCaptureForRequestId(null); }}
         title={isOpenPayment ? 'Record Past Payment' : 'Capture Payment'}
         subtitle={selectedStudent ? `${selectedStudent.name} (${selectedStudent.schoolNumber})` : ''}
         size="sm"
@@ -1599,9 +1600,11 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           ) : (
             <>
               {(() => {
-                const pending = selectedStudent
-                  ? feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid')
-                  : null;
+                const pending = captureForRequestId
+                  ? feeRequests.find(r => r.id === captureForRequestId)
+                  : selectedStudent
+                    ? feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid')
+                    : null;
                 if (!pending?.heads?.length) return null;
                 return (
                   <div className="bg-slate-50 rounded-xl border border-slate-100 divide-y divide-slate-100">
