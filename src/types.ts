@@ -243,6 +243,7 @@ export interface FeeHead {
   name: string;
   amount: number;
   description?: string;
+  billingMonth?: string; // e.g. "June 2025" — month this head is billed for; undefined = no fixed month
 }
 
 export interface FeeStructure {
