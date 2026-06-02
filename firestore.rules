@@ -201,7 +201,11 @@ service cloud.firestore {
       allow write: if isAnyAdmin();
     }
 
-    // Fee structures — readable by admin, accountant, and linked families
+    // DEPRECATED — legacy per-student fee collection. No longer written by the app;
+    // superseded by `feeStructures` (per-class heads), `feeRequests` (invoices) and
+    // `feePayments` (payments). Only referenced in the student-deletion cleanup list.
+    // Rules retained so that cleanup can still delete any historical docs. Do not
+    // build new features on this collection — remove once historical data is purged.
     match /fees/{feeId} {
       allow read: if isAdmin() || isAccountant() || isParent() || isStudent();
       allow write: if isAdmin() || isAccountant();
