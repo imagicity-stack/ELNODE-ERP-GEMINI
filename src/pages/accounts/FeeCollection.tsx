@@ -1181,23 +1181,15 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                           </div>
                         )}
                         {/* Per-request action buttons */}
-                        <div style={{ display: 'flex', gap: '0.3rem', padding: '0.35rem 0.5rem', borderTop: '1px solid var(--line-2)' }}>
-                          <button
-                            className="btn ghost"
-                            onClick={() => openRequestModal(student, req)}
-                            style={{ fontSize: '0.72rem', padding: '0.3rem 0.5rem' }}
-                            title="Edit this invoice"
-                          >
-                            <Receipt size={12} />
-                          </button>
+                        <div style={{ padding: '0.5rem', borderTop: '1px solid var(--line-2)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                           {req.partialPaymentRequest?.status === 'pending' && user.role !== 'super_admin' ? (
-                            <div style={{ flex: 1, textAlign: 'center', fontSize: '0.68rem', color: 'var(--ink)', opacity: 0.55, padding: '0.3rem', border: '1px solid var(--line)', borderRadius: '0.5rem' }}>
-                              Partial req pending
+                            <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--ink)', opacity: 0.55, padding: '0.4rem', border: '1px solid var(--line)', borderRadius: '0.5rem' }}>
+                              Partial payment request pending — awaiting accountant approval
                             </div>
                           ) : (
                             <button
                               className="btn accent"
-                              style={{ flex: 1, fontSize: '0.72rem', padding: '0.3rem 0.5rem' }}
+                              style={{ width: '100%', fontSize: '0.8rem', padding: '0.45rem 0.75rem', justifyContent: 'center', gap: '0.4rem' }}
                               onClick={() => {
                                 setSelectedStudent(student);
                                 setCaptureForRequestId(req.id);
@@ -1207,17 +1199,35 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                                 setIsModalOpen(true);
                               }}
                             >
-                              <IndianRupee size={12} /> ₹{reqBalance.toLocaleString()}{reqIsOverdue ? ' ⚠' : ''}
+                              <IndianRupee size={13} />
+                              Collect Payment — ₹{reqBalance.toLocaleString()}{reqIsOverdue ? ' ⚠' : ''}
                             </button>
                           )}
-                          <button
-                            className="btn ghost"
-                            onClick={() => handleCancelRequest(req.id, student.id)}
-                            title="Cancel this invoice"
-                            style={{ fontSize: '0.72rem', padding: '0.3rem 0.5rem', color: 'var(--coral)' }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                          <div style={{ display: 'flex', gap: '0.3rem' }}>
+                            <button
+                              className="btn ghost"
+                              onClick={() => openRequestModal(student, req)}
+                              style={{ flex: 1, fontSize: '0.72rem', padding: '0.3rem 0.5rem', gap: '0.3rem' }}
+                            >
+                              <Receipt size={12} /> Edit Invoice
+                            </button>
+                            {reqFine > 0 && (
+                              <button
+                                className="btn ghost"
+                                onClick={() => setWaiverData({ isOpen: true, requestId: req.id, amount: String(reqFine), reason: '', studentName: student.name })}
+                                style={{ flex: 1, fontSize: '0.72rem', padding: '0.3rem 0.5rem', gap: '0.3rem', color: 'var(--leaf)' }}
+                              >
+                                <ShieldOff size={12} /> Waive Fine
+                              </button>
+                            )}
+                            <button
+                              className="btn ghost"
+                              onClick={() => handleCancelRequest(req.id, student.id)}
+                              style={{ flex: 1, fontSize: '0.72rem', padding: '0.3rem 0.5rem', gap: '0.3rem', color: 'var(--coral)' }}
+                            >
+                              <Trash2 size={12} /> Cancel
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1230,7 +1240,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                       onClick={() => openRequestModal(student)}
                       style={{ flex: 1, fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
                     >
-                      <Plus size={13} /> Generate
+                      <Plus size={13} /> Generate Invoice
                     </button>
                     <button
                       className="btn ghost"
@@ -1254,7 +1264,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                       }}
                       style={{ fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
                     >
-                      <History size={13} /> Past
+                      <History size={13} /> Past Payment
                     </button>
                   </div>
 
@@ -1281,10 +1291,10 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                               <span className="mono tiny muted" style={{ marginLeft: '0.4rem' }}>{p.method} · {fmtDate(p.date)}</span>
                             </div>
                             <div style={{ display: 'flex', gap: '0.25rem' }}>
-                              <button className="icon-btn" onClick={() => handleDownloadReceipt(p)} title="Download receipt"><Receipt size={12} /></button>
-                              <button className="icon-btn" onClick={() => handleSendWhatsApp(p)} title="Send WhatsApp"><MessageSquare size={12} /></button>
+                              <button className="btn ghost" onClick={() => handleDownloadReceipt(p)} title="Download receipt" style={{ fontSize: '0.68rem', padding: '0.2rem 0.45rem', gap: '0.25rem' }}><Receipt size={11} /> Receipt</button>
+                              <button className="btn ghost" onClick={() => handleSendWhatsApp(p)} title="Send WhatsApp" style={{ fontSize: '0.68rem', padding: '0.2rem 0.45rem', gap: '0.25rem' }}><MessageSquare size={11} /> WhatsApp</button>
                               {user.role === 'super_admin' && (
-                                <button className="icon-btn" onClick={() => handleDeletePayment(p.id)} title="Delete" style={{ color: 'var(--coral)' }}><Trash2 size={12} /></button>
+                                <button className="btn ghost" onClick={() => handleDeletePayment(p.id)} title="Delete" style={{ fontSize: '0.68rem', padding: '0.2rem 0.45rem', gap: '0.25rem', color: 'var(--coral)' }}><Trash2 size={11} /> Delete</button>
                               )}
                             </div>
                           </div>
