@@ -1,6 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
-import appletConfig from '../../firebase-applet-config.json';
+
+// Default Firestore database id (named DB, not "(default)"). This mirrors the
+// value in firebase-applet-config.json but is inlined so this serverless
+// function has NO cross-directory imports — importing a JSON file outside the
+// api/ tree can fail Vercel's bundler at module-load time, which surfaces as an
+// uncatchable FUNCTION_INVOCATION_FAILED before the handler ever runs.
+const DEFAULT_FIRESTORE_DATABASE_ID = 'ai-studio-cb22793f-2766-4225-bb0a-411c4a36f1b5';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ServiceAccount {
@@ -266,7 +272,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sa: ServiceAccount = JSON.parse(saRaw);
     const dbId = process.env.FIREBASE_DATABASE_ID
       || process.env.FIRESTORE_DATABASE_ID
-      || appletConfig.firestoreDatabaseId;
+      || DEFAULT_FIRESTORE_DATABASE_ID;
 
     step = 'get-access-token';
     const token = await getAccessToken(sa);
