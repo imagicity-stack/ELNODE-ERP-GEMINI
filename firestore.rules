@@ -263,6 +263,24 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Advance-payment intents — the parent/client writes one of these (keyed by
+    // the Razorpay order id) right before opening the checkout modal, so the
+    // server-side webhook can reconstruct and record the advance even if the app
+    // reloads or is backgrounded before the client callback fires. The webhook
+    // reads / updates / deletes these via the Admin/REST API, which bypasses
+    // these rules — so only the client create needs to be allowed here.
+    match /pendingAdvanceOrders/{orderId} {
+      allow create: if isSignedIn() && (
+        isAdmin() || isAccountant() || (
+          isParent() &&
+          request.resource.data.get('parentId', '') == request.auth.uid &&
+          isLinkedToStudent(request.resource.data.get('studentId', ''))
+        )
+      );
+      allow read: if isSignedIn() && (isAdmin() || isAccountant());
+      allow update, delete: if isAdmin();
+    }
+
     // Broadcast logs — written by grievance officer / super admin after WhatsApp blasts
     match /broadcastLogs/{id} {
       allow read: if isAdmin() || isAccountant() || isGrievanceOfficer();
