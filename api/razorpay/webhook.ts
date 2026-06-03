@@ -163,6 +163,118 @@ function calculateFine(invoice: { dueDate: string; totalAmount: number; status?:
   return Math.round(penalty);
 }
 
+// ── Advance payment webhook handler ──────────────────────────────────────────
+// The client saves the full advance intent (monthlyBreakdown etc.) to
+// pendingAdvanceOrders/{orderId} before opening the Razorpay modal. This
+// function reads that intent and records the advance payment.
+async function handleAdvanceWebhook(opts: {
+  db: FSClient;
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  amount: number;
+  studentId: string;
+  step: (s: string) => void;
+}): Promise<{ status: number; body: Record<string, any> }> {
+  const { db, razorpay_payment_id, razorpay_order_id, amount, studentId, step } = opts;
+  const advanceDocId = `adv_rzp_${razorpay_payment_id}`;
+
+  step('adv-idempotency-check');
+  const existing = await db.getDoc('advancePayments', advanceDocId);
+  if (existing.exists) {
+    return { status: 200, body: { ok: true, idempotent: true, receiptNumber: existing.data.receiptNumber } };
+  }
+
+  step('adv-load-intent');
+  const intentDoc = await db.getDoc('pendingAdvanceOrders', razorpay_order_id);
+  if (!intentDoc.exists) {
+    // Intent not found — either a very old payment or client didn't write it.
+    // Acknowledge so Razorpay stops retrying; no data to record.
+    console.log(`[webhook] advance: no intent for order ${razorpay_order_id}, skipping`);
+    return { status: 200, body: { ok: true, note: 'no advance intent found' } };
+  }
+
+  const intent = intentDoc.data;
+  const monthlyBreakdown: Array<{ month: string; heads: { name: string; amount: number }[]; consumed: boolean }> =
+    (intent.monthlyBreakdown || []).map((e: any) => ({ month: e.month, heads: e.heads || [], consumed: false }));
+  const totalAmount: number = intent.totalAmount || amount;
+  const classId: string = intent.classId || '';
+  const parentId: string = intent.parentId || '';
+  const academicYear: string = intent.academicYear || '2024-25';
+  const remarks: string = intent.remarks || '';
+
+  if (monthlyBreakdown.length === 0) {
+    return { status: 200, body: { ok: true, note: 'empty monthlyBreakdown in intent' } };
+  }
+
+  step('adv-load-counter');
+  const [settingsDoc, advCounterDoc] = await Promise.all([
+    db.getDoc('settings', 'global'),
+    db.getDoc('counters', 'advance'),
+  ]);
+  const settingsData = settingsDoc.exists ? settingsDoc.data : {};
+  const advCfg = (settingsData.receiptConfig as any)?.advanceReceipt || {};
+  const advPrefix = advCfg.prefix || 'EHSADV';
+  const advStartFrom = Number(advCfg.startFrom ?? 1);
+  const lastAdvNum = advCounterDoc.exists ? Number(advCounterDoc.data.lastNumber || 0) : 0;
+  const nextAdvNum = Math.max(lastAdvNum + 1, advStartFrom);
+  const receiptNumber = `${advPrefix}${String(nextAdvNum).padStart(4, '0')}`;
+  const now = new Date().toISOString();
+
+  step('adv-commit');
+  const writes: any[] = [
+    {
+      update: {
+        name: db.docName('advancePayments', advanceDocId),
+        fields: toFSFields({
+          studentId,
+          classId,
+          parentId,
+          academicYear,
+          monthlyBreakdown,
+          totalAmount,
+          paymentMethod: 'online',
+          referenceNumber: razorpay_payment_id,
+          receiptNumber,
+          date: now.split('T')[0],
+          remarks: remarks || '',
+          createdBy: parentId || 'parent',
+          createdAt: now,
+          status: 'active',
+          transactionId: razorpay_payment_id,
+          orderId: razorpay_order_id,
+          source: 'webhook',
+        }),
+      },
+      currentDocument: { exists: false },
+    },
+    {
+      update: {
+        name: db.docName('counters', 'advance'),
+        fields: toFSFields({ lastNumber: nextAdvNum }),
+      },
+    },
+    // Mark the intent as consumed so it can be cleaned up
+    {
+      update: {
+        name: db.docName('pendingAdvanceOrders', razorpay_order_id),
+        fields: toFSFields({ consumed: true, consumedAt: now }),
+      },
+    },
+  ];
+
+  try {
+    await db.commit(writes);
+  } catch (commitErr: any) {
+    if (commitErr?.status === 400 && /already exists|FAILED_PRECONDITION/i.test(commitErr.body || '')) {
+      return { status: 200, body: { ok: true, idempotent: true } };
+    }
+    throw commitErr;
+  }
+
+  console.log(`[webhook] recorded advance ${razorpay_payment_id} → receipt ${receiptNumber}`);
+  return { status: 200, body: { ok: true, receiptNumber } };
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   let step = 'init';
@@ -207,13 +319,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const studentId: string = notes.studentId || '';
     const kind: string = notes.kind || 'fee';
 
-    // Advance payments cannot be reconstructed from notes alone (no monthly
-    // breakdown). They remain client-recorded for now. Acknowledge & skip.
-    if (kind === 'advance' || !feeRequestId || !studentId) {
-      console.log(`[webhook] skipping non-fee/incomplete payment ${razorpay_payment_id} (kind=${kind})`);
-      return res.status(200).json({ ok: true, skipped: true });
-    }
-
     step = 'parse-service-account';
     const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!saRaw) return res.status(500).json({ error: 'Firebase not configured' });
@@ -225,6 +330,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     step = 'get-access-token';
     const token = await getAccessToken(sa);
     const db = new FSClient(sa.project_id, dbId, token);
+
+    // ── Advance payment path ─────────────────────────────────────────────────
+    if (kind === 'advance') {
+      const { status, body } = await handleAdvanceWebhook({
+        db, razorpay_payment_id, razorpay_order_id, amount, studentId,
+        step: (s: string) => { step = s; },
+      });
+      return res.status(status).json(body);
+    }
+
+    // ── Regular fee payment path ─────────────────────────────────────────────
+    if (!feeRequestId || !studentId) {
+      console.log(`[webhook] skipping incomplete payment ${razorpay_payment_id} (no feeRequestId/studentId)`);
+      return res.status(200).json({ ok: true, skipped: true });
+    }
 
     const paymentDocId = `rzp_${razorpay_payment_id}`;
 
