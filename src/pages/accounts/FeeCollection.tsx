@@ -98,6 +98,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
   const [customHeadForm, setCustomHeadForm] = useState({ name: '', amount: '' });
   const [addGlobalHeadId, setAddGlobalHeadId] = useState('');
   const [defaultFeeDueDay, setDefaultFeeDueDay] = useState<number>(10);
+
+  // Past/open payment heads builder (custom heads + discounts with reason)
+  type EditableHead = { name: string; amount: number; discount: number; discountReason?: string; finalAmount: number; isCustom?: boolean };
+  const [openHeads, setOpenHeads] = useState<EditableHead[]>([]);
+  const [openCustomHead, setOpenCustomHead] = useState({ name: '', amount: '' });
+  const [openAddGlobalHeadId, setOpenAddGlobalHeadId] = useState('');
   const [requestData, setRequestData] = useState<{
     month: string;
     dueDate: string;
@@ -245,19 +251,28 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         : feeRequests.find(r => r.studentId === selectedStudent.id && r.status !== 'paid');
 
       // ── Open / past payment: no linked fee request — create a stub on the fly ──
+      // The amount collected is derived from the fee heads (with discounts) the
+      // user builds — there is no separate "amount" field for past payments.
+      let openPaymentTotal: number | null = null;
       if (!pendingRequest && isOpenPayment) {
-        const payAmount = Number(paymentData.amount);
-        if (!Number.isFinite(payAmount) || payAmount <= 0) {
-          showToast('Enter a valid payment amount', 'error');
+        if (openHeads.length === 0) {
+          showToast('Add at least one fee head', 'error');
           setLoading(false);
           return;
         }
-        if (!paymentData.openHead) {
-          showToast('Select a fee head', 'error');
+        const missingReason = openHeads.find(h => h.discount > 0 && !h.discountReason?.trim());
+        if (missingReason) {
+          showToast(`Please enter a reason for the discount on "${missingReason.name}"`, 'error');
           setLoading(false);
           return;
         }
-        const headName = paymentData.openHead.trim();
+        const total = openHeads.reduce((s, h) => s + (h.finalAmount || 0), 0);
+        if (!Number.isFinite(total) || total <= 0) {
+          showToast('Total payable must be greater than zero', 'error');
+          setLoading(false);
+          return;
+        }
+        openPaymentTotal = total;
         const d = new Date(paymentData.date);
         const month = d.toLocaleString('default', { month: 'long', year: 'numeric' });
         const yr = d.getFullYear();
@@ -269,8 +284,15 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           classId: selectedStudent.classId,
           academicYear: acYear,
           month,
-          heads: [{ name: headName, amount: payAmount, discount: 0, discountReason: '', finalAmount: payAmount }],
-          totalAmount: payAmount,
+          heads: openHeads.map(h => ({
+            name: h.name,
+            amount: h.amount,
+            discount: h.discount || 0,
+            discountReason: h.discountReason || '',
+            finalAmount: h.finalAmount,
+            ...(h.isCustom ? { isCustom: true } : {}),
+          })),
+          totalAmount: total,
           fineAmount: 0,
           waivedAmount: 0,
           paidAmount: 0,
@@ -288,10 +310,15 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       if (!pendingRequest) throw new Error('No pending fee request found for student');
 
-      const payAmount = Number(paymentData.amount);
+      // For past payments the amount equals the heads total; otherwise the typed amount.
+      const payAmount = openPaymentTotal != null ? openPaymentTotal : Number(paymentData.amount);
       if (!Number.isFinite(payAmount) || payAmount <= 0) {
         throw new Error('Enter a valid payment amount');
       }
+
+      // Primary fee head for the payment record — for past payments use the first
+      // built head rather than the unrelated default ('Tuition Fees').
+      const primaryFeeHead = isOpenPayment && openHeads[0] ? openHeads[0].name : paymentData.head;
 
       const schoolSettings = await getSchoolSettings();
       const feeCfg = getReceiptTypeConfig(schoolSettings, 'feeReceipt');
@@ -373,8 +400,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         const allocations: { headName: string; amount: number }[] = [];
         let remainingToAllocate = payAmount;
         const orderedHeads = (freshData.heads || []).map(h => h.name);
-        const ordered = orderedHeads.includes(paymentData.head)
-          ? [paymentData.head, ...orderedHeads.filter(n => n !== paymentData.head)]
+        const ordered = orderedHeads.includes(primaryFeeHead)
+          ? [primaryFeeHead, ...orderedHeads.filter(n => n !== primaryFeeHead)]
           : orderedHeads;
 
         for (const name of ordered) {
@@ -387,7 +414,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         }
         if (remainingToAllocate > 0.001) {
           allocations.push({
-            headName: paymentData.head || 'Other',
+            headName: primaryFeeHead || 'Other',
             amount: Number(remainingToAllocate.toFixed(2)),
           });
         }
@@ -396,7 +423,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           studentId: selectedStudent.id,
           classId: selectedStudent.classId,
           feeRequestId: pendingRequest.id,
-          feeHead: paymentData.head,
+          feeHead: primaryFeeHead,
           amount: payAmount,
           fineAmount: 0,
           allocations,
@@ -1249,6 +1276,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                         setSelectedStudent(student);
                         setCaptureForRequestId(null);
                         setIsOpenPayment(true);
+                        // Prefill with the class fee structure so the user can
+                        // tweak amounts / discounts or remove + add custom heads.
+                        setOpenHeads(getAvailableHeadsForAdvance(student).map(h => ({
+                          name: h.name, amount: h.amount, discount: 0, finalAmount: h.amount,
+                        })));
+                        setOpenCustomHead({ name: '', amount: '' });
+                        setOpenAddGlobalHeadId('');
                         setPaymentData({
                           amount: '',
                           head: 'Tuition Fees',
@@ -1585,48 +1619,190 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         onClose={() => { setIsModalOpen(false); setIsOpenPayment(false); setCaptureForRequestId(null); }}
         title={isOpenPayment ? 'Record Past Payment' : 'Capture Payment'}
         subtitle={selectedStudent ? `${selectedStudent.name} (${selectedStudent.schoolNumber})` : ''}
-        size="sm"
+        size={isOpenPayment ? 'lg' : 'sm'}
         footer={
           <div className="flex items-center justify-end gap-3">
             <Button variant="secondary" onClick={() => { setIsModalOpen(false); setIsOpenPayment(false); }}>Cancel</Button>
             <Button variant="primary" loading={loading} onClick={(e: any) => {
               const form = document.querySelector('form[data-payment-form]') as HTMLFormElement;
               if (form) form.requestSubmit();
-            }}>{isOpenPayment ? 'Record Payment' : 'Capture Payment'}</Button>
+            }}>{isOpenPayment
+              ? `Record Payment${openHeads.length > 0 ? ` — ₹${openHeads.reduce((s, h) => s + (h.finalAmount || 0), 0).toLocaleString()}` : ''}`
+              : 'Capture Payment'}</Button>
           </div>
         }
       >
         <form onSubmit={handleRecordPayment} data-payment-form className="space-y-5">
-          {/* Open/past payment: free-form fee head + amount */}
+          {/* Open/past payment: build fee heads with discounts (amount is derived) */}
           {isOpenPayment ? (
             <>
               <div className="flex items-start gap-2 p-3 rounded-xl" style={{ background: 'var(--cream-2)' }}>
                 <History className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--ink-3)' }} />
                 <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
-                  Recording a past payment — no open invoice needed. A fee record will be created automatically.
+                  Recording a past payment — no open invoice needed. Build the fee heads below (add custom heads or discounts with a reason). A fee record will be created automatically for the total.
                 </p>
               </div>
-              <FormField label="Fee Head" required>
-                <Select
-                  value={paymentData.openHead}
-                  onChange={(e) => setPaymentData({ ...paymentData, openHead: e.target.value })}
-                >
-                  <option value="">Select a fee head…</option>
-                  {getAvailableHeadsForAdvance(selectedStudent).map(h => (
-                    <option key={h.name} value={h.name}>{h.name}{h.amount ? ` — ₹${h.amount.toLocaleString()}` : ''}</option>
-                  ))}
-                </Select>
-              </FormField>
-              <FormField label="Amount (₹)" required>
-                <Input
-                  type="number"
-                  required
-                  min={1}
-                  placeholder="Enter amount paid"
-                  value={paymentData.amount}
-                  onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
-                />
-              </FormField>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Fee Heads</h3>
+                  {openHeads.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setOpenHeads([])}
+                      className="text-[10px] font-bold text-rose-500 hover:text-rose-600 uppercase tracking-wider"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 border-b border-slate-200">
+                    <span className="flex-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Head</span>
+                    <span className="w-24 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">Amount</span>
+                    <span className="w-24 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">Discount</span>
+                    <span className="w-24 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">Final</span>
+                    <span className="w-7" />
+                  </div>
+
+                  {openHeads.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-xs text-amber-700 bg-amber-50">
+                      No heads yet. Add a global head or a custom head below.
+                    </div>
+                  ) : (
+                    openHeads.map((head, index) => (
+                      <div key={index} className="border-b border-slate-100 last:border-0">
+                        <div className="flex items-center gap-2 px-4 py-3">
+                          <div className="flex-1 flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-bold text-slate-900 truncate">{head.name}</span>
+                            {head.isCustom && (
+                              <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-black bg-violet-100 text-violet-700 rounded-md uppercase tracking-wide">Custom</span>
+                            )}
+                          </div>
+                          <span className="w-24 text-right text-sm font-medium text-slate-500 shrink-0">₹{(head.amount || 0).toLocaleString()}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={head.amount}
+                            value={head.discount}
+                            onChange={(e) => {
+                              const newHeads = [...openHeads];
+                              newHeads[index].discount = Math.min(Number(e.target.value), head.amount);
+                              newHeads[index].finalAmount = newHeads[index].amount - newHeads[index].discount;
+                              setOpenHeads(newHeads);
+                            }}
+                            className="w-24 text-right px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-400 bg-white shrink-0"
+                            placeholder="0"
+                          />
+                          <span className={`w-24 text-right text-sm font-black shrink-0 ${head.discount > 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                            ₹{(head.finalAmount || 0).toLocaleString()}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setOpenHeads(openHeads.filter((_, i) => i !== index))}
+                            className="w-7 h-7 shrink-0 flex items-center justify-center rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                            title="Remove head"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        {head.discount > 0 && (
+                          <div className="px-4 pb-3 -mt-1">
+                            <input
+                              type="text"
+                              value={head.discountReason || ''}
+                              onChange={(e) => {
+                                const newHeads = [...openHeads];
+                                newHeads[index].discountReason = e.target.value;
+                                setOpenHeads(newHeads);
+                              }}
+                              placeholder="Reason for discount (required)"
+                              className="w-full px-3 py-1.5 text-xs border border-amber-200 bg-amber-50 rounded-lg focus:outline-none focus:border-amber-400 text-slate-700 placeholder:text-amber-400"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+
+                  {openHeads.length > 0 && (
+                    <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-t border-slate-200">
+                      <span className="flex-1 text-xs font-bold text-slate-700">Total Payable</span>
+                      <span className="w-24 text-right text-xs font-bold text-slate-500">₹{openHeads.reduce((s, h) => s + (h.amount || 0), 0).toLocaleString()}</span>
+                      <span className="w-24 text-right text-xs font-bold text-rose-500">-₹{openHeads.reduce((s, h) => s + (h.discount || 0), 0).toLocaleString()}</span>
+                      <span className="w-24 text-right text-sm font-black text-slate-900">₹{openHeads.reduce((s, h) => s + (h.finalAmount || 0), 0).toLocaleString()}</span>
+                      <span className="w-7" />
+                    </div>
+                  )}
+                </div>
+
+                {(() => {
+                  const available = globalHeads.filter(gh => !openHeads.some(h => h.name === gh.name));
+                  if (available.length === 0) return null;
+                  return (
+                    <div className="flex items-center gap-2 pt-1">
+                      <select
+                        value={openAddGlobalHeadId}
+                        onChange={(e) => setOpenAddGlobalHeadId(e.target.value)}
+                        className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 bg-white text-slate-700"
+                      >
+                        <option value="">Add a global head...</option>
+                        {available.map(h => (
+                          <option key={h.name} value={h.name}>{h.name} — ₹{h.amount.toLocaleString()}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!openAddGlobalHeadId) return;
+                          const gh = globalHeads.find(h => h.name === openAddGlobalHeadId);
+                          if (!gh) return;
+                          setOpenHeads([...openHeads, { name: gh.name, amount: gh.amount, discount: 0, finalAmount: gh.amount }]);
+                          setOpenAddGlobalHeadId('');
+                        }}
+                        disabled={!openAddGlobalHeadId}
+                        className="px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-colors flex items-center gap-1 shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Add Global
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={openCustomHead.name}
+                    onChange={(e) => setOpenCustomHead({ ...openCustomHead, name: e.target.value })}
+                    placeholder="Custom head name..."
+                    className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400 bg-white"
+                  />
+                  <input
+                    type="number"
+                    value={openCustomHead.amount}
+                    onChange={(e) => setOpenCustomHead({ ...openCustomHead, amount: e.target.value })}
+                    placeholder="₹ Amount"
+                    min={1}
+                    className="w-32 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const amt = Number(openCustomHead.amount);
+                      if (!openCustomHead.name.trim() || amt <= 0) return;
+                      setOpenHeads([...openHeads, { name: openCustomHead.name.trim(), amount: amt, discount: 0, finalAmount: amt, isCustom: true }]);
+                      setOpenCustomHead({ name: '', amount: '' });
+                    }}
+                    disabled={!openCustomHead.name.trim() || Number(openCustomHead.amount) <= 0}
+                    className="px-3 py-2 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-700 disabled:opacity-40 transition-colors flex items-center gap-1 shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Custom
+                  </button>
+                </div>
+              </div>
             </>
           ) : (
             <>
