@@ -529,7 +529,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           {
             studentId: selectedStudent.id,
             studentName: selectedStudent.name,
-            studentClass: selectedStudent.class,
+            studentClass: classes.find(c => c.id === selectedStudent.classId)?.name || selectedStudent.classId,
             month: requestData.month,
             totalAmount,
             heads: requestData.heads.map(h => ({ name: h.name, amount: h.amount, discount: h.discount, finalAmount: h.finalAmount })),
@@ -609,7 +609,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           {
             studentId: selectedStudent.id,
             studentName: selectedStudent.name,
-            studentClass: selectedStudent.class,
+            studentClass: classes.find(c => c.id === selectedStudent.classId)?.name || selectedStudent.classId,
             month: requestData.month,
             totalAmount,
             advanceApplied: advanceApplied > 0 ? advanceApplied : undefined,
@@ -780,7 +780,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         {
           studentId: advanceStudent.id,
           studentName: advanceStudent.name,
-          studentClass: advanceStudent.class,
+          studentClass: classes.find(c => c.id === advanceStudent.classId)?.name || advanceStudent.classId,
           advanceId,
           totalAmount: total,
           method: advanceData.method,

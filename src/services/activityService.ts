@@ -64,6 +64,27 @@ const enhanceWithGemini = (
   })();
 };
 
+/**
+ * Recursively remove `undefined` values (object keys and array entries).
+ * Firestore throws on any undefined, including deeply nested ones, so this
+ * guarantees a log write never fails just because a metadata field was missing.
+ */
+const stripUndefined = (value: any): any => {
+  if (Array.isArray(value)) {
+    return value.filter(v => v !== undefined).map(stripUndefined);
+  }
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    // Leave Firestore sentinels (e.g. serverTimestamp()) untouched.
+    if (typeof value._methodName === 'string') return value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, stripUndefined(v)])
+    );
+  }
+  return value;
+};
+
 export const logActivity = async (
   user: UserProfile | null,
   action: string,
@@ -99,7 +120,10 @@ export const logActivity = async (
 
     if (metadata !== undefined) rawLog.metadata = metadata;
 
-    const log = Object.fromEntries(Object.entries(rawLog).filter(([, v]) => v !== undefined));
+    // Firestore rejects any `undefined` value, including nested ones (e.g. an
+    // undefined metadata.studentClass). Deep-strip undefined so a missing field
+    // never throws and kills the calling flow.
+    const log = stripUndefined(rawLog);
 
     const ref = await addDoc(collection(db, 'activityLogs'), log);
 
