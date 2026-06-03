@@ -399,7 +399,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw commitErr;
     }
 
-    // Auto WhatsApp — fire-and-forget, never blocks payment success
+    // Return success to the client immediately — the commit is already durable.
+    // WhatsApp is sent after the response so a slow WATI call can never cause
+    // the client to see "payment not recorded" for a payment that was recorded.
+    res.status(200).json({
+      success: true,
+      receiptNumber,
+      paymentId: paymentDocId,
+      fineAmount,
+      newStatus,
+    });
+
+    // Auto WhatsApp — best-effort after response is sent; never blocks the client
     try {
       const { exists: sExists, data: student } = await db.getDoc('students', studentId);
       if (sExists && student.parentDetails?.phone) {
@@ -422,14 +433,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch (waErr) {
       console.error('[verify-payment] WhatsApp non-fatal:', waErr);
     }
-
-    return res.status(200).json({
-      success: true,
-      receiptNumber,
-      paymentId: paymentDocId,
-      fineAmount,
-      newStatus,
-    });
   } catch (err: any) {
     if (txId && db) await db.rollback(txId);
     const msg = err?.message || String(err);
