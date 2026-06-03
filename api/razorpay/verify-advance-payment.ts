@@ -270,8 +270,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Receipt number — match the simple timestamp format used by verify-payment.ts
-    const receiptNumber = `ADV-${Date.now()}`;
+    // Receipt number from configured advance prefix + sequential counter
+    step = 'load-advance-counter';
+    const [settingsDoc, advCounterDoc] = await Promise.all([
+      db.getDoc('settings', 'global'),
+      db.getDoc('counters', 'advance'),
+    ]);
+    const settingsData = settingsDoc.exists ? settingsDoc.data : {};
+    const advCfg = (settingsData.receiptConfig as any)?.advanceReceipt || {};
+    const advPrefix = advCfg.prefix || 'EHSADV';
+    const advStartFrom = Number(advCfg.startFrom ?? 1);
+    const lastAdvNum = advCounterDoc.exists ? Number(advCounterDoc.data.lastNumber || 0) : 0;
+    const nextAdvNum = Math.max(lastAdvNum + 1, advStartFrom);
+    const receiptNumber = `${advPrefix}${String(nextAdvNum).padStart(4, '0')}`;
     const now = new Date().toISOString();
 
     step = 'commit';
@@ -303,6 +314,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }),
         },
         currentDocument: { exists: false },
+      },
+      // Increment advance receipt counter atomically with the payment
+      {
+        update: {
+          name: db.docName('counters', 'advance'),
+          fields: toFSFields({ lastNumber: nextAdvNum }),
+        },
       },
     ]);
 

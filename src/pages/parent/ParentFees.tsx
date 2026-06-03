@@ -1,7 +1,7 @@
 import { UserProfile, Student, FeeRequest, FeePayment, FineConfig, AdvancePayment, FeeStructure, FeeHead } from '../../types';
 import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Download, Wallet, Scale, ShieldOff, CalendarDays, MessageSquare } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, doc, orderBy, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, orderBy, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { getAdvancePaymentsForStudent } from '../../services/advancePaymentService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -333,6 +333,22 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
         return;
       }
       const { orderId } = await orderRes.json();
+
+      // Persist the advance intent so the server-side webhook can record the
+      // payment even if the app is reloaded/backgrounded before the client
+      // handler fires. The webhook reads pendingAdvanceOrders/{orderId}.
+      try {
+        await setDoc(doc(db, 'pendingAdvanceOrders', orderId), {
+          studentId: selectedStudent.id,
+          classId: selectedStudent.classId,
+          parentId: user.uid,
+          academicYear: '2024-25',
+          monthlyBreakdown,
+          totalAmount: total,
+          remarks: 'Online advance via parent portal',
+          createdAt: new Date().toISOString(),
+        });
+      } catch { /* non-blocking — client path still works without this */ }
 
       const options = {
         key: (import.meta as any).env.VITE_RAZORPAY_KEY_ID || '',
