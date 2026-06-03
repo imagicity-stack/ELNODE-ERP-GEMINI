@@ -226,53 +226,64 @@ async function sendWhatsApp(phone: string, template: string, params: string[]): 
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  const {
-    razorpay_order_id, razorpay_payment_id, razorpay_signature,
-    feeRequestId, studentId, classId, amount, feeHead, month,
-  } = req.body;
-
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature)
-    return res.status(400).json({ error: 'Missing payment fields' });
-  if (!feeRequestId || !studentId || typeof amount !== 'number' || amount <= 0)
-    return res.status(400).json({ error: 'Missing or invalid payment metadata' });
-
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  if (!keySecret) return res.status(500).json({ error: 'Payment gateway not configured' });
-
-  const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!saRaw) return res.status(500).json({ error: 'Firebase not configured' });
-
-  // Verify Razorpay HMAC
-  const expectedSig = crypto.createHmac('sha256', keySecret)
-    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-    .digest('hex');
-  if (expectedSig !== razorpay_signature)
-    return res.status(400).json({ error: 'Payment signature verification failed' });
-
-  let step = 'parse-service-account';
-  let db: FSClient | undefined;
+  // Wrap everything — including body parse — in one try/catch so any crash
+  // returns a JSON 500 instead of Vercel's FUNCTION_INVOCATION_FAILED HTML page.
+  let razorpay_payment_id_safe = '';
+  let step = 'init';
   try {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+    const body = req.body || {};
+    const {
+      razorpay_order_id, razorpay_payment_id, razorpay_signature,
+      feeRequestId, studentId, classId, amount, feeHead, month,
+    } = body as Record<string, any>;
+
+    razorpay_payment_id_safe = razorpay_payment_id || '';
+
+    step = 'validate-fields';
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature)
+      return res.status(400).json({ error: 'Missing payment fields' });
+    if (!feeRequestId || !studentId || typeof amount !== 'number' || amount <= 0)
+      return res.status(400).json({ error: 'Missing or invalid payment metadata' });
+
+    step = 'check-env';
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keySecret) return res.status(500).json({ error: 'Payment gateway not configured' });
+
+    const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (!saRaw) return res.status(500).json({ error: 'Firebase not configured' });
+
+    // Verify Razorpay HMAC
+    step = 'verify-hmac';
+    const expectedSig = crypto.createHmac('sha256', keySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+    if (expectedSig !== razorpay_signature)
+      return res.status(400).json({ error: 'Payment signature verification failed' });
+
+    step = 'parse-service-account';
     const sa: ServiceAccount = JSON.parse(saRaw);
-    // DB id resolution: Vercel env var (FIREBASE_DATABASE_ID) takes precedence so the
-    // target database can be swapped per environment for testing; FIRESTORE_DATABASE_ID
-    // is kept as a transitional fallback; the committed applet config is the default.
     const dbId = process.env.FIREBASE_DATABASE_ID
       || process.env.FIRESTORE_DATABASE_ID
       || appletConfig.firestoreDatabaseId;
 
     step = 'get-access-token';
     const token = await getAccessToken(sa);
-    db = new FSClient(sa.project_id, dbId, token);
+    const db = new FSClient(sa.project_id, dbId, token);
 
-    // ── Idempotency check: deterministic payment doc id keyed on razorpay payment id
+    // ── Deterministic idempotency id
     const paymentDocId = `rzp_${razorpay_payment_id}`;
 
-    step = 'idempotency-check';
-    const existing = await db.getDoc('feePayments', paymentDocId);
+    // ── Parallel reads: idempotency check + fee request + fine config
+    step = 'parallel-reads';
+    const [existing, feeRequestSnap, fineCfgDoc] = await Promise.all([
+      db.getDoc('feePayments', paymentDocId),
+      db.getDoc('feeRequests', feeRequestId),
+      db.getDoc('fineConfig', 'global'),
+    ]);
+
     if (existing.exists) {
-      // Webhook retry — payment already recorded. Return success without duplicating.
       return res.status(200).json({
         success: true,
         receiptNumber: existing.data.receiptNumber,
@@ -281,24 +292,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // ── Read the fee request (non-transactional). Consistency on concurrent
-    // payments is guaranteed by the deterministic payment-doc precondition below
-    // (currentDocument.exists:false), which mirrors the proven advance-payment flow.
-    step = 'fetch-fee-request';
-    const { exists, data: feeRequest } = await db.getDoc('feeRequests', feeRequestId);
-    if (!exists) {
+    step = 'validate-fee-request';
+    const { exists, data: feeRequest } = feeRequestSnap;
+    if (!exists)
       return res.status(404).json({ error: 'Fee request not found' });
-    }
-    if (feeRequest.studentId !== studentId) {
+    if (feeRequest.studentId !== studentId)
       return res.status(403).json({ error: 'Fee request does not belong to this student' });
-    }
-    if (feeRequest.status === 'paid') {
+    if (feeRequest.status === 'paid')
       return res.status(409).json({ error: 'Fee request is already fully paid' });
-    }
 
-    // ── Server-side fine recalculation (do not trust client-supplied amount)
-    step = 'load-fine-config';
-    const fineCfgDoc = await db.getDoc('fineConfig', 'global');
+    step = 'calculate-fine';
     const fineConfig: FineConfig | null = fineCfgDoc.exists
       ? (fineCfgDoc.data as FineConfig)
       : null;
@@ -312,10 +315,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const remaining = Math.max(0, totalRequired - alreadyPaid);
 
     if (amount > remaining + 0.001) {
-      return res.status(400).json({
-        error: 'Payment amount exceeds remaining balance',
-        remaining,
-      });
+      return res.status(400).json({ error: 'Payment amount exceeds remaining balance', remaining });
     }
 
     const newPaidAmount = alreadyPaid + amount;
@@ -323,10 +323,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const now = new Date().toISOString();
     const receiptNumber = `REC-${Date.now()}`;
 
-    // ── Atomic commit: payment + fee request + student status all-or-nothing
+    // ── Atomic multi-write commit
     step = 'atomic-commit';
     const writes: any[] = [
-      // 1. Create payment with idempotency precondition (must not already exist)
       {
         update: {
           name: db.docName('feePayments', paymentDocId),
@@ -348,22 +347,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         currentDocument: { exists: false },
       },
-      // 2. Update fee request paid amount + status + snapshot fine
       {
         updateMask: { fieldPaths: ['paidAmount', 'status', 'fineAmount', 'updatedAt'] },
         update: {
           name: db.docName('feeRequests', feeRequestId),
-          fields: toFSFields({
-            paidAmount: newPaidAmount,
-            status: newStatus,
-            fineAmount,
-            updatedAt: now,
-          }),
+          fields: toFSFields({ paidAmount: newPaidAmount, status: newStatus, fineAmount, updatedAt: now }),
         },
       },
     ];
 
-    // 3. If fully paid, mark student feeStatus = 'paid' in the same commit
     if (newStatus === 'paid') {
       writes.push({
         updateMask: { fieldPaths: ['feeStatus', 'updatedAt'] },
@@ -377,8 +369,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       await db.commit(writes);
     } catch (commitErr: any) {
-      // Idempotency race: another worker already recorded this payment between
-      // our pre-check and the commit. Return success with the existing record.
       if (commitErr?.status === 400 && /already exists|FAILED_PRECONDITION/i.test(commitErr.body || '')) {
         const dup = await db.getDoc('feePayments', paymentDocId);
         if (dup.exists) {
@@ -393,27 +383,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw commitErr;
     }
 
-    // Return success to the client immediately — the commit is already durable.
-    // WhatsApp is sent after the response so a slow WATI call can never cause
-    // the client to see "payment not recorded" for a payment that was recorded.
-    res.status(200).json({
-      success: true,
-      receiptNumber,
-      paymentId: paymentDocId,
-      fineAmount,
-      newStatus,
-    });
+    // ── Respond immediately — commit is durable
+    res.status(200).json({ success: true, receiptNumber, paymentId: paymentDocId, fineAmount, newStatus });
 
-    // Auto WhatsApp — best-effort after response is sent; never blocks the client
+    // ── WhatsApp best-effort (after response, swallow all errors)
     try {
       const { exists: sExists, data: student } = await db.getDoc('students', studentId);
       if (sExists && student.parentDetails?.phone) {
         let classSection = student.classId || '';
         try {
-          const { exists: cExists, data: cls } = await db.getDoc('classes', student.classId);
+          const { data: cls, exists: cExists } = await db.getDoc('classes', student.classId);
           if (cExists) classSection = `${cls.name} - ${student.section || ''}`.trim();
-        } catch { /* best-effort */ }
-
+        } catch { /* ignore */ }
         await sendWhatsApp(student.parentDetails.phone, 'payments_confirmed', [
           student.parentDetails?.fatherName || 'Parent',
           `₹${amount.toLocaleString('en-IN')}`,
@@ -424,15 +405,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'Online',
         ]);
       }
-    } catch (waErr) {
-      console.error('[verify-payment] WhatsApp non-fatal:', waErr);
-    }
+    } catch { /* WhatsApp failures never affect the payment record */ }
+
   } catch (err: any) {
     const msg = err?.message || String(err);
     console.error(`[verify-payment] FAILED step="${step}":`, msg);
     return res.status(500).json({
       error: 'Payment was verified but could not be recorded. Contact support.',
-      transactionId: razorpay_payment_id,
+      transactionId: razorpay_payment_id_safe,
       _step: step,
       _detail: msg,
     });
