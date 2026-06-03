@@ -1209,7 +1209,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                               onClick={() => openRequestModal(student, req)}
                               style={{ flex: 1, fontSize: '0.72rem', padding: '0.3rem 0.5rem', gap: '0.3rem' }}
                             >
-                              <Receipt size={12} /> Edit Invoice
+                              <Receipt size={12} /> Edit Request
                             </button>
                             {reqFine > 0 && (
                               <button
