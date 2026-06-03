@@ -62,5 +62,11 @@ export async function saveSchoolSettings(data: SchoolSettings): Promise<void> {
 export function computeDefaultFeeDueDate(dueDay?: number, base: Date = new Date()): string {
   const day = Number.isFinite(dueDay) && dueDay! >= 1 && dueDay! <= 28 ? Math.floor(dueDay!) : 10;
   const d = new Date(base.getFullYear(), base.getMonth() + 1, day);
-  return d.toISOString().split('T')[0];
+  // Format from local date parts — NOT toISOString(), which shifts to UTC and
+  // can roll the date back a day in timezones ahead of UTC (e.g. IST = UTC+5:30,
+  // where local midnight on the 10th becomes 18:30 UTC on the 9th).
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
