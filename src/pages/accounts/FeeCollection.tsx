@@ -233,6 +233,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     if (!selectedStudent) return;
 
     setLoading(true);
+    // Track a stub created for an open/past payment so we can roll it back if the
+    // payment transaction fails — otherwise a phantom pending invoice is left behind.
+    let createdStubId: string | null = null;
     try {
       let pendingRequest = captureForRequestId
         ? feeRequests.find(r => r.id === captureForRequestId)
@@ -274,6 +277,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           legacyImport: true,
         };
         await setDoc(stubRef, stub);
+        createdStubId = stubRef.id;
         pendingRequest = { id: stubRef.id, ...stub };
         // patch local state so the transaction can find it
         setFeeRequests(prev => [...prev, pendingRequest as any]);
@@ -283,9 +287,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
       const payAmount = Number(paymentData.amount);
       if (!Number.isFinite(payAmount) || payAmount <= 0) {
-        showToast('Enter a valid payment amount', 'error');
-        setLoading(false);
-        return;
+        throw new Error('Enter a valid payment amount');
       }
 
       const schoolSettings = await getSchoolSettings();
@@ -312,9 +314,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           voucherImageUrl = await getDownloadURL(ref);
         } catch (uploadErr) {
           console.error('Voucher upload failed:', uploadErr);
-          showToast('Voucher upload failed — payment not recorded. Try again.', 'error');
-          setLoading(false);
-          return;
+          throw new Error('Voucher upload failed — payment not recorded. Try again.');
         }
       }
 
@@ -468,6 +468,13 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         }
       } catch { /* non-fatal */ }
     } catch (err: any) {
+      // Roll back an open/past-payment stub so a failed payment never leaves a
+      // phantom pending invoice on the student.
+      if (createdStubId) {
+        const stubId = createdStubId;
+        await deleteDoc(doc(db, 'feeRequests', stubId)).catch(() => {});
+        setFeeRequests(prev => prev.filter(r => r.id !== stubId));
+      }
       const msg = err?.message || '';
       if (msg && !msg.toLowerCase().includes('firestore') && !msg.toLowerCase().includes('permission')) {
         showToast(msg, 'error');
