@@ -28,7 +28,7 @@ async function getLogoBase64(): Promise<string | null> {
   }
 }
 
-export async function generateExpenseAcknowledgement(expense: Expense): Promise<void> {
+export async function generateExpenseAcknowledgement(expense: Expense, receiptNumber?: string): Promise<void> {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
@@ -76,7 +76,7 @@ export async function generateExpenseAcknowledgement(expense: Expense): Promise<
 
   const infoFields: [string, string][] = [
     ['Receipt Date', new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })],
-    ['Receipt No.', `EXP-${expense.id?.slice(-8).toUpperCase() || Date.now().toString().slice(-8)}`],
+    ['Receipt No.', receiptNumber || expense.receiptNumber || `EXP-${expense.id?.slice(-8).toUpperCase() || Date.now().toString().slice(-8)}`],
     ['Payment Date', expense.date ? new Date(expense.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '-'],
     ['Category', expense.category ? expense.category.charAt(0).toUpperCase() + expense.category.slice(1) : '-'],
     ['Mode of Payment', expense.paymentMode ? expense.paymentMode.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Cash'],

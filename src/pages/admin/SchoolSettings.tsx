@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Save, RotateCw, AlertTriangle, Database } from 'lucide-react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { UserProfile } from '../../types';
-import { getSchoolSettings, saveSchoolSettings, SchoolSettings } from '../../services/settingsService';
+import { getSchoolSettings, saveSchoolSettings, SchoolSettings, ReceiptTypeConfig, getReceiptTypeConfig } from '../../services/settingsService';
 import { useToast } from '../../components/Toast';
 import { FormField, Input } from '../../components/ui';
 import { logActivity } from '../../services/activityService';
@@ -9,12 +11,23 @@ import { migrateLegacyResults } from '../../services/examService';
 
 const YEAR_REGEX = /^\d{4}-\d{2}$/;
 
+type CounterKey = 'fee' | 'advance' | 'expense' | 'salary';
+type ReceiptType = keyof NonNullable<SchoolSettings['receiptConfig']>;
+
+const RECEIPT_TYPES: { key: ReceiptType; counterId: CounterKey; label: string }[] = [
+  { key: 'feeReceipt',     counterId: 'fee',     label: 'Fee Receipt'     },
+  { key: 'advanceReceipt', counterId: 'advance',  label: 'Advance Receipt' },
+  { key: 'expenseReceipt', counterId: 'expense',  label: 'Expense Receipt' },
+  { key: 'salarySlip',     counterId: 'salary',   label: 'Salary Slip'     },
+];
+
 export default function SchoolSettings({ user }: { user: UserProfile }) {
   const [settings, setSettings] = useState<SchoolSettings>({ academicYear: '2026-27' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [migrating, setMigrating] = useState(false);
   const [migrationReport, setMigrationReport] = useState<{ copied: number; skipped: number } | null>(null);
+  const [counters, setCounters] = useState<Record<CounterKey, number>>({ fee: 0, advance: 0, expense: 0, salary: 0 });
   const { showToast } = useToast();
 
   const isSuperAdmin = user.role === 'super_admin';
@@ -42,14 +55,47 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
   };
 
   useEffect(() => {
-    getSchoolSettings()
-      .then(s => setSettings(s))
+    const loadAll = async () => {
+      const [s, fee, advance, expense, salary] = await Promise.all([
+        getSchoolSettings(),
+        getDoc(doc(db, 'counters', 'fee')),
+        getDoc(doc(db, 'counters', 'advance')),
+        getDoc(doc(db, 'counters', 'expense')),
+        getDoc(doc(db, 'counters', 'salary')),
+      ]);
+      setSettings(s);
+      setCounters({
+        fee:     fee.exists()     ? (fee.data()?.lastNumber     || 0) : 0,
+        advance: advance.exists() ? (advance.data()?.lastNumber || 0) : 0,
+        expense: expense.exists() ? (expense.data()?.lastNumber || 0) : 0,
+        salary:  salary.exists()  ? (salary.data()?.lastNumber  || 0) : 0,
+      });
+    };
+    loadAll()
       .catch(() => showToast('Failed to load settings', 'error'))
       .finally(() => setLoading(false));
   }, []);
 
   const set = (field: keyof SchoolSettings) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setSettings(prev => ({ ...prev, [field]: e.target.value }));
+
+  const setReceiptField = (
+    type: ReceiptType,
+    field: keyof ReceiptTypeConfig,
+    value: string | number,
+  ) => setSettings(prev => {
+    const current = getReceiptTypeConfig(prev, type);
+    return {
+      ...prev,
+      receiptConfig: {
+        feeReceipt:     getReceiptTypeConfig(prev, 'feeReceipt'),
+        advanceReceipt: getReceiptTypeConfig(prev, 'advanceReceipt'),
+        expenseReceipt: getReceiptTypeConfig(prev, 'expenseReceipt'),
+        salarySlip:     getReceiptTypeConfig(prev, 'salarySlip'),
+        [type]: { ...current, [field]: value },
+      },
+    };
+  });
 
   const handleSave = async () => {
     if (!YEAR_REGEX.test(settings.academicYear)) {
@@ -133,29 +179,68 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
         </div>
       </div>
 
-      {/* Receipt Settings */}
+      {/* Receipt Numbering */}
       <div className="card stack" style={{ gap: 20 }}>
-        <div className="eyebrow">Receipt Settings</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <FormField label="Receipt Prefix" hint="Letters before the number on every receipt (e.g. EHSREC → EHSREC0001)">
-            <Input
-              value={settings.receiptPrefix || ''}
-              onChange={set('receiptPrefix')}
-              placeholder="EHSREC"
-              className="mono"
-            />
-          </FormField>
-          <FormField label="Start From" hint="First receipt number. Only applies before any receipt is generated.">
-            <Input
-              type="number"
-              min={1}
-              value={settings.receiptStartNumber ?? 1}
-              onChange={(e) => setSettings(prev => ({ ...prev, receiptStartNumber: Number(e.target.value) }))}
-              className="mono"
-              style={{ maxWidth: 160 }}
-            />
-          </FormField>
+        <div>
+          <div className="eyebrow">Receipt Numbering</div>
+          <p className="muted tiny" style={{ marginTop: 4 }}>
+            Each receipt type has its own prefix and counter.
+            "Start from" only takes effect before any receipt of that type has been generated.
+          </p>
         </div>
+
+        {/* Column headers */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 110px 130px', gap: '8px 16px', alignItems: 'center' }}>
+          <span className="muted tiny" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Type</span>
+          <span className="muted tiny" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Prefix</span>
+          <span className="muted tiny" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Start From</span>
+          <span className="muted tiny" style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Last Generated</span>
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: -8 }} />
+
+        {RECEIPT_TYPES.map(({ key, counterId, label }) => {
+          const cfg = getReceiptTypeConfig(settings, key);
+          const last = counters[counterId];
+          const nextPreview = last > 0
+            ? `${cfg.prefix}${String(last + 1).padStart(4, '0')}`
+            : `${cfg.prefix}${String(cfg.startFrom).padStart(4, '0')}`;
+          return (
+            <div
+              key={key}
+              style={{ display: 'grid', gridTemplateColumns: '1fr 140px 110px 130px', gap: '8px 16px', alignItems: 'center' }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600 }}>{label}</span>
+              <Input
+                value={cfg.prefix}
+                onChange={e => setReceiptField(key, 'prefix', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                placeholder="EHSREC"
+                className="mono"
+                style={{ fontSize: 13 }}
+              />
+              <Input
+                type="number"
+                min={1}
+                value={cfg.startFrom}
+                onChange={e => setReceiptField(key, 'startFrom', Math.max(1, Number(e.target.value)))}
+                className="mono"
+                style={{ fontSize: 13 }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {last > 0 ? (
+                  <>
+                    <span className="mono" style={{ fontSize: 13, color: 'var(--ink)' }}>
+                      {cfg.prefix}{String(last).padStart(4, '0')}
+                    </span>
+                    <span className="muted tiny">next: {nextPreview}</span>
+                  </>
+                ) : (
+                  <span className="muted tiny">none yet → {nextPreview}</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Fee Settings */}

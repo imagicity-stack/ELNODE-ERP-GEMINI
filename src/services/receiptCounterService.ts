@@ -2,8 +2,10 @@ import { doc, runTransaction } from 'firebase/firestore';
 import type { DocumentSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
-/** Shared reference to the single receipt counter document. */
-export const receiptCounterRef = () => doc(db, 'counters', 'receipts');
+export type ReceiptCounterId = 'fee' | 'advance' | 'expense' | 'salary';
+
+/** Reference to the counter document for a given receipt type. */
+export const receiptCounterRef = (id: ReceiptCounterId = 'fee') => doc(db, 'counters', id);
 
 /** Format a raw counter number into a padded receipt string (e.g. "EHSREC0042"). */
 export function formatReceiptNumber(prefix: string, n: number): string {
@@ -26,17 +28,17 @@ export function nextReceiptNumberFromSnap(
 }
 
 /**
- * Atomically increments the receipt counter and returns the next receipt number.
- * Use this for standalone reservations. To reserve a receipt as part of a larger
- * transaction (so the number is only consumed when that work commits), use
- * `receiptCounterRef` + `nextReceiptNumberFromSnap` + `formatReceiptNumber`
- * inside your own runTransaction instead.
+ * Atomically increments the counter for `id` and returns the formatted receipt number.
+ * Use this for standalone reservations (advance payments, expense receipts, salary slips).
+ * For fee payments recorded inside a larger Firestore transaction, use
+ * `receiptCounterRef` + `nextReceiptNumberFromSnap` + `formatReceiptNumber` directly.
  */
 export async function getNextReceiptNumber(
+  id: ReceiptCounterId,
   prefix: string,
   startFrom: number,
 ): Promise<string> {
-  const ref = receiptCounterRef();
+  const ref = receiptCounterRef(id);
   const next = await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     const nextNum = nextReceiptNumberFromSnap(snap, startFrom);
