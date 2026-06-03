@@ -24,7 +24,7 @@ const RECEIPT_TYPES: { key: ReceiptType; counterId: CounterKey; label: string }[
 export default function SchoolSettings({ user }: { user: UserProfile }) {
   const [settings, setSettings] = useState<SchoolSettings>({ academicYear: '2026-27' });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingSection, setSavingSection] = useState<string | null>(null);
   const [migrating, setMigrating] = useState(false);
   const [migrationReport, setMigrationReport] = useState<{ copied: number; skipped: number } | null>(null);
   const [counters, setCounters] = useState<Record<CounterKey, number>>({ fee: 0, advance: 0, expense: 0, salary: 0 });
@@ -97,26 +97,51 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
     };
   });
 
-  const handleSave = async () => {
-    if (!YEAR_REGEX.test(settings.academicYear)) {
-      showToast('Academic year must be in format YYYY-YY (e.g. 2026-27)', 'error');
-      return;
+  // Each section saves the full settings doc (Firestore merge), but validates only
+  // its own fields and shows its own spinner — so sections save independently.
+  const persistSection = async (
+    section: string,
+    label: string,
+    validate?: () => string | null,
+  ) => {
+    if (validate) {
+      const err = validate();
+      if (err) { showToast(err, 'error'); return; }
     }
-    if (settings.defaultFeeDueDay != null && (settings.defaultFeeDueDay < 1 || settings.defaultFeeDueDay > 28)) {
-      showToast('Default fee due day must be between 1 and 28', 'error');
-      return;
-    }
-    setSaving(true);
+    setSavingSection(section);
     try {
       await saveSchoolSettings({ ...settings, updatedBy: user.uid });
-      await logActivity(user, 'School Settings Updated', 'Super Admin', `Academic year set to ${settings.academicYear}`, { academicYear: settings.academicYear });
-      showToast('Settings saved successfully', 'success');
+      await logActivity(user, 'School Settings Updated', 'Super Admin', `${label} updated`, { section });
+      showToast(`${label} saved`, 'success');
     } catch {
-      showToast('Failed to save settings', 'error');
+      showToast(`Failed to save ${label.toLowerCase()}`, 'error');
     } finally {
-      setSaving(false);
+      setSavingSection(null);
     }
   };
+
+  const validateAcademic = () =>
+    YEAR_REGEX.test(settings.academicYear)
+      ? null
+      : 'Academic year must be in format YYYY-YY (e.g. 2026-27)';
+
+  const validateFeeSettings = () =>
+    settings.defaultFeeDueDay != null && (settings.defaultFeeDueDay < 1 || settings.defaultFeeDueDay > 28)
+      ? 'Default fee due day must be between 1 and 28'
+      : null;
+
+  // Small reusable save button rendered inside each section header.
+  const SectionSave = ({ section, label, validate }: { section: string; label: string; validate?: () => string | null }) => (
+    <button
+      className="btn accent"
+      onClick={() => persistSection(section, label, validate)}
+      disabled={savingSection !== null}
+      style={{ opacity: savingSection !== null && savingSection !== section ? 0.5 : 1, padding: '6px 14px', fontSize: 13 }}
+    >
+      <Save size={14} />
+      {savingSection === section ? 'Saving…' : 'Save'}
+    </button>
+  );
 
   if (loading) {
     return (
@@ -134,15 +159,14 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
           <div className="eyebrow">{user.role.replace('_', ' ')}</div>
           <h1>School Settings</h1>
         </div>
-        <button className="btn accent" onClick={handleSave} disabled={saving}>
-          <Save size={15} />
-          {saving ? 'Saving…' : 'Save'}
-        </button>
       </div>
 
       {/* Academic */}
       <div className="card stack" style={{ gap: 20 }}>
-        <div className="eyebrow">Academic</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="eyebrow">Academic</div>
+          <SectionSave section="academic" label="Academic Settings" validate={validateAcademic} />
+        </div>
         <FormField
           label="Current Academic Year"
           hint="Format: YYYY-YY (e.g. 2026-27). Appears on fee receipts, reports and all portals."
@@ -159,7 +183,10 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
 
       {/* School Information */}
       <div className="card stack" style={{ gap: 20 }}>
-        <div className="eyebrow">School Information</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="eyebrow">School Information</div>
+          <SectionSave section="school-info" label="School Information" />
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <FormField label="School Name">
             <Input value={settings.schoolName || ''} onChange={set('schoolName')} placeholder="The Elden Heights School" />
@@ -181,12 +208,15 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
 
       {/* Receipt Numbering */}
       <div className="card stack" style={{ gap: 20 }}>
-        <div>
-          <div className="eyebrow">Receipt Numbering</div>
-          <p className="muted tiny" style={{ marginTop: 4 }}>
-            Each receipt type has its own prefix and counter.
-            "Start from" only takes effect before any receipt of that type has been generated.
-          </p>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+          <div>
+            <div className="eyebrow">Receipt Numbering</div>
+            <p className="muted tiny" style={{ marginTop: 4 }}>
+              Each receipt type has its own prefix and counter.
+              "Start from" only takes effect before any receipt of that type has been generated.
+            </p>
+          </div>
+          <SectionSave section="receipts" label="Receipt Numbering" />
         </div>
 
         {/* Column headers */}
@@ -245,7 +275,10 @@ export default function SchoolSettings({ user }: { user: UserProfile }) {
 
       {/* Fee Settings */}
       <div className="card stack" style={{ gap: 20 }}>
-        <div className="eyebrow">Fee Settings</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="eyebrow">Fee Settings</div>
+          <SectionSave section="fee" label="Fee Settings" validate={validateFeeSettings} />
+        </div>
         <FormField
           label="Default Fee Due Day"
           hint="Day of the following month that new fee requests default to. Range 1–28. Accountant can still override per request."
