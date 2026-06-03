@@ -1,7 +1,8 @@
 {
   "functions": {
     "api/razorpay/verify-payment.ts": { "maxDuration": 30 },
-    "api/razorpay/verify-advance-payment.ts": { "maxDuration": 30 }
+    "api/razorpay/verify-advance-payment.ts": { "maxDuration": 30 },
+    "api/razorpay/webhook.ts": { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/((?!api).*)", "destination": "/index.html" }
