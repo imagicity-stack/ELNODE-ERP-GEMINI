@@ -252,7 +252,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Payment signature verification failed' });
 
   let step = 'parse-service-account';
-  let txId: string | undefined;
   let db: FSClient | undefined;
   try {
     const sa: ServiceAccount = JSON.parse(saRaw);
@@ -282,22 +281,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // ── Begin Firestore transaction for consistent paidAmount update
-    step = 'begin-transaction';
-    txId = await db.beginTransaction();
-
+    // ── Read the fee request (non-transactional). Consistency on concurrent
+    // payments is guaranteed by the deterministic payment-doc precondition below
+    // (currentDocument.exists:false), which mirrors the proven advance-payment flow.
     step = 'fetch-fee-request';
-    const { exists, data: feeRequest } = await db.getDoc('feeRequests', feeRequestId, txId);
+    const { exists, data: feeRequest } = await db.getDoc('feeRequests', feeRequestId);
     if (!exists) {
-      await db.rollback(txId);
       return res.status(404).json({ error: 'Fee request not found' });
     }
     if (feeRequest.studentId !== studentId) {
-      await db.rollback(txId);
       return res.status(403).json({ error: 'Fee request does not belong to this student' });
     }
     if (feeRequest.status === 'paid') {
-      await db.rollback(txId);
       return res.status(409).json({ error: 'Fee request is already fully paid' });
     }
 
@@ -317,7 +312,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const remaining = Math.max(0, totalRequired - alreadyPaid);
 
     if (amount > remaining + 0.001) {
-      await db.rollback(txId);
       return res.status(400).json({
         error: 'Payment amount exceeds remaining balance',
         remaining,
@@ -381,7 +375,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-      await db.commit(writes, txId);
+      await db.commit(writes);
     } catch (commitErr: any) {
       // Idempotency race: another worker already recorded this payment between
       // our pre-check and the commit. Return success with the existing record.
@@ -434,7 +428,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('[verify-payment] WhatsApp non-fatal:', waErr);
     }
   } catch (err: any) {
-    if (txId && db) await db.rollback(txId);
     const msg = err?.message || String(err);
     console.error(`[verify-payment] FAILED step="${step}":`, msg);
     return res.status(500).json({
