@@ -94,13 +94,14 @@ export default function StudentFees({ user }: StudentFeesProps) {
       description: `Fees for ${request.month}`,
       theme: { color: '#0E0F11' },
       handler: async function (response: any) {
+        const rzpPaymentId: string = response.razorpay_payment_id || '';
         try {
           const verifyRes = await fetch('/api/razorpay/verify-payment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_payment_id: rzpPaymentId,
               razorpay_signature: response.razorpay_signature,
               feeRequestId: request.id,
               studentId: request.studentId,
@@ -110,17 +111,23 @@ export default function StudentFees({ user }: StudentFeesProps) {
               month: request.month,
             }),
           });
+          let body: any = {};
+          try { body = await verifyRes.json(); } catch { /* non-JSON response */ }
           if (!verifyRes.ok) {
-            const err = await verifyRes.json();
-            showToast(err.error || 'Payment verification failed. Contact support.', 'error');
+            showToast(
+              `${body.error || 'Payment verification failed.'} Payment ID: ${rzpPaymentId}`,
+              'error'
+            );
             return;
           }
-          const { receiptNumber } = await verifyRes.json();
           logActivity(user, 'Paid Fees Online', 'Students', `Paid ₹${remainingAmount.toLocaleString()} for ${request.heads[0]?.name || 'Academic Fee'} via Razorpay`);
-          showToast(`Payment successful! Receipt: ${receiptNumber}`, 'success');
+          showToast(`Payment successful! Receipt: ${body.receiptNumber}`, 'success');
           fetchData();
         } catch {
-          showToast('Payment was processed but could not be recorded. Please contact support.', 'error');
+          showToast(
+            `Payment may have been processed but confirmation failed. Quote this ID to support: ${rzpPaymentId}`,
+            'error'
+          );
         }
       },
       prefill: { name: user.name, email: user.email },
