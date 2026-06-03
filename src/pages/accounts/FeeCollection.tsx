@@ -2,10 +2,10 @@ import { UserProfile, Student, Class, Fee, FeePayment, FeeRequest, FeeStructure,
 import { Download, IndianRupee, CheckCircle2, Clock, AlertCircle, Plus, Receipt, Trash2, History, ShieldOff, Scale, MessageSquare, Search, Users, ChevronDown, ChevronUp, Wallet, CalendarDays } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, setDoc, deleteDoc, getDoc, runTransaction, onSnapshot } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { getSchoolSettings, computeDefaultFeeDueDate } from '../../services/settingsService';
-import { getNextReceiptNumber } from '../../services/receiptCounterService';
+import { getNextReceiptNumber, receiptCounterRef, nextReceiptNumberFromSnap, formatReceiptNumber } from '../../services/receiptCounterService';
 import {
   getUnconsumedForMonth,
   consumeAdvanceEntry,
@@ -236,6 +236,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
     // Track a stub created for an open/past payment so we can roll it back if the
     // payment transaction fails — otherwise a phantom pending invoice is left behind.
     let createdStubId: string | null = null;
+    // Track an uploaded voucher image so we can delete it if the tx fails — no
+    // orphaned files left in Storage.
+    let uploadedVoucherPath: string | null = null;
     try {
       let pendingRequest = captureForRequestId
         ? feeRequests.find(r => r.id === captureForRequestId)
@@ -291,10 +294,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       }
 
       const schoolSettings = await getSchoolSettings();
-      const receiptNumber = await getNextReceiptNumber(
-        schoolSettings.receiptPrefix || 'EHSREC',
-        schoolSettings.receiptStartNumber ?? 1,
-      );
+      const receiptPrefix = schoolSettings.receiptPrefix || 'EHSREC';
+      const receiptStartFrom = schoolSettings.receiptStartNumber ?? 1;
       const requestRef = doc(db, 'feeRequests', pendingRequest.id);
 
       const priorPaymentsSnap = await getDocs(query(
@@ -312,20 +313,29 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           const ref = storageRef(storage, path);
           await uploadBytes(ref, file);
           voucherImageUrl = await getDownloadURL(ref);
+          uploadedVoucherPath = path;
         } catch (uploadErr) {
           console.error('Voucher upload failed:', uploadErr);
           throw new Error('Voucher upload failed — payment not recorded. Try again.');
         }
       }
 
+      const counterRef = receiptCounterRef();
       const txResult = await runTransaction(db, async (tx) => {
+        // All reads must come before any writes in a Firestore transaction.
         const fresh = await tx.get(requestRef);
+        const counterSnap = await tx.get(counterRef);
         if (!fresh.exists()) throw new Error('Fee request no longer exists');
         const freshData = { id: fresh.id, ...(fresh.data() as Omit<FeeRequest, 'id'>) } as FeeRequest;
 
         if (freshData.status === 'paid') {
           throw new Error('This fee request is already fully paid');
         }
+
+        // Reserve the receipt number inside the transaction so a failed/aborted
+        // payment never burns a number — the sequence stays gapless.
+        const receiptNum = nextReceiptNumberFromSnap(counterSnap, receiptStartFrom);
+        const receiptNumber = formatReceiptNumber(receiptPrefix, receiptNum);
 
         const currentFine = fineConfig ? calculateFine(freshData, fineConfig) : 0;
         const feeTotal = freshData.totalAmount - (freshData.waivedAmount || 0);
@@ -408,9 +418,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           status: newStatus,
           updatedAt: new Date().toISOString(),
         });
+        // Consume the receipt number only now that the payment is committing.
+        tx.set(counterRef, { lastNumber: receiptNum }, { merge: true });
 
-        return { paymentId: newPayRef.id, newStatus, paymentDoc };
+        return { paymentId: newPayRef.id, newStatus, paymentDoc, receiptNumber };
       });
+      const receiptNumber = txResult.receiptNumber;
 
       const paymentDoc = txResult.paymentDoc;
 
@@ -474,6 +487,10 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         const stubId = createdStubId;
         await deleteDoc(doc(db, 'feeRequests', stubId)).catch(() => {});
         setFeeRequests(prev => prev.filter(r => r.id !== stubId));
+      }
+      // Delete an uploaded voucher image whose payment never committed.
+      if (uploadedVoucherPath) {
+        await deleteObject(storageRef(storage, uploadedVoucherPath)).catch(() => {});
       }
       const msg = err?.message || '';
       if (msg && !msg.toLowerCase().includes('firestore') && !msg.toLowerCase().includes('permission')) {
