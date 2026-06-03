@@ -1240,7 +1240,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
                       onClick={() => openRequestModal(student)}
                       style={{ flex: 1, fontSize: '0.78rem', padding: '0.4rem 0.6rem' }}
                     >
-                      <Plus size={13} /> Generate Invoice
+                      <Plus size={13} /> Create Fee Request
                     </button>
                     <button
                       className="btn ghost"
