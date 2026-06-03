@@ -1,7 +1,7 @@
 import { UserProfile, FeeRequest, FeePayment, Student, FineConfig } from '../../types';
 import { CreditCard, Receipt, CheckCircle2, Download, Scale, ShieldOff } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, doc, orderBy, getDoc } from 'firebase/firestore';
+import { useState, useEffect, useRef } from 'react';
+import { collection, onSnapshot, query, where, doc, orderBy, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { calculateFine } from '../../services/fineService';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
@@ -22,40 +22,47 @@ export default function StudentFees({ user }: StudentFeesProps) {
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [student, setStudent] = useState<Student | null>(null);
   const [fineConfig, setFineConfig] = useState<FineConfig | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
+  const unsubRef = useRef<(() => void)[]>([]);
 
-  const fetchData = async () => {
-    if (!user.uid) return;
+  useEffect(() => {
+    const studentId = user.studentId || user.schoolNumber;
+    if (!studentId) { setLoading(false); return; }
+
+    // Tear down any previous listeners before setting up new ones
+    unsubRef.current.forEach(u => u());
+    unsubRef.current = [];
     setLoading(true);
-    try {
-      const studentId = user.studentId || user.schoolNumber;
-      if (!studentId) { console.warn('Student ID not found in profile'); setLoading(false); return; }
 
-      const requestsQuery = query(collection(db, 'feeRequests'), where('studentId', '==', studentId));
-      const paymentsQuery = query(collection(db, 'feePayments'), where('studentId', '==', studentId), orderBy('date', 'desc'));
-      const studentDocRef = doc(db, 'students', studentId);
-      const fineConfigRef = doc(db, 'fine-config', 'global');
-
-      const [requestsSnap, paymentsSnap, studentSnap, fineSnap] = await Promise.all([
-        getDocs(requestsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feeRequests'); throw err; }),
-        getDocs(paymentsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feePayments'); throw err; }),
-        getDoc(studentDocRef).catch(err => { handleFirestoreError(err, OperationType.GET, 'students'); throw err; }),
-        getDoc(fineConfigRef).catch(err => { handleFirestoreError(err, OperationType.GET, 'fine-config'); throw err; }),
-      ]);
-
-      setFeeRequests(requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
-      setPayments(paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeePayment)));
+    // One-shot reads for data that doesn't change frequently
+    Promise.all([
+      getDoc(doc(db, 'students', studentId)),
+      getDoc(doc(db, 'fine-config', 'global')),
+    ]).then(([studentSnap, fineSnap]) => {
       if (studentSnap.exists()) setStudent({ id: studentSnap.id, ...studentSnap.data() } as Student);
       if (fineSnap.exists()) setFineConfig(fineSnap.data() as FineConfig);
-    } catch (err) {
-      console.error('Error fetching student fee data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    }).catch(err => handleFirestoreError(err, OperationType.GET, 'students'));
 
-  useEffect(() => { fetchData(); }, [user.uid]);
+    // Live listeners for fee requests and payments
+    const unsubRequests = onSnapshot(
+      query(collection(db, 'feeRequests'), where('studentId', '==', studentId)),
+      snap => {
+        setFeeRequests(snap.docs.map(d => ({ id: d.id, ...d.data() } as FeeRequest)));
+        setLoading(false);
+      },
+      err => handleFirestoreError(err, OperationType.LIST, 'feeRequests'),
+    );
+
+    const unsubPayments = onSnapshot(
+      query(collection(db, 'feePayments'), where('studentId', '==', studentId), orderBy('date', 'desc')),
+      snap => setPayments(snap.docs.map(d => ({ id: d.id, ...d.data() } as FeePayment))),
+      err => handleFirestoreError(err, OperationType.LIST, 'feePayments'),
+    );
+
+    unsubRef.current = [unsubRequests, unsubPayments];
+    return () => { unsubRef.current.forEach(u => u()); };
+  }, [user.uid]);
 
   const handleDownloadReceipt = (payment: FeePayment) => {
     const request = feeRequests.find(r => r.id === payment.feeRequestId);
@@ -122,7 +129,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
           }
           logActivity(user, 'Paid Fees Online', 'Students', `Paid ₹${remainingAmount.toLocaleString()} for ${request.heads[0]?.name || 'Academic Fee'} via Razorpay`);
           showToast(`Payment successful! Receipt: ${body.receiptNumber}`, 'success');
-          fetchData();
+          // No fetchData() needed — onSnapshot updates the UI automatically
         } catch {
           showToast(
             `Payment may have been processed but confirmation failed. Quote this ID to support: ${rzpPaymentId}`,
