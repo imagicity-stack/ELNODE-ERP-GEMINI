@@ -1,7 +1,7 @@
 import { UserProfile, Student, FeeRequest, FeePayment, FineConfig, AdvancePayment, FeeStructure, FeeHead } from '../../types';
 import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Download, Wallet, Scale, ShieldOff, CalendarDays, MessageSquare } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, doc, orderBy, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { useState, useEffect, useRef } from 'react';
+import { collection, onSnapshot, getDocs, query, where, doc, orderBy, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { getAdvancePaymentsForStudent } from '../../services/advancePaymentService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -63,46 +63,51 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
   const [partialReqLoading, setPartialReqLoading] = useState(false);
 
   const { showToast } = useToast();
-
-  const fetchData = async () => {
-    if (!selectedStudent?.id) return;
-    setLoading(true);
-    try {
-      const requestsQuery = query(collection(db, 'feeRequests'), where('studentId', '==', selectedStudent.id));
-      const paymentsQuery = query(collection(db, 'feePayments'), where('studentId', '==', selectedStudent.id), orderBy('date', 'desc'));
-
-      const [requestsSnap, paymentsSnap, fineSnap, advances, structSnap] = await Promise.all([
-        getDocs(requestsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feeRequests'); throw err; }),
-        getDocs(paymentsQuery).catch(err => { handleFirestoreError(err, OperationType.LIST, 'feePayments'); throw err; }),
-        getDoc(doc(db, 'fine-config', 'global')),
-        getAdvancePaymentsForStudent(selectedStudent.id).catch(() => [] as AdvancePayment[]),
-        getDocs(query(collection(db, 'feeStructures'), where('classId', '==', selectedStudent.classId))).catch(() => null),
-      ]);
-
-      setFeeRequests(requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeeRequest)));
-      setPayments(paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeePayment)));
-      if (fineSnap.exists()) {
-        setFineConfig(fineSnap.data() as FineConfig);
-      }
-      setAdvancePayments(advances);
-      if (structSnap && !structSnap.empty) {
-        const struct = structSnap.docs[0].data() as FeeStructure;
-        setAvailableHeads(struct.heads || []);
-      } else {
-        try {
-          const ghSnap = await getDocs(collection(db, 'feeHeads'));
-          setAvailableHeads(ghSnap.docs.map(d => d.data() as FeeHead));
-        } catch { setAvailableHeads([]); }
-      }
-    } catch (err) {
-      console.error('Error fetching parent fee data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const unsubRef = useRef<(() => void)[]>([]);
 
   useEffect(() => {
-    fetchData();
+    if (!selectedStudent?.id) return;
+
+    // Tear down previous student's listeners
+    unsubRef.current.forEach(u => u());
+    unsubRef.current = [];
+    setLoading(true);
+
+    // One-shot reads for data that changes rarely
+    Promise.all([
+      getDoc(doc(db, 'fine-config', 'global')),
+      getAdvancePaymentsForStudent(selectedStudent.id).catch(() => [] as AdvancePayment[]),
+      getDocs(query(collection(db, 'feeStructures'), where('classId', '==', selectedStudent.classId))).catch(() => null),
+    ]).then(([fineSnap, advances, structSnap]) => {
+      if (fineSnap.exists()) setFineConfig(fineSnap.data() as FineConfig);
+      setAdvancePayments(advances);
+      if (structSnap && !structSnap.empty) {
+        setAvailableHeads((structSnap.docs[0].data() as FeeStructure).heads || []);
+      } else {
+        getDocs(collection(db, 'feeHeads'))
+          .then(s => setAvailableHeads(s.docs.map(d => d.data() as FeeHead)))
+          .catch(() => setAvailableHeads([]));
+      }
+    }).catch(err => console.error('Error loading parent fee static data:', err));
+
+    // Live listeners for fee requests and payments
+    const unsubRequests = onSnapshot(
+      query(collection(db, 'feeRequests'), where('studentId', '==', selectedStudent.id)),
+      snap => {
+        setFeeRequests(snap.docs.map(d => ({ id: d.id, ...d.data() } as FeeRequest)));
+        setLoading(false);
+      },
+      err => handleFirestoreError(err, OperationType.LIST, 'feeRequests'),
+    );
+
+    const unsubPayments = onSnapshot(
+      query(collection(db, 'feePayments'), where('studentId', '==', selectedStudent.id), orderBy('date', 'desc')),
+      snap => setPayments(snap.docs.map(d => ({ id: d.id, ...d.data() } as FeePayment))),
+      err => handleFirestoreError(err, OperationType.LIST, 'feePayments'),
+    );
+
+    unsubRef.current = [unsubRequests, unsubPayments];
+    return () => { unsubRef.current.forEach(u => u()); };
   }, [selectedStudent?.id]);
 
   const handleSubmitPartialRequest = async (e: React.FormEvent) => {
@@ -150,7 +155,6 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
       showToast('Partial payment request submitted — the accountant will process it.', 'success');
       setPartialReqModal({ isOpen: false, requestId: '', maxAmount: 0 });
       setPartialReqData({ amount: '', reason: '', committedDate: '' });
-      fetchData();
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'feeRequests');
     } finally {
@@ -237,7 +241,6 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
           }
           logActivity(user, 'Paid Fees Online', 'Parents', `Paid ₹${remainingAmount.toLocaleString()} for ${request.heads[0]?.name || 'Academic Fee'} via Razorpay`);
           showToast(`Payment successful! Receipt: ${body.receiptNumber}`, 'success');
-          fetchData();
         } catch {
           showToast(
             `Payment may have been processed but confirmation failed. Quote this ID to support: ${rzpPaymentId}`,
@@ -385,7 +388,6 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
               `Paid ₹${total.toLocaleString('en-IN')} advance for ${advanceSelectedMonths.length} month(s) via Razorpay`);
             showToast(`Advance payment successful! Receipt: ${receiptNumber}`, 'success');
             setIsAdvanceModalOpen(false);
-            fetchData();
           } catch (err) {
             console.error('verify-advance failed', err);
             showToast('Could not record advance — contact support', 'error');
