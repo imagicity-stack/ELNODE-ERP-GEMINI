@@ -1,6 +1,11 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
+export interface ReceiptTypeConfig {
+  prefix: string;
+  startFrom: number;
+}
+
 export interface SchoolSettings {
   academicYear: string;     // e.g. "2026-27"
   schoolName?: string;
@@ -8,13 +13,35 @@ export interface SchoolSettings {
   phone?: string;
   website?: string;
   email?: string;
-  receiptPrefix?: string;      // Prefix for receipt numbers (e.g. "EHSREC")
-  receiptStartNumber?: number; // Counter starts from this number (e.g. 1)
+  /** @deprecated use receiptConfig.feeReceipt instead */
+  receiptPrefix?: string;
+  /** @deprecated use receiptConfig.feeReceipt instead */
+  receiptStartNumber?: number;
+  receiptConfig?: {
+    feeReceipt: ReceiptTypeConfig;
+    advanceReceipt: ReceiptTypeConfig;
+    expenseReceipt: ReceiptTypeConfig;
+    salarySlip: ReceiptTypeConfig;
+  };
   // Day of the FOLLOWING month that fee requests default to. e.g. 10 → request
   // generated in May defaults to due date June 10. Range: 1-28. Default: 10.
   defaultFeeDueDay?: number;
   updatedAt?: string;
   updatedBy?: string;
+}
+
+/** Returns the receipt config for a given type, with safe defaults. */
+export function getReceiptTypeConfig(
+  settings: SchoolSettings,
+  type: keyof NonNullable<SchoolSettings['receiptConfig']>,
+): ReceiptTypeConfig {
+  const defaults: Record<string, ReceiptTypeConfig> = {
+    feeReceipt:     { prefix: settings.receiptPrefix || 'EHSREC', startFrom: settings.receiptStartNumber ?? 1 },
+    advanceReceipt: { prefix: 'EHSADV', startFrom: 1 },
+    expenseReceipt: { prefix: 'EXP', startFrom: 1 },
+    salarySlip:     { prefix: 'SAL', startFrom: 1 },
+  };
+  return settings.receiptConfig?.[type] ?? defaults[type];
 }
 
 const REF = () => doc(db, 'settings', 'global');

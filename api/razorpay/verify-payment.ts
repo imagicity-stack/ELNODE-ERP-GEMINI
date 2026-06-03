@@ -281,12 +281,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── Deterministic idempotency id
     const paymentDocId = `rzp_${razorpay_payment_id}`;
 
-    // ── Parallel reads: idempotency check + fee request + fine config
+    // ── Parallel reads: idempotency + fee request + fine config + settings + fee counter
     step = 'parallel-reads';
-    const [existing, feeRequestSnap, fineCfgDoc] = await Promise.all([
+    const [existing, feeRequestSnap, fineCfgDoc, settingsDoc, feeCounterDoc] = await Promise.all([
       db.getDoc('feePayments', paymentDocId),
       db.getDoc('feeRequests', feeRequestId),
       db.getDoc('fineConfig', 'global'),
+      db.getDoc('settings', 'global'),
+      db.getDoc('counters', 'fee'),
     ]);
 
     if (existing.exists) {
@@ -327,7 +329,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const newPaidAmount = alreadyPaid + amount;
     const newStatus = newPaidAmount + 0.001 >= totalRequired ? 'paid' : 'partially_paid';
     const now = new Date().toISOString();
-    const receiptNumber = `REC-${Date.now()}`;
+
+    // ── Build receipt number from configured prefix + sequential counter
+    const settingsData = settingsDoc.exists ? settingsDoc.data : {};
+    const feeReceiptCfg = (settingsData.receiptConfig as any)?.feeReceipt || {};
+    const receiptPrefix = feeReceiptCfg.prefix || settingsData.receiptPrefix || 'EHSREC';
+    const receiptStartFrom = Number(feeReceiptCfg.startFrom ?? settingsData.receiptStartNumber ?? 1);
+    const lastFeeNum = feeCounterDoc.exists ? Number(feeCounterDoc.data.lastNumber || 0) : 0;
+    const nextFeeNum = Math.max(lastFeeNum + 1, receiptStartFrom);
+    const receiptNumber = `${receiptPrefix}${String(nextFeeNum).padStart(4, '0')}`;
 
     // ── Atomic multi-write commit
     step = 'atomic-commit';
@@ -371,6 +381,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
       });
     }
+
+    // Increment fee receipt counter alongside the payment commit
+    writes.push({
+      update: {
+        name: db.docName('counters', 'fee'),
+        fields: toFSFields({ lastNumber: nextFeeNum }),
+      },
+    });
 
     try {
       await db.commit(writes);

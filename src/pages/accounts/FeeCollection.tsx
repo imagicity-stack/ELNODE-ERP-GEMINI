@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, addDoc, updateDoc, doc, setDoc, deleteDoc, getDoc, runTransaction, onSnapshot } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
-import { getSchoolSettings, computeDefaultFeeDueDate } from '../../services/settingsService';
+import { getSchoolSettings, computeDefaultFeeDueDate, getReceiptTypeConfig } from '../../services/settingsService';
 import { getNextReceiptNumber, receiptCounterRef, nextReceiptNumberFromSnap, formatReceiptNumber } from '../../services/receiptCounterService';
 import {
   getUnconsumedForMonth,
@@ -294,8 +294,9 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       }
 
       const schoolSettings = await getSchoolSettings();
-      const receiptPrefix = schoolSettings.receiptPrefix || 'EHSREC';
-      const receiptStartFrom = schoolSettings.receiptStartNumber ?? 1;
+      const feeCfg = getReceiptTypeConfig(schoolSettings, 'feeReceipt');
+      const receiptPrefix = feeCfg.prefix;
+      const receiptStartFrom = feeCfg.startFrom;
       const requestRef = doc(db, 'feeRequests', pendingRequest.id);
 
       const priorPaymentsSnap = await getDocs(query(
@@ -320,7 +321,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         }
       }
 
-      const counterRef = receiptCounterRef();
+      const counterRef = receiptCounterRef('fee');
       const txResult = await runTransaction(db, async (tx) => {
         // All reads must come before any writes in a Firestore transaction.
         const fresh = await tx.get(requestRef);
@@ -588,10 +589,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
             if (entryApplied <= 0.001) continue;
 
             const settings = await getSchoolSettings();
-            const advReceipt = await getNextReceiptNumber(
-              settings.receiptPrefix || 'EHSREC',
-              settings.receiptStartNumber ?? 1,
-            );
+            const advCfg = getReceiptTypeConfig(settings, 'advanceReceipt');
+            const advReceipt = await getNextReceiptNumber('advance', advCfg.prefix, advCfg.startFrom);
             const synthetic = buildAdvanceApplicationPayment({
               request: { id: newReqRef.id, studentId: selectedStudent.id, classId: selectedStudent.classId },
               advance,
@@ -764,10 +763,8 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
       }
 
       const settings = await getSchoolSettings();
-      const receiptNumber = await getNextReceiptNumber(
-        settings.receiptPrefix || 'EHSREC',
-        settings.receiptStartNumber ?? 1,
-      );
+      const advCfg2 = getReceiptTypeConfig(settings, 'advanceReceipt');
+      const receiptNumber = await getNextReceiptNumber('advance', advCfg2.prefix, advCfg2.startFrom);
 
       const monthlyBreakdown = advanceData.selectedMonths.map(m => ({
         month: m,

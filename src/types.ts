@@ -506,6 +506,7 @@ export interface Expense {
   status: 'paid' | 'pending';
   description?: string;
   receiptUrl?: string;
+  receiptNumber?: string;
   phone?: string;
   address?: string;
   paymentMode?: 'cash' | 'bank_transfer' | 'upi' | 'cheque' | 'card' | 'other';
@@ -547,6 +548,7 @@ export interface Salary {
     method: string;
     transactionId?: string;
   }[];
+  receiptNumber?: string;
   createdAt: string;
   updatedAt: string;
 }

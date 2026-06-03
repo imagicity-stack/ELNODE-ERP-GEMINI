@@ -1,6 +1,8 @@
 import { UserProfile, Expense } from '../../types';
 import { generateExpenseAcknowledgement } from '../../lib/expenseReceipt';
 import { saveText } from '../../lib/download';
+import { getSchoolSettings, getReceiptTypeConfig } from '../../services/settingsService';
+import { getNextReceiptNumber } from '../../services/receiptCounterService';
 import { Plus, Receipt, TrendingDown, Edit2, FileText, FileDown, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useState, useEffect } from 'react';
@@ -225,7 +227,17 @@ export default function ExpenseManagement({ user }: ExpenseManagementProps) {
 
   const handleDownloadReceipt = async (exp: Expense) => {
     setDownloadingReceiptId(exp.id);
-    try { await generateExpenseAcknowledgement(exp); } catch { /* ignore */ }
+    try {
+      let receiptNumber = exp.receiptNumber;
+      if (!receiptNumber) {
+        const settings = await getSchoolSettings();
+        const cfg = getReceiptTypeConfig(settings, 'expenseReceipt');
+        receiptNumber = await getNextReceiptNumber('expense', cfg.prefix, cfg.startFrom);
+        await updateDoc(doc(db, 'expenses', exp.id), { receiptNumber });
+        setExpenses(prev => prev.map(e => e.id === exp.id ? { ...e, receiptNumber } : e));
+      }
+      await generateExpenseAcknowledgement(exp, receiptNumber);
+    } catch { /* ignore */ }
     setDownloadingReceiptId(null);
   };
 

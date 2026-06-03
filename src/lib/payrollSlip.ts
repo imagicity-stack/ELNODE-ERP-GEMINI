@@ -61,7 +61,7 @@ async function fetchLogo(): Promise<string | null> {
   } catch { return null; }
 }
 
-export async function generatePayrollSlip(salary: Salary, displayEmployeeId?: string): Promise<void> {
+export async function generatePayrollSlip(salary: Salary, displayEmployeeId?: string, slipNumberOverride?: string): Promise<void> {
   const [logo, schoolSettings] = await Promise.all([fetchLogo(), getSchoolSettings()]);
   const academicYear = schoolSettings.academicYear || '2026-27';
 
@@ -110,7 +110,7 @@ export async function generatePayrollSlip(salary: Salary, displayEmployeeId?: st
   // ═════════════════════════════════════════════════════════════════════════
   //  EMPLOYEE DETAILS — two-column key/value
   // ═════════════════════════════════════════════════════════════════════════
-  const slipNo = `PS-${salary.month.replace('-', '')}-${(salary.id || '').slice(-6).toUpperCase() || Date.now().toString().slice(-6)}`;
+  const slipNo = slipNumberOverride || salary.receiptNumber || `PS-${salary.month.replace('-', '')}-${(salary.id || '').slice(-6).toUpperCase() || Date.now().toString().slice(-6)}`;
   const issueDate = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const empRows: [string, string, string, string][] = [

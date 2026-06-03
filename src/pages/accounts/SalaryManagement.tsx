@@ -1,5 +1,7 @@
 import { UserProfile, Teacher, Salary, StaffMember, UnifiedStaff, PayrollConfig } from '../../types';
 import { generatePayrollSlip } from '../../lib/payrollSlip';
+import { getSchoolSettings, getReceiptTypeConfig } from '../../services/settingsService';
+import { getNextReceiptNumber } from '../../services/receiptCounterService';
 import { saveText } from '../../lib/download';
 import {
   Download,
@@ -342,6 +344,14 @@ export default function SalaryManagement({ user }: SalaryManagementProps) {
           `Updated payroll for ${processingStaff.name} for ${fmtMonth(targetMonth)}`);
         showToast('Payroll updated', 'success');
       } else {
+        // Generate salary slip number before the transaction
+        try {
+          const salarySettings = await getSchoolSettings();
+          const slipCfg = getReceiptTypeConfig(salarySettings, 'salarySlip');
+          const slipNum = await getNextReceiptNumber('salary', slipCfg.prefix, slipCfg.startFrom);
+          baseRecord.receiptNumber = slipNum;
+        } catch { /* non-blocking; PDF falls back to legacy format */ }
+
         // Atomic check-and-create using deterministic ID
         await runTransaction(db, async (tx) => {
           // Read advances first (Firestore transactions require reads before writes)
