@@ -20,7 +20,13 @@ export const USER_ROLES = {
   TEACHER: 'teacher',
   PRINCIPAL: 'principal',
   GRIEVANCE_OFFICER: 'grievance_officer',
+  CA: 'ca',
 } as const;
+
+// Default password assigned to a Chartered Accountant when their portal account is
+// provisioned from Super Admin → CA Portal Access. The CA is prompted to change it
+// on first login (see UserProfile.mustChangePassword).
+export const DEFAULT_CA_PASSWORD = 'password123';
 
 export const DAYS_OF_WEEK = [
   'Monday',

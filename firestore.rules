@@ -34,6 +34,8 @@ service cloud.firestore {
     function isStudent() { return hasRole(['student']); }
     function isParent() { return hasRole(['parent']); }
     function isAccountant() { return hasRole(['accounts']); }
+    // Chartered Accountant — strictly read-only access to financial collections.
+    function isCA() { return hasRole(['ca']); }
     function isPrincipal() { return hasRole(['principal']); }
     function isOfficeStaff() { return hasRole(['office_staff']); }
     function isGrievanceOfficer() { return hasRole(['grievance_officer']); }
@@ -70,7 +72,9 @@ service cloud.firestore {
           request.auth.uid == userId &&
           request.resource.data.role == resource.data.role &&
           request.resource.data.get('studentId', '') == resource.data.get('studentId', '') &&
-          request.resource.data.get('studentIds', []) == resource.data.get('studentIds', [])
+          request.resource.data.get('studentIds', []) == resource.data.get('studentIds', []) &&
+          // A user cannot suspend/un-suspend their own account — only admins flip this.
+          request.resource.data.get('disabled', false) == resource.data.get('disabled', false)
         ) ||
         isAnyAdmin()
       );
@@ -109,10 +113,10 @@ service cloud.firestore {
     // Students — list is restricted; students/parents should not enumerate the full roster
     match /students/{studentId} {
       allow get: if isSignedIn() && (
-        isAnyAdmin() || isTeacher() || isAccountant() || isGrievanceOfficer() ||
+        isAnyAdmin() || isTeacher() || isAccountant() || isGrievanceOfficer() || isCA() ||
         isLinkedToStudent(studentId)
       );
-      allow list: if isAnyAdmin() || isTeacher() || isAccountant() || isGrievanceOfficer();
+      allow list: if isAnyAdmin() || isTeacher() || isAccountant() || isGrievanceOfficer() || isCA();
       allow create: if isSignedIn() && (isAnyAdmin() || isAccountant());
       allow update: if isSignedIn() && (isAnyAdmin() || isAccountant() || isGrievanceOfficer() || (
         isLinkedToStudent(studentId) &&
@@ -213,10 +217,10 @@ service cloud.firestore {
 
     match /feePayments/{paymentId} {
       allow get: if isSignedIn() && (
-        isAdmin() || isAccountant() || isGrievanceOfficer() ||
+        isAdmin() || isAccountant() || isGrievanceOfficer() || isCA() ||
         isLinkedToStudent(resource.data.get('studentId', ''))
       );
-      allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isParent() || isStudent();
+      allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isCA() || isParent() || isStudent();
       allow create: if isSignedIn() && (isAdmin() || isAccountant() || (
         isLinkedToStudent(request.resource.data.studentId) &&
         request.resource.data.method == 'online' &&
@@ -236,10 +240,10 @@ service cloud.firestore {
       // Grievance officer can read (for follow-ups) but NOT create or update requests —
       // payment requests are managed exclusively by the accounts team.
       allow get: if isSignedIn() && (
-        isAdmin() || isAccountant() || isGrievanceOfficer() ||
+        isAdmin() || isAccountant() || isGrievanceOfficer() || isCA() ||
         isLinkedToStudent(resource.data.get('studentId', ''))
       );
-      allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isParent() || isStudent();
+      allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isCA() || isParent() || isStudent();
       allow create: if isAdmin() || isAccountant();
       allow update: if isAdmin() || isAccountant() || (
         isLinkedToStudent(resource.data.studentId) &&
@@ -252,10 +256,10 @@ service cloud.firestore {
     // a future monthly fee request is generated for a covered month.
     match /advancePayments/{id} {
       allow get: if isSignedIn() && (
-        isAdmin() || isAccountant() || isGrievanceOfficer() ||
+        isAdmin() || isAccountant() || isGrievanceOfficer() || isCA() ||
         isLinkedToStudent(resource.data.get('studentId', ''))
       );
-      allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isParent() || isStudent();
+      allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isCA() || isParent() || isStudent();
       allow create: if isSignedIn() && (isAdmin() || isAccountant());
       // Updates only mutate monthlyBreakdown / status as advance is consumed;
       // the consumed flag is set by the same accountant or by the auto-apply flow.
@@ -332,14 +336,23 @@ service cloud.firestore {
         (isTeacher() && resource.data.get('createdBy', '') == request.auth.uid)
       );
     }
-    match /salaries/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
-    match /expenses/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
-    match /payroll-config/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin(); }
-    match /fine-config/{id} { allow read: if isAdmin() || isAccountant() || isParent() || isStudent(); allow write: if isAdmin(); }
+    match /salaries/{id} { allow read: if isAdmin() || isAccountant() || isCA(); allow write: if isAdmin() || isAccountant(); }
+    match /expenses/{id} { allow read: if isAdmin() || isAccountant() || isCA(); allow write: if isAdmin() || isAccountant(); }
+    match /payroll-config/{id} { allow read: if isAdmin() || isAccountant() || isCA(); allow write: if isAdmin(); }
+    match /fine-config/{id} { allow read: if isAdmin() || isAccountant() || isCA() || isParent() || isStudent(); allow write: if isAdmin(); }
     match /settings/{id} { allow read: if request.auth != null; allow write: if isAdmin(); }
     match /whatsappLogs/{id} { allow read: if isAdmin() || isAccountant(); allow write: if isAdmin() || isAccountant(); }
     match /feeStructures/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
     match /feeHeads/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
+
+    // Chartered Accountant roster — provisioned & managed by admins in
+    // Super Admin → CA Portal Access. A CA may read only their own metadata doc;
+    // the role profile and Firestore reads everywhere else come from users/{uid}.
+    match /chartedAccountants/{caId} {
+      allow get: if isSignedIn() && (isAnyAdmin() || request.auth.uid == caId);
+      allow list: if isAnyAdmin();
+      allow create, update, delete: if isAnyAdmin();
+    }
 
     // Study Materials
     match /studyMaterials/{id} {

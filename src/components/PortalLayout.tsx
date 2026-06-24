@@ -143,6 +143,14 @@ const roleConfig: Record<UserRole, {
     accentBorder: 'border-teal-500/30',
     gradient: 'from-teal-600 to-emerald-600',
   },
+  ca: {
+    label: 'CA Portal',
+    accent: 'bg-emerald-600',
+    accentLight: 'bg-emerald-600/15',
+    accentText: 'text-emerald-500',
+    accentBorder: 'border-emerald-600/30',
+    gradient: 'from-emerald-700 to-green-600',
+  },
 };
 
 // ─── Nav Items ────────────────────────────────────────────────────────────────
