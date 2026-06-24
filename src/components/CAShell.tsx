@@ -4,107 +4,48 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
 import {
-  Home, Users, GraduationCap, BookOpen, Layers, DollarSign,
-  ClipboardCheck, FileText, Bell, Settings, BarChart3, Calendar,
-  CreditCard, MessageCircle, Activity, User, LogOut,
-  UserCheck, Building2, Award, CalendarDays, CalendarClock, History,
-  Receipt, Wallet, TrendingUp, LifeBuoy, PhoneCall, Radio,
-  Banknote, Gavel, Lock, NotebookPen, MoreHorizontal, X, Upload, Calculator,
+  Home, BookOpen, TrendingUp, Receipt, Wallet, PieChart,
+  FileText, ShieldCheck, LogOut, MoreHorizontal, X, Eye,
 } from 'lucide-react';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserProfile } from '../types';
 import NotificationCenter from './NotificationCenter';
 import { useToast } from './Toast';
 import { logActivity } from '../services/activityService';
-import { requestNotificationPermission, startNotificationListeners } from '../services/notificationService';
+
+const BASE = '/ca';
 
 const NAV_SECTIONS = [
   {
     heading: 'Overview',
-    items: [
-      { label: 'Dashboard', icon: Home, path: '' },
-    ],
+    items: [{ label: 'Dashboard', icon: Home, path: '' }],
   },
   {
-    heading: 'People',
+    heading: 'Books of Accounts',
     items: [
-      { label: 'Students', icon: Users, path: '/students' },
-      { label: 'Profile Analytics', icon: BarChart3, path: '/student-profile-analytics' },
-      { label: 'Teachers', icon: GraduationCap, path: '/teachers' },
-      { label: 'Staff', icon: UserCheck, path: '/staff' },
-      { label: 'Houses', icon: Building2, path: '/houses' },
-      { label: 'Admissions', icon: ClipboardCheck, path: '/admissions' },
-    ],
-  },
-  {
-    heading: 'Academic',
-    items: [
-      { label: 'Classes', icon: BookOpen, path: '/classes' },
-      { label: 'Subjects', icon: Layers, path: '/subjects' },
-      { label: 'Exams', icon: FileText, path: '/exams' },
-      { label: 'Grading Scales', icon: Award, path: '/grading-scales' },
-      { label: 'Timetable', icon: CalendarDays, path: '/timetable' },
-      { label: 'Lesson Diary', icon: NotebookPen, path: '/diary' },
-      { label: 'Calendar', icon: Calendar, path: '/calendar' },
-    ],
-  },
-  {
-    heading: 'Finance',
-    items: [
-      { label: 'Fee Structure', icon: DollarSign, path: '/fees' },
-      { label: 'Fee Collection', icon: CreditCard, path: '/fee-collection' },
-      { label: 'Payment History', icon: History, path: '/payment-history' },
+      { label: 'Day Book / Ledger', icon: BookOpen, path: '/ledger' },
+      { label: 'Income & Receipts', icon: TrendingUp, path: '/income' },
       { label: 'Expenses', icon: Receipt, path: '/expenses' },
-      { label: 'Salaries', icon: Wallet, path: '/salaries' },
-      { label: 'Reports', icon: BarChart3, path: '/reports' },
-      { label: 'Analytics', icon: TrendingUp, path: '/analytics' },
+      { label: 'Payroll', icon: Wallet, path: '/payroll' },
     ],
   },
   {
-    heading: 'Leave & HR',
+    heading: 'Analysis',
     items: [
-      { label: 'Leave Management', icon: CalendarClock, path: '/leaves' },
-      { label: 'Teacher Leaves', icon: ClipboardCheck, path: '/teacher-leaves' },
-    ],
-  },
-  {
-    heading: 'Grievances',
-    items: [
-      { label: 'Grievance Tracker', icon: LifeBuoy, path: '/tracker' },
-      { label: 'Fee Follow-up', icon: PhoneCall, path: '/fee-followup' },
-    ],
-  },
-  {
-    heading: 'Communication',
-    items: [
-      { label: 'Notice Board', icon: MessageCircle, path: '/notices' },
-      { label: 'Notifications', icon: Bell, path: '/notifications' },
-      { label: 'WhatsApp', icon: MessageCircle, path: '/whatsapp' },
-      { label: 'Broadcast', icon: Radio, path: '/broadcast' },
-    ],
-  },
-  {
-    heading: 'System',
-    items: [
-      { label: 'Activity Logs', icon: Activity, path: '/activity-logs' },
-      { label: 'Data Import', icon: Upload, path: '/data-import' },
-      { label: 'Payroll Settings', icon: Banknote, path: '/payroll-settings' },
-      { label: 'Fine Settings', icon: Gavel, path: '/fine-settings' },
-      { label: 'Permissions', icon: Lock, path: '/permissions' },
-      { label: 'CA Portal Access', icon: Calculator, path: '/ca-access' },
-      { label: 'School Settings', icon: Settings, path: '/school-settings' },
+      { label: 'Analytics', icon: PieChart, path: '/analytics' },
+      { label: 'Reports & Statements', icon: FileText, path: '/reports' },
     ],
   },
 ];
 
 const TABS = [
   { label: 'Home', icon: Home, path: '' },
-  { label: 'Students', icon: Users, path: '/students' },
-  { label: 'Fees', icon: CreditCard, path: '/fee-collection' },
-  { label: 'Notices', icon: Bell, path: '/notices' },
+  { label: 'Ledger', icon: BookOpen, path: '/ledger' },
+  { label: 'Reports', icon: FileText, path: '/reports' },
+  { label: 'Analytics', icon: PieChart, path: '/analytics' },
 ];
 
-export default function AdminShell({ children, user }: { children: React.ReactNode; user: UserProfile }) {
+export default function CAShell({ children, user }: { children: React.ReactNode; user: UserProfile }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
@@ -112,8 +53,7 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
   const [refreshKey, setRefreshKey] = useState(0);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const { pullY, refreshing } = usePullToRefresh(mainRef, () => setRefreshKey(k => k + 1));
-  const BASE = '/' + location.pathname.split('/')[1];
-  const userName = user.name || user.email || 'Admin';
+  const userName = user.name || user.email || 'Auditor';
   const initials = userName.charAt(0).toUpperCase();
 
   const isActive = (path: string) =>
@@ -121,27 +61,24 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
 
   useEffect(() => { mainRef.current?.scrollTo(0, 0); }, [location.pathname]);
 
-  useEffect(() => {
-    let unsub: (() => void) | undefined;
-    (async () => {
-      await requestNotificationPermission();
-      if (auth.currentUser) {
-        unsub = startNotificationListeners(
-          auth.currentUser.uid, 'admin', [],
-          (title, body) => showToast(`${title}: ${body}`, 'info')
-        );
-      }
-    })();
-    return () => { if (unsub) unsub(); };
-  }, []);
-
   const handleLogout = async () => {
     try {
-      await logActivity(user, 'User Logged Out', 'Admin', `${user.name} signed out of the Admin portal`);
+      await logActivity(user, 'User Logged Out', 'Accounts', `${user.name} signed out of the CA portal`);
     } catch { /* non-fatal */ }
     await signOut(auth);
     navigate('/login');
   };
+
+  // Small reusable "read-only" assurance chip shown in the sidebar / sheet.
+  const ReadOnlyChip = () => (
+    <div
+      className="flex items-center gap-2 mx-3 mb-2 px-3 py-2 rounded-xl"
+      style={{ background: 'var(--cream-2)', color: 'var(--ink-3)' }}
+    >
+      <Eye className="w-3.5 h-3.5 shrink-0" />
+      <span className="text-[11px] font-semibold leading-tight">View-only access · download enabled</span>
+    </div>
+  );
 
   return (
     <div className="eh-app min-h-screen flex" style={{ background: 'var(--cream)' }}>
@@ -150,22 +87,18 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
         className="hidden lg:flex flex-col fixed inset-y-0 left-0 w-64 z-30"
         style={{ background: 'var(--paper)', borderRight: '1px solid var(--line)' }}
       >
-        {/* Logo */}
         <div className="flex items-center gap-3 px-5 h-16" style={{ borderBottom: '1px solid var(--line)' }}>
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: 'var(--ink)' }}
-          >
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'var(--ink)' }}>
             <img src={APP_LOGO} className="w-6 h-6 object-contain" alt={APP_NAME} referrerPolicy="no-referrer" />
           </div>
           <div className="min-w-0">
-            <p className="display text-sm leading-none truncate" style={{ fontSize: 15 }}>{APP_NAME}</p>
+            <p className="display text-sm leading-none truncate" style={{ fontSize: 15 }}>CA Portal</p>
             <p className="eyebrow mt-1 truncate">{SCHOOL_NAME}</p>
           </div>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 px-3 py-4 overflow-y-auto scrollbar-hide">
+          <ReadOnlyChip />
           {NAV_SECTIONS.map((section, si) => (
             <div key={section.heading} className={si > 0 ? 'mt-4' : ''}>
               <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-4)' }}>
@@ -179,11 +112,7 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
                       key={item.label + item.path}
                       to={`${BASE}${item.path}`}
                       className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors"
-                      style={
-                        active
-                          ? { background: 'var(--ink)', color: 'var(--cream)' }
-                          : { color: 'var(--ink-3)' }
-                      }
+                      style={active ? { background: 'var(--ink)', color: 'var(--cream)' } : { color: 'var(--ink-3)' }}
                       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--cream-2)'; }}
                       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
                     >
@@ -197,7 +126,6 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
           ))}
         </nav>
 
-        {/* Footer */}
         <div className="p-3 space-y-1" style={{ borderTop: '1px solid var(--line)' }}>
           <Link
             to={`${BASE}/profile`}
@@ -209,7 +137,7 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold truncate leading-none">{userName}</p>
-              <p className="eyebrow mt-0.5">Admin</p>
+              <p className="eyebrow mt-0.5">Chartered Accountant</p>
             </div>
           </Link>
           <button
@@ -227,15 +155,14 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
 
       {/* ── Main column ─────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
-        {/* Desktop top strip with notification center */}
-        <div
-          className="hidden lg:flex items-center justify-end gap-3 px-8 h-16 shrink-0 sticky top-0 z-20"
-          style={{ background: 'var(--cream)' }}
-        >
+        <div className="hidden lg:flex items-center justify-between gap-3 px-8 h-16 shrink-0 sticky top-0 z-20" style={{ background: 'var(--cream)' }}>
+          <span className="chip" style={{ background: 'var(--paper)', cursor: 'default' }}>
+            <ShieldCheck className="w-3.5 h-3.5" style={{ color: 'var(--leaf)' }} />
+            <span className="font-semibold">Read-only audit access</span>
+          </span>
           <NotificationCenter user={user} />
         </div>
 
-        {/* Scrollable content — pages render their own topbar on mobile */}
         <PullIndicator pullY={pullY} refreshing={refreshing} />
         <main ref={mainRef} className="flex-1 overflow-y-auto pb-24 lg:pb-8">
           <div className="lg:max-w-7xl lg:mx-auto lg:px-10" key={refreshKey}>
@@ -249,21 +176,14 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
         {TABS.map((t) => {
           const active = isActive(t.path);
           return (
-            <button
-              key={t.label}
-              className={'tab' + (active ? ' active' : '')}
-              onClick={() => navigate(`${BASE}${t.path}`)}
-            >
+            <button key={t.label} className={'tab' + (active ? ' active' : '')} onClick={() => navigate(`${BASE}${t.path}`)}>
               <t.icon size={22} strokeWidth={active ? 2.2 : 1.6} />
               <span>{t.label}</span>
               <span className="dot" />
             </button>
           );
         })}
-        <button
-          className={'tab' + (showMoreMenu ? ' active' : '')}
-          onClick={() => setShowMoreMenu(true)}
-        >
+        <button className={'tab' + (showMoreMenu ? ' active' : '')} onClick={() => setShowMoreMenu(true)}>
           <MoreHorizontal size={22} strokeWidth={showMoreMenu ? 2.2 : 1.6} />
           <span>More</span>
           <span className="dot" />
@@ -277,25 +197,15 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
           style={{ background: 'rgba(0,0,0,0.45)' }}
           onClick={() => setShowMoreMenu(false)}
         >
-          <div
-            className="more-sheet rounded-t-2xl flex flex-col"
-            style={{ background: 'var(--paper)', maxHeight: '88vh' }}
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Sheet header */}
+          <div className="more-sheet rounded-t-2xl flex flex-col" style={{ background: 'var(--paper)', maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ borderBottom: '1px solid var(--line)' }}>
               <p className="text-[15px] font-bold" style={{ color: 'var(--ink)' }}>Menu</p>
-              <button
-                onClick={() => setShowMoreMenu(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full"
-                style={{ background: 'var(--cream-2)', color: 'var(--ink-3)' }}
-              >
+              <button onClick={() => setShowMoreMenu(false)} className="w-8 h-8 flex items-center justify-center rounded-full" style={{ background: 'var(--cream-2)', color: 'var(--ink-3)' }}>
                 <X size={16} strokeWidth={2.5} />
               </button>
             </div>
-
-            {/* Scrollable nav sections */}
             <div className="overflow-y-auto flex-1 px-3 py-3">
+              <ReadOnlyChip />
               {NAV_SECTIONS.map((section, si) => (
                 <div key={section.heading} className={si > 0 ? 'mt-4' : ''}>
                   <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-4)' }}>
@@ -320,8 +230,6 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
                 </div>
               ))}
             </div>
-
-            {/* Sheet footer: profile + sign out */}
             <div className="px-3 pb-2 pt-2 shrink-0 space-y-0.5" style={{ borderTop: '1px solid var(--line)' }}>
               <button
                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors text-left"
@@ -336,11 +244,7 @@ export default function AdminShell({ children, user }: { children: React.ReactNo
                   <p className="eyebrow mt-0.5">My Profile</p>
                 </div>
               </button>
-              <button
-                onClick={() => { setShowMoreMenu(false); handleLogout(); }}
-                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors"
-                style={{ color: 'var(--coral)' }}
-              >
+              <button onClick={() => { setShowMoreMenu(false); handleLogout(); }} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors" style={{ color: 'var(--coral)' }}>
                 <LogOut className="w-5 h-5 shrink-0" />
                 <span className="text-[14px] font-semibold">Sign Out</span>
               </button>

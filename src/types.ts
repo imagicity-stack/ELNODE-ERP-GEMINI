@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'student' | 'parent' | 'accounts' | 'teacher' | 'principal' | 'office_staff' | 'grievance_officer';
+export type UserRole = 'super_admin' | 'student' | 'parent' | 'accounts' | 'teacher' | 'principal' | 'office_staff' | 'grievance_officer' | 'ca';
 
 // ─── Grievance Types ──────────────────────────────────────────────────────────
 
@@ -101,6 +101,31 @@ export interface UserProfile {
   address?: string;
   createdAt: string;
   updatedAt?: string;
+  // Set when an account is provisioned with the default password so the portal can
+  // force a password change on first login. Cleared by the user once they change it.
+  mustChangePassword?: boolean;
+  // When true, the account is provisioned but access is suspended (login is blocked).
+  disabled?: boolean;
+}
+
+// ─── Chartered Accountant ─────────────────────────────────────────────────────
+// CAs get a dedicated read-only portal. They are provisioned separately from
+// staff/teachers (a `users/{uid}` doc with role 'ca' plus this metadata record),
+// so the CA roster can be managed independently in Super Admin → CA Portal Access.
+export interface CharteredAccountant {
+  id: string;            // same as the Firebase Auth uid / users doc id
+  uid: string;
+  name: string;
+  email: string;
+  phone?: string;
+  firmName?: string;     // accounting firm the CA represents
+  membershipNo?: string; // ICAI membership number
+  notes?: string;
+  status: 'active' | 'disabled';
+  createdAt: string;
+  createdBy: string;     // super admin uid who provisioned the CA
+  updatedAt?: string;
+  lastLoginAt?: string;
 }
 
 export interface Student {

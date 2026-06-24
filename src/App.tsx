@@ -27,6 +27,7 @@ const roleToSection = (role: string): ActivitySection => {
     case 'super_admin': return 'Super Admin';
     case 'accountant':
     case 'accounts': return 'Accounts';
+    case 'ca': return 'Accounts';
     case 'teacher': return 'Teachers';
     case 'student': return 'Students';
     case 'parent': return 'Parents';
@@ -41,6 +42,7 @@ import AdminPortal from './pages/admin/AdminPortal';
 import StudentPortal from './pages/student/StudentPortal';
 import ParentPortal from './pages/parent/ParentPortal';
 import AccountsPortal from './pages/accounts/AccountsPortal';
+import CAPortal from './pages/ca/CAPortal';
 import TeacherPortal from './pages/teacher/TeacherPortal';
 import PrincipalPortal from './pages/admin/PrincipalPortal';
 import GrievancePortal from './pages/grievance/GrievancePortal';
@@ -106,6 +108,20 @@ export default function App() {
           
           if (userDoc && userDoc.exists()) {
             const existingUser = normalizeUserProfile(userDoc.data() as UserProfile);
+
+            // Suspended accounts (e.g. a CA whose access was revoked/suspended) are
+            // signed out immediately so they can't reach any portal.
+            if (existingUser.disabled === true) {
+              sessionStorage.setItem(
+                'auth_no_profile_error',
+                'Your account access has been suspended. Please contact the school administration.',
+              );
+              try { await signOut(auth); } catch (_) {}
+              setUser(null);
+              setLoading(false);
+              return;
+            }
+
             let updatedUser = { ...existingUser };
             let needsUpdate = false;
 
@@ -357,6 +373,7 @@ export default function App() {
       case 'student': return '/student';
       case 'parent': return '/parent';
       case 'accounts': return '/accounts';
+      case 'ca': return '/ca';
       case 'grievance_officer': return '/grievance';
       default: return '/login';
     }
@@ -394,6 +411,7 @@ export default function App() {
               <Route path="/student/*" element={user?.role === 'student' ? <StudentPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/parent/*" element={user?.role === 'parent' ? <ParentPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/accounts/*" element={user?.role === 'accounts' ? <AccountsPortal user={user} /> : <Navigate to="/login" />} />
+              <Route path="/ca/*" element={user?.role === 'ca' ? <CAPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/teacher/*" element={user?.role === 'teacher' ? <TeacherPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/principal/*" element={user?.role === 'principal' ? <PrincipalPortal user={user} /> : <Navigate to="/login" />} />
               <Route path="/grievance/*" element={user?.role === 'grievance_officer' || user?.role === 'super_admin' || user?.role === 'principal' ? <GrievancePortal user={user} /> : <Navigate to="/login" />} />
