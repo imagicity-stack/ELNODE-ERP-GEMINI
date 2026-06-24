@@ -5,6 +5,7 @@
  */
 
 import Papa from 'papaparse';
+import autoTable from 'jspdf-autotable';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { savePdf, saveText } from '../../lib/download';
 import { DateRange, inRange, monthInRange } from './financialData';
@@ -40,7 +41,7 @@ export async function downloadLedgerPdf(entries: LedgerEntry[], range: DateRange
       rs(balance),
     ];
   });
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: contentY + 2,
     head: [['Date', 'Particulars', 'Ref', 'Mode', 'Receipt (Cr)', 'Payment (Dr)', 'Balance']],
     body: rows,
@@ -74,7 +75,7 @@ export async function downloadIncomeExpenditurePdf(data: FinancialArrays, range:
     { label: 'Collection Rate', value: `${s.collectionRate.toFixed(1)}%` },
   ], contentY + 2, pageWidth, 2);
 
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: y + 2,
     head: [['Income', 'Amount']],
     body: heads.map(h => [h.name, rs(h.amount)]),
@@ -84,7 +85,7 @@ export async function downloadIncomeExpenditurePdf(data: FinancialArrays, range:
     margin: { left: 12, right: 12 },
   });
 
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 6,
     head: [['Expenditure', 'Amount']],
     body: [...cats.map(c => [c.name, rs(c.amount)]), ['Salaries & Wages', rs(s.salaryTotal)]],
@@ -96,7 +97,7 @@ export async function downloadIncomeExpenditurePdf(data: FinancialArrays, range:
   });
 
   const net = s.net;
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 6,
     body: [[
       { content: net >= 0 ? 'Surplus carried to Balance' : 'Deficit', styles: { fontStyle: 'bold' } },
@@ -116,7 +117,7 @@ export async function downloadIncomeExpenditurePdf(data: FinancialArrays, range:
 export async function downloadReceiptsPaymentsPdf(data: FinancialArrays, range: DateRange): Promise<void> {
   const s = computeSummary(data, range);
   const { doc, contentY } = await createPdf('Receipts & Payments Account', `Period: ${range.label} (${range.from} to ${range.to})`);
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: contentY + 2,
     head: [['Receipts', 'Amount', 'Payments', 'Amount']],
     body: [
@@ -145,7 +146,7 @@ export async function downloadFeeCollectionPdf(data: FinancialArrays, range: Dat
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const total = rows.reduce((s, p) => s + (p.amount || 0), 0);
   const { doc, contentY } = await createPdf('Fee Collection Register', `Period: ${range.label} (${range.from} to ${range.to})`);
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: contentY + 2,
     head: [['Receipt', 'Date', 'Student', 'Head', 'Mode', 'Amount']],
     body: rows.map(p => [
@@ -169,7 +170,7 @@ export async function downloadExpensePdf(data: FinancialArrays, range: DateRange
   const rows = data.expenses.filter(e => inRange(e.date, range)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const total = rows.reduce((s, e) => s + (e.amount || 0), 0);
   const { doc, contentY } = await createPdf('Expense Statement', `Period: ${range.label} (${range.from} to ${range.to})`);
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: contentY + 2,
     head: [['Date', 'Category', 'Biller', 'Description', 'Status', 'Amount']],
     body: rows.map(e => [e.date, e.category, e.biller || '—', e.description || '—', (e.status || '').toUpperCase(), rs(e.amount || 0)]),
@@ -189,7 +190,7 @@ export async function downloadPayrollPdf(data: FinancialArrays, range: DateRange
   const totalNet = rows.reduce((s, e) => s + (e.netAmount || 0), 0);
   const totalPaid = rows.reduce((s, e) => s + (e.paidAmount || 0), 0);
   const { doc, contentY } = await createPdf('Payroll Register', `Period: ${range.label} (${range.from} to ${range.to})`);
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: contentY + 2,
     head: [['Employee', 'Role', 'Month', 'Net Pay', 'Paid', 'Status']],
     body: rows.map(s => [s.employeeName, s.employeeRole, s.month, rs(s.netAmount || 0), rs(s.paidAmount || 0), (s.status || '').toUpperCase()]),
@@ -212,7 +213,7 @@ export async function downloadOutstandingPdf(data: FinancialArrays, classNameByI
   const rows = outstandingDues(data, classNameById);
   const total = rows.reduce((s, r) => s + r.due, 0);
   const { doc, contentY } = await createPdf('Outstanding Fees (Debtors)', `As on ${new Date().toLocaleDateString('en-IN')}`);
-  (doc as any).autoTable({
+  autoTable(doc, {
     startY: contentY + 2,
     head: [['Student', 'Class', 'Month', 'Due Date', 'Status', 'Outstanding']],
     body: rows.map(r => [r.name, r.className, r.month, r.dueDate || '—', r.overdue ? 'OVERDUE' : r.status.toUpperCase(), rs(r.due)]),
