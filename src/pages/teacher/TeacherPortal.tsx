@@ -13,12 +13,14 @@ import NoticeBoard from '../admin/NoticeBoard';
 import LessonLogs from '../shared/LessonLogs';
 import ProfileSettings from '../shared/ProfileSettings';
 import TeacherLeaves from './TeacherLeaves';
+import ProductivityTracker from './ProductivityTracker';
 
 export default function TeacherPortal({ user }: { user: UserProfile }) {
   return (
     <TeacherShell user={user}>
       <Routes>
         <Route path="/" element={<TeacherDashboard user={user} />} />
+        <Route path="/productivity" element={<ProductivityTracker user={user} />} />
         <Route path="/classes" element={<MyClasses user={user} />} />
         <Route path="/attendance" element={<AttendanceTracking user={user} />} />
         <Route path="/notes" element={<TeacherNotes user={user} />} />

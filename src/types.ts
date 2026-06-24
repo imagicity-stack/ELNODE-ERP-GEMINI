@@ -742,6 +742,78 @@ export interface SubstituteAssignment {
 
 export type ActivitySection = 'Super Admin' | 'Accounts' | 'Parents' | 'Students' | 'Academic' | 'Teachers' | 'Exam' | 'Staff' | 'Principal';
 
+// ─── Teacher Daily Productivity Tracker ───────────────────────────────────────
+// Teachers self-report their day against their allotted periods/schedule; a
+// score (0–100) and qualitative remarks are then generated and saved per day.
+// Both the teacher (insights) and super admin (oversight) view the results.
+
+export type PeriodStatus = 'conducted' | 'partial' | 'missed' | 'substituted' | 'free';
+
+export interface ProductivityPeriodReport {
+  slotId: string;
+  slotLabel?: string;
+  startTime?: string;
+  endTime?: string;
+  classId: string;
+  className?: string;
+  subjectId?: string;
+  subjectName?: string;
+  status: PeriodStatus;
+  topicCovered?: string;
+  homeworkGiven?: boolean;
+  notes?: string;
+}
+
+// Objective, auto-gathered context for the day (not editable by the teacher).
+export interface ProductivityContext {
+  weekday: string;
+  scheduledPeriodCount: number;
+  lessonLogsCount: number;            // diary entries the teacher logged today
+  lessonTopics?: string[];
+  homeworkAssignedCount?: number;
+}
+
+// The generated evaluation. Persisted server-side so it can't be self-edited.
+export interface ProductivityReview {
+  score: number;                      // 0–100
+  grade?: string;                     // e.g. 'Excellent', 'Good', 'Needs Improvement'
+  summary: string;
+  wentWell: string[];
+  improve: string[];
+  concerns: string[];
+  focusTomorrow: string[];
+  generatedAt: string;
+}
+
+export interface TeacherProductivityEntry {
+  id: string;                         // `${date}_${teacherUid}`
+  date: string;                       // YYYY-MM-DD
+  teacherUid: string;                 // auth uid (used by security rules)
+  teacherId: string;                  // teachers/{id}
+  teacherName: string;
+  periods: ProductivityPeriodReport[];
+  reflection: {
+    wins?: string;
+    challenges?: string;
+    tomorrowPlan?: string;
+    extraDuties?: string;
+    energyLevel?: number;             // 1–5 self-rated
+    syllabusOnTrack?: boolean;
+  };
+  context: ProductivityContext;
+  status: 'submitted' | 'reviewed';
+  submittedAt: string;
+  reviewedAt?: string;
+  review?: ProductivityReview;
+}
+
+// Super-admin-configured evaluation instruction for the review generator.
+export interface ProductivityConfig {
+  prompt: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 export interface ActivityLog {
   id: string;
   timestamp: string;

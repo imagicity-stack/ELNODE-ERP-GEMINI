@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import './pdfSetup';
 
 const EMERALD: [number, number, number] = [5, 150, 105];
 const EMERALD_LIGHT: [number, number, number] = [209, 250, 229];

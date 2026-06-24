@@ -585,6 +585,33 @@ service cloud.firestore {
       allow read, write: if isSignedIn() && request.auth.uid == uid;
     }
 
+    // Teacher daily productivity tracker
+    // ---------------------------------------------------------------
+    // The evaluation instruction is admin-only — teachers must NOT be able to
+    // read it (it would reveal how scoring works). The server reads it with a
+    // service account, which bypasses these rules.
+    match /productivityConfig/{id} {
+      allow read: if isAnyAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Daily self-reports + their generated review. A teacher creates their own
+    // entry (without any score/review) and can only read their own; admins read
+    // all. The score/remarks are written by the server with a service account
+    // (which bypasses the `update: false` below), so they cannot be self-edited.
+    match /teacherProductivity/{id} {
+      allow read: if isSignedIn() && (
+        isAnyAdmin() || resource.data.get('teacherUid', '') == request.auth.uid
+      );
+      allow create: if isTeacher()
+                    && request.resource.data.teacherUid == request.auth.uid
+                    && request.resource.data.status == 'submitted'
+                    && !('review' in request.resource.data)
+                    && !('score' in request.resource.data);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     // Safety fallback — deny everything not explicitly matched above
     match /{document=**} {
       allow read, write: if false;

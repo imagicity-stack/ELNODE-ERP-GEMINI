@@ -6,7 +6,7 @@ import { signOut } from 'firebase/auth';
 import {
   Home, GraduationCap, ClipboardCheck, FileText, User, CalendarDays,
   BookOpen, CheckSquare, Clock, Megaphone, Calendar, Bell, LogOut,
-  MoreHorizontal, X,
+  MoreHorizontal, X, Gauge,
 } from 'lucide-react';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserProfile } from '../types';
@@ -22,6 +22,7 @@ const NAV_SECTIONS = [
     heading: 'Overview',
     items: [
       { label: 'Home', icon: Home, path: '' },
+      { label: 'Daily Productivity', icon: Gauge, path: '/productivity' },
     ],
   },
   {

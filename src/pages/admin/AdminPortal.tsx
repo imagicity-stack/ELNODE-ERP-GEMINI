@@ -33,6 +33,7 @@ import PaymentAnalytics from '../accounts/PaymentAnalytics';
 import ProfileSettings from '../shared/ProfileSettings';
 import SchoolSettings from './SchoolSettings';
 import CAManagement from './CAManagement';
+import TeacherProductivity from './TeacherProductivity';
 import WhatsAppNotifications from './WhatsAppNotifications';
 import NotificationManager from './NotificationManager';
 import GrievanceTracker from '../grievance/GrievanceTracker';
@@ -72,6 +73,7 @@ export default function AdminPortal({ user }: { user: UserProfile }) {
         <Route path="/permissions" element={<RolePermissionsManager user={user} />} />
         <Route path="/school-settings" element={<SchoolSettings user={user} />} />
         <Route path="/ca-access" element={<CAManagement user={user} />} />
+        <Route path="/teacher-productivity" element={<TeacherProductivity user={user} />} />
         <Route path="/whatsapp" element={<WhatsAppNotifications user={user} />} />
         <Route path="/diary" element={<LessonLogs user={user} />} />
         <Route path="/activity-logs" element={<ActivityTracker user={user} />} />

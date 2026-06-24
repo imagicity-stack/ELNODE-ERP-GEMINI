@@ -9,7 +9,7 @@ import {
   CreditCard, MessageCircle, Activity, User, LogOut,
   UserCheck, Building2, Award, CalendarDays, CalendarClock, History,
   Receipt, Wallet, TrendingUp, LifeBuoy, PhoneCall, Radio,
-  Banknote, Gavel, Lock, NotebookPen, MoreHorizontal, X, Upload, Calculator,
+  Banknote, Gavel, Lock, NotebookPen, MoreHorizontal, X, Upload, Calculator, Gauge,
 } from 'lucide-react';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserProfile } from '../types';
@@ -92,6 +92,7 @@ const NAV_SECTIONS = [
       { label: 'Fine Settings', icon: Gavel, path: '/fine-settings' },
       { label: 'Permissions', icon: Lock, path: '/permissions' },
       { label: 'CA Portal Access', icon: Calculator, path: '/ca-access' },
+      { label: 'Teacher Productivity', icon: Gauge, path: '/teacher-productivity' },
       { label: 'School Settings', icon: Settings, path: '/school-settings' },
     ],
   },
