@@ -6,11 +6,11 @@ import {
 import {
   Loader2, CheckCircle2, AlertTriangle, Sparkles, RefreshCw, ClipboardList,
   TrendingUp, Flame, BookOpen, ChevronDown, ChevronUp, Target, ThumbsUp, AlertCircle,
-  CalendarDays, ListChecks,
+  CalendarDays, ListChecks, X, Send,
 } from 'lucide-react';
 import {
   UserProfile, TeacherProductivityEntry, ProductivityPeriodReport, PeriodStatus,
-  ProductivityContext, AssessmentEntry,
+  ProductivityContext, AssessmentEntry, ProductivityReview,
 } from '../../types';
 import { useData } from '../../contexts/DataContext';
 import { db } from '../../firebase';
@@ -71,6 +71,11 @@ export default function ProductivityTracker({ user }: { user: UserProfile }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
+  // Submission flow: confirm dialog → result modal (loading → done/error).
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [modalPhase, setModalPhase] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [modalReview, setModalReview] = useState<ProductivityReview | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   // Live: today's entry
   useEffect(() => {
@@ -138,9 +143,7 @@ export default function ProductivityTracker({ user }: { user: UserProfile }) {
     homeworkAssignedCount: periods.filter(p => p.homeworkStatus === 'given').length,
   });
 
-  const handleSubmit = async () => {
-    if (!teacherId) return;
-    setSubmitting(true); setError(null);
+  const assembleSubmission = () => {
     const context = buildContext();
     const assessment = buildAssessment();
     const teacherName = user.name || teacherData?.name || 'Teacher';
@@ -150,18 +153,29 @@ export default function ProductivityTracker({ user }: { user: UserProfile }) {
       periods: periodsToSave, assessment, reflection, context,
       status: 'submitted', submittedAt: new Date().toISOString(),
     };
+    const payload = { date, teacherUid: user.uid, teacherId, teacherName, periods: periodsToSave, assessment, reflection, context };
+    return { entryDoc, payload };
+  };
+
+  // Confirm → save the log → generate the review, all surfaced in the result modal.
+  const runSubmission = async () => {
+    if (!teacherId) return;
+    setModalPhase('loading'); setModalError(null); setModalReview(null);
+    const { entryDoc, payload } = assembleSubmission();
     try {
-      await saveDailyEntry(entryDoc);
-      await requestDailyReview({ date, teacherUid: user.uid, teacherId, teacherName, periods: periodsToSave, assessment, reflection, context });
-      try { logActivity(user, 'Daily Log Submitted', 'Teachers', `${teacherName} submitted their daily productivity log`); } catch { /* non-fatal */ }
-      showToast('Your day has been logged', 'success');
+      try { await saveDailyEntry(entryDoc); } catch { /* may already exist — proceed to review */ }
+      const review = await requestDailyReview(payload);
+      setModalReview(review); setModalPhase('done');
+      try { logActivity(user, 'Daily Log Submitted', 'Teachers', `${entryDoc.teacherName} logged their day — productivity score ${review.score}/100`); } catch { /* non-fatal */ }
     } catch (e: any) {
-      setError(e?.message || 'Could not submit. Please try again.');
-    } finally {
-      setSubmitting(false);
+      setModalError(e?.message || 'Could not generate your review. Please try again.');
+      setModalPhase('error');
     }
   };
 
+  const handleConfirm = () => { setConfirmOpen(false); runSubmission(); };
+
+  // Inline retry — used only if the user closed the modal while the review was pending.
   const handleRetryReview = async () => {
     if (!entry) return;
     setSubmitting(true); setError(null);
@@ -242,7 +256,7 @@ export default function ProductivityTracker({ user }: { user: UserProfile }) {
           periods={periods} updatePeriod={updatePeriod}
           assess={assess} setDim={setDim}
           reflection={reflection} setReflect={setReflect}
-          submitting={submitting} error={error} onSubmit={handleSubmit}
+          submitting={modalPhase === 'loading'} error={error} onSubmit={() => setConfirmOpen(true)}
           lessonCount={lessonCtx.count} markedPeriods={markedPeriods} ratedDims={ratedDims}
         />
       )}
@@ -260,6 +274,20 @@ export default function ProductivityTracker({ user }: { user: UserProfile }) {
             </div>
           ))}
         </div>
+      )}
+      {confirmOpen && (
+        <ConfirmSubmitModal
+          periodsMarked={markedPeriods} periodTotal={periods.length} ratedDims={ratedDims}
+          onCancel={() => setConfirmOpen(false)} onConfirm={handleConfirm}
+        />
+      )}
+      {modalPhase !== 'idle' && (
+        <ResultModal
+          phase={modalPhase} review={modalReview} error={modalError}
+          dateLabel={`${weekday}, ${new Date(`${date}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}`}
+          onClose={() => setModalPhase('idle')}
+          onRetry={runSubmission}
+        />
       )}
     </div>
   );
@@ -491,35 +519,123 @@ function PendingView({ submitting, error, onRetry }: { submitting: boolean; erro
 
 // ─── Review ───────────────────────────────────────────────────────────────────
 
-function ReviewView({ entry, showReport, setShowReport }: { entry: TeacherProductivityEntry; showReport: boolean; setShowReport: (v: boolean) => void }) {
-  const r = entry.review!;
-  const color = scoreColor(r.score);
+// The score hero + remark cards — shared by the inline view and the result modal.
+function ReviewReport({ review }: { review: ProductivityReview }) {
+  const color = scoreColor(review.score);
   return (
-    <div className="stack" style={{ gap: 14 }}>
+    <>
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
-        <ScoreRing score={r.score} color={color} />
+        <ScoreRing score={review.score} color={color} />
         <div style={{ flex: 1, minWidth: 200 }}>
           <div className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Sparkles size={12} style={{ color }} /> Daily Productivity Review
           </div>
-          <div style={{ fontWeight: 800, fontSize: 18, color, marginTop: 2 }}>{r.grade || scoreBand(r.score)}</div>
-          <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 6, lineHeight: 1.5 }}>{r.summary}</p>
+          <div style={{ fontWeight: 800, fontSize: 18, color, marginTop: 2 }}>{review.grade || scoreBand(review.score)}</div>
+          <p style={{ fontSize: 13.5, color: 'var(--ink-2)', marginTop: 6, lineHeight: 1.5 }}>{review.summary}</p>
         </div>
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <RemarkCard icon={ThumbsUp} title="What went well" items={r.wentWell} color="var(--leaf)" />
-        <RemarkCard icon={Target} title="Where to improve" items={r.improve} color="#f59e0b" />
-        {r.concerns?.length > 0 && <RemarkCard icon={AlertCircle} title="Points to address" items={r.concerns} color="var(--coral)" />}
-        <RemarkCard icon={TrendingUp} title="Focus for tomorrow" items={r.focusTomorrow} color="var(--sky)" />
+        <RemarkCard icon={ThumbsUp} title="What went well" items={review.wentWell} color="var(--leaf)" />
+        <RemarkCard icon={Target} title="Where to improve" items={review.improve} color="#f59e0b" />
+        {review.concerns?.length > 0 && <RemarkCard icon={AlertCircle} title="Points to address" items={review.concerns} color="var(--coral)" />}
+        <RemarkCard icon={TrendingUp} title="Focus for tomorrow" items={review.focusTomorrow} color="var(--sky)" />
       </div>
+    </>
+  );
+}
 
+function ReviewView({ entry, showReport, setShowReport }: { entry: TeacherProductivityEntry; showReport: boolean; setShowReport: (v: boolean) => void }) {
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      <ReviewReport review={entry.review!} />
       <div className="card stack" style={{ gap: 10 }}>
         <button onClick={() => setShowReport(!showReport)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: '100%' }}>
           <span className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BookOpen size={12} /> Your submitted log</span>
           {showReport ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
         {showReport && <SubmittedLog entry={entry} />}
+      </div>
+    </div>
+  );
+}
+
+// ─── Submission modals ────────────────────────────────────────────────────────
+
+const OVERLAY: React.CSSProperties = {
+  position: 'fixed', inset: 0, zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  padding: 16, background: 'rgba(14,15,17,0.55)', backdropFilter: 'blur(2px)',
+};
+
+function ConfirmSubmitModal({ periodsMarked, periodTotal, ratedDims, onCancel, onConfirm }: {
+  periodsMarked: number; periodTotal: number; ratedDims: number; onCancel: () => void; onConfirm: () => void;
+}) {
+  return (
+    <div style={OVERLAY} onClick={onCancel}>
+      <div className="eh-app card stack" style={{ width: '100%', maxWidth: 420, gap: 14 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--cream-2)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <Send size={18} style={{ color: 'var(--ink)' }} />
+          </div>
+          <div>
+            <h2 className="display" style={{ fontSize: 18 }}>Submit today's log?</h2>
+            <p className="tiny muted" style={{ marginTop: 4, lineHeight: 1.5 }}>
+              You'll get your productivity review for the day right after. Today's entry can't be edited once submitted.
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <span className="chip" style={{ cursor: 'default', background: 'var(--cream-2)' }}>{periodsMarked}/{periodTotal} periods marked</span>
+          <span className="chip" style={{ cursor: 'default', background: 'var(--cream-2)' }}>{ratedDims}/{ASSESSMENT_DIMENSIONS.length} dimensions rated</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn ghost" style={{ flex: 1 }} onClick={onCancel}>Cancel</button>
+          <button className="btn accent" style={{ flex: 1 }} onClick={onConfirm}>Submit &amp; review</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResultModal({ phase, review, error, dateLabel, onClose, onRetry }: {
+  phase: 'loading' | 'done' | 'error' | 'idle';
+  review: ProductivityReview | null; error: string | null; dateLabel: string;
+  onClose: () => void; onRetry: () => void;
+}) {
+  const canClose = phase !== 'loading';
+  return (
+    <div style={OVERLAY} onClick={() => canClose && onClose()}>
+      <div className="eh-app card" style={{ width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', padding: 18 }} onClick={e => e.stopPropagation()}>
+        {phase === 'loading' && (
+          <div className="stack" style={{ alignItems: 'center', textAlign: 'center', gap: 14, padding: '2.25rem 0.5rem' }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', border: '5px solid var(--line)', borderTopColor: 'var(--ink)' }} className="animate-spin" />
+            <div style={{ fontWeight: 800, fontSize: 17 }}>Tracking your productivity…</div>
+            <div className="tiny muted animate-pulse">Reviewing your periods, lessons and reflection</div>
+          </div>
+        )}
+        {phase === 'error' && (
+          <div className="stack" style={{ alignItems: 'center', textAlign: 'center', gap: 12, padding: '1.75rem 0.5rem' }}>
+            <AlertTriangle size={28} style={{ color: 'var(--coral)' }} />
+            <div style={{ fontWeight: 700 }}>We couldn't finish your review</div>
+            <div className="tiny muted">{error}</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button className="btn ghost" style={{ width: 'auto' }} onClick={onClose}>Close</button>
+              <button className="btn accent" style={{ width: 'auto' }} onClick={onRetry}><RefreshCw size={14} /> Try again</button>
+            </div>
+          </div>
+        )}
+        {phase === 'done' && review && (
+          <div className="stack" style={{ gap: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <div>
+                <div className="eyebrow">{dateLabel}</div>
+                <h2 className="display" style={{ fontSize: 20 }}>Your Daily Review</h2>
+              </div>
+              <button className="icon-btn" onClick={onClose} aria-label="Close"><X size={16} /></button>
+            </div>
+            <ReviewReport review={review} />
+            <button className="btn accent" onClick={onClose}>Close</button>
+          </div>
+        )}
       </div>
     </div>
   );
