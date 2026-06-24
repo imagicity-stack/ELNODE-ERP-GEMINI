@@ -781,7 +781,18 @@ export interface ProductivityContext {
   scheduledPeriodCount: number;
   lessonLogsCount: number;            // diary entries the teacher logged today
   lessonTopics?: string[];
-  homeworkAssignedCount?: number;
+  homeworkAssignedCount?: number;     // periods today the teacher marked homework 'given'
+  // ── Enriched portal signals (so the review is grounded, not just self-report) ──
+  attendanceMarkedToday?: number;     // attendance records for the teacher's classes today
+  presentToday?: number;
+  absentToday?: number;
+  homeworkActive?: number;            // homework assignments on record for this teacher
+  upcomingExams?: number;
+  classAvgScore?: number | null;      // avg exam % across the teacher's classes
+  classCount?: number;
+  studentCount?: number;
+  recentScores?: number[];            // recent productivity scores (trend)
+  priorAverage?: number;              // average of prior reviews
 }
 
 // The generated evaluation. Persisted server-side so it can't be self-edited.

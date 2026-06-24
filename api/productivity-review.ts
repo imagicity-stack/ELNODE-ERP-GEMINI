@@ -194,13 +194,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `  - ${a.label}: ${a.rating}${a.remark ? ` — "${a.remark}"` : ''}`,
     ).join('\n') || '  (not provided)';
 
+    const c = context || {};
+    const objective: string[] = [
+      `- Periods scheduled today: ${c.scheduledPeriodCount ?? (periods || []).length}`,
+      `- Lesson-diary entries logged today: ${c.lessonLogsCount ?? 0}${c.lessonTopics?.length ? ` (topics: ${c.lessonTopics.join('; ')})` : ''}`,
+      `- Homework periods marked 'given': ${c.homeworkAssignedCount ?? 0}`,
+    ];
+    if (c.presentToday != null || c.absentToday != null)
+      objective.push(`- Attendance marked today for their classes: present ${c.presentToday ?? 0} / absent ${c.absentToday ?? 0} (0/0 likely means attendance was not taken)`);
+    if (c.homeworkActive != null) objective.push(`- Active homework assignments on record: ${c.homeworkActive}`);
+    if (c.upcomingExams != null) objective.push(`- Upcoming exams to prepare for: ${c.upcomingExams}`);
+    if (c.classAvgScore != null) objective.push(`- Average exam score across their classes: ${c.classAvgScore}%`);
+    if (c.classCount != null) objective.push(`- Classes taught: ${c.classCount}${c.studentCount != null ? ` · Students: ${c.studentCount}` : ''}`);
+    if (c.recentScores?.length) objective.push(`- Recent productivity scores (older→newer): ${c.recentScores.join(', ')}${c.priorAverage != null ? ` (prior average ${c.priorAverage}/100)` : ''}`);
+
     const userPrompt = `Teacher: ${teacherName || 'Unknown'}
 Date: ${date} (${context?.weekday || ''})
 
-SCHEDULE & OBJECTIVE SIGNALS (system-recorded):
-- Periods scheduled today: ${context?.scheduledPeriodCount ?? (periods || []).length}
-- Lesson-diary entries logged today: ${context?.lessonLogsCount ?? 0}${context?.lessonTopics?.length ? ` (topics: ${context.lessonTopics.join('; ')})` : ''}
-- Homework periods marked 'given': ${context?.homeworkAssignedCount ?? 0}
+OBJECTIVE PORTAL DATA (system-recorded — use this to VERIFY the self-report, not just trust it):
+${objective.join('\n')}
 
 PERIOD-BY-PERIOD SELF REPORT:
 ${periodLines}
@@ -215,7 +227,7 @@ TEACHER'S REFLECTION:
 - Extra duties / contributions: ${reflection?.extraDuties || '(none)'}
 - Self-rated energy (1-5): ${reflection?.energyLevel ?? '(n/a)'}
 
-Weigh the objective signals, the period-by-period delivery, the selected assessment ratings, and the honesty/quality of reflection. Evaluate this teaching day and produce the review.`;
+Cross-check the self-report against the objective portal data above: e.g. if periods were scheduled but few/no diary entries were logged, if attendance wasn't marked, or if the self-ratings look inconsistent with the topics actually covered, weigh that down. If recent productivity scores are present, acknowledge any improvement or decline and tailor the focus areas to the trend. Then evaluate this teaching day fairly and produce the review.`;
 
     step = 'gemini';
     const geminiRes = await fetch(GEMINI_URL, {
