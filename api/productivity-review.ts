@@ -154,9 +154,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
     body = body || {};
 
-    const { date, teacherUid, teacherName, periods, reflection, context } = body as {
+    const { date, teacherUid, teacherName, periods, assessment, reflection, context } = body as {
       date?: string; teacherUid?: string; teacherName?: string;
-      periods?: any[]; reflection?: any; context?: any;
+      periods?: any[]; assessment?: any[]; reflection?: any; context?: any;
     };
     if (!date || !teacherUid) return res.status(400).json({ error: 'Missing date or teacherUid' });
 
@@ -185,9 +185,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const periodLines = (periods || []).map((p: any, i: number) =>
       `  ${i + 1}. ${p.startTime || ''}-${p.endTime || ''} | ${p.className || p.classId || '?'} ${p.subjectName || ''} | status: ${p.status}`
       + `${p.topicCovered ? ` | topic: ${p.topicCovered}` : ''}`
-      + `${p.homeworkGiven ? ' | homework assigned' : ''}`
+      + `${p.engagement ? ` | engagement: ${p.engagement}` : ''}`
+      + `${p.homeworkStatus ? ` | homework: ${p.homeworkStatus}` : (p.homeworkGiven ? ' | homework: given' : '')}`
       + `${p.notes ? ` | note: ${p.notes}` : ''}`,
     ).join('\n') || '  (no periods scheduled)';
+
+    const assessmentLines = (assessment || []).map((a: any) =>
+      `  - ${a.label}: ${a.rating}${a.remark ? ` — "${a.remark}"` : ''}`,
+    ).join('\n') || '  (not provided)';
 
     const userPrompt = `Teacher: ${teacherName || 'Unknown'}
 Date: ${date} (${context?.weekday || ''})
@@ -195,20 +200,22 @@ Date: ${date} (${context?.weekday || ''})
 SCHEDULE & OBJECTIVE SIGNALS (system-recorded):
 - Periods scheduled today: ${context?.scheduledPeriodCount ?? (periods || []).length}
 - Lesson-diary entries logged today: ${context?.lessonLogsCount ?? 0}${context?.lessonTopics?.length ? ` (topics: ${context.lessonTopics.join('; ')})` : ''}
-- Homework items assigned: ${context?.homeworkAssignedCount ?? 0}
+- Homework periods marked 'given': ${context?.homeworkAssignedCount ?? 0}
 
 PERIOD-BY-PERIOD SELF REPORT:
 ${periodLines}
 
+DAY ASSESSMENT (teacher-selected ratings, with their remarks):
+${assessmentLines}
+
 TEACHER'S REFLECTION:
-- Wins / what went well: ${reflection?.wins || '(none)'}
-- Challenges faced: ${reflection?.challenges || '(none)'}
-- Plan for tomorrow: ${reflection?.tomorrowPlan || '(none)'}
+- Highlight of the day: ${reflection?.highlight || '(none)'}
+- What could have been done better: ${reflection?.couldImprove || '(none)'}
+- Plan / priority for tomorrow: ${reflection?.tomorrowPlan || '(none)'}
 - Extra duties / contributions: ${reflection?.extraDuties || '(none)'}
 - Self-rated energy (1-5): ${reflection?.energyLevel ?? '(n/a)'}
-- Syllabus on track: ${reflection?.syllabusOnTrack === false ? 'No' : reflection?.syllabusOnTrack === true ? 'Yes' : '(n/a)'}
 
-Evaluate this teaching day and produce the review.`;
+Weigh the objective signals, the period-by-period delivery, the selected assessment ratings, and the honesty/quality of reflection. Evaluate this teaching day and produce the review.`;
 
     step = 'gemini';
     const geminiRes = await fetch(GEMINI_URL, {

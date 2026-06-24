@@ -12,8 +12,29 @@ import { db } from '../firebase';
 import {
   Timetable, TimetableConfig, TimeSlot,
   ProductivityPeriodReport, ProductivityContext, ProductivityReview,
-  TeacherProductivityEntry, ProductivityConfig,
+  TeacherProductivityEntry, ProductivityConfig, AssessmentEntry,
 } from '../types';
+
+// Option-based day-assessment dimensions. Each is rated by selecting one option;
+// the teacher can add a one-line remark per dimension. Shared by the teacher form
+// and the admin view so labels stay consistent.
+export interface AssessmentDimension {
+  key: string;
+  label: string;
+  hint?: string;
+  options: string[];   // first option = most positive
+}
+
+export const ASSESSMENT_DIMENSIONS: AssessmentDimension[] = [
+  { key: 'preparation', label: 'Lesson preparation', options: ['Fully prepared', 'Mostly prepared', 'Last-minute', 'Unprepared'] },
+  { key: 'syllabus', label: 'Syllabus coverage', options: ['Ahead', 'On track', 'Slightly behind', 'Behind'] },
+  { key: 'engagement', label: 'Class engagement', options: ['Excellent', 'Good', 'Average', 'Low'] },
+  { key: 'discipline', label: 'Classroom management', options: ['Smooth', 'Minor issues', 'Challenging'] },
+  { key: 'doubts', label: 'Student doubts addressed', options: ['All', 'Most', 'Some', 'None'] },
+  { key: 'homework', label: 'Homework & assessment', options: ['Assigned & checked', 'Assigned', 'Reviewed only', 'None today'] },
+  { key: 'punctuality', label: 'Punctuality to class', options: ['Always on time', 'Mostly', 'A few delays'] },
+  { key: 'resources', label: 'Teaching aids / resources used', options: ['Yes', 'Sometimes', 'No'] },
+];
 
 export const PRODUCTIVITY_COLLECTION = 'teacherProductivity';
 const CONFIG_REF = () => doc(db, 'productivityConfig', 'global');
@@ -84,7 +105,6 @@ export function deriveTeacherPeriods(
           subjectName: subjectsMap[p.subjectId] || p.subjectId,
           status: 'conducted',
           topicCovered: '',
-          homeworkGiven: false,
           notes: '',
         });
       });
@@ -104,6 +124,7 @@ export interface ReviewRequest {
   teacherId: string;
   teacherName: string;
   periods: ProductivityPeriodReport[];
+  assessment: AssessmentEntry[];
   reflection: TeacherProductivityEntry['reflection'];
   context: ProductivityContext;
 }
