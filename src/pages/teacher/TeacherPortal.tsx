@@ -4,6 +4,7 @@ import { UserProfile } from '../../types';
 import TeacherDashboard from './TeacherDashboard';
 import MyClasses from './MyClasses';
 import AttendanceTracking from './AttendanceTracking';
+import HomeworkManagement from './HomeworkManagement';
 import ExamManagement from './ExamManagement';
 import TeacherTimetable from './TeacherTimetable';
 import TeacherNotes from './TeacherNotes';
@@ -23,6 +24,7 @@ export default function TeacherPortal({ user }: { user: UserProfile }) {
         <Route path="/productivity" element={<ProductivityTracker user={user} />} />
         <Route path="/classes" element={<MyClasses user={user} />} />
         <Route path="/attendance" element={<AttendanceTracking user={user} />} />
+        <Route path="/homework" element={<HomeworkManagement user={user} />} />
         <Route path="/notes" element={<TeacherNotes user={user} />} />
         <Route path="/exams" element={<ExamManagement user={user} />} />
         <Route path="/exams/:examId/marks" element={<ResultEntry user={user} />} />
