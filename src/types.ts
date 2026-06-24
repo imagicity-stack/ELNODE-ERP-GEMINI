@@ -759,9 +759,20 @@ export interface ProductivityPeriodReport {
   subjectId?: string;
   subjectName?: string;
   status: PeriodStatus;
+  engagement?: 'high' | 'medium' | 'low';
+  homeworkStatus?: 'given' | 'not_needed' | 'pending';
   topicCovered?: string;
-  homeworkGiven?: boolean;
-  notes?: string;
+  homeworkGiven?: boolean;            // legacy/derived convenience flag
+  notes?: string;                     // one-line remark for this period
+}
+
+// A single option-based assessment dimension the teacher rates, with an optional
+// one-line remark (e.g. dimension "Class engagement" → rating "Good" + remark).
+export interface AssessmentEntry {
+  key: string;
+  label: string;
+  rating: string;
+  remark?: string;
 }
 
 // Objective, auto-gathered context for the day (not editable by the teacher).
@@ -792,13 +803,13 @@ export interface TeacherProductivityEntry {
   teacherId: string;                  // teachers/{id}
   teacherName: string;
   periods: ProductivityPeriodReport[];
+  assessment: AssessmentEntry[];      // option-based day assessment dimensions
   reflection: {
-    wins?: string;
-    challenges?: string;
-    tomorrowPlan?: string;
-    extraDuties?: string;
+    highlight?: string;               // one-line: highlight of the day
+    couldImprove?: string;            // one-line: what could have been done better
+    tomorrowPlan?: string;            // one-line: plan/priority for tomorrow
+    extraDuties?: string;             // one-line: extra duties / contributions
     energyLevel?: number;             // 1–5 self-rated
-    syllabusOnTrack?: boolean;
   };
   context: ProductivityContext;
   status: 'submitted' | 'reviewed';

@@ -14,6 +14,7 @@ import {
   getProductivityConfig, saveProductivityConfig, DEFAULT_PRODUCTIVITY_PROMPT,
   scoreColor, scoreBand, todayKey,
 } from '../../services/productivityService';
+import { SubmittedLog } from '../teacher/ProductivityTracker';
 import { cn } from '../../lib/utils';
 
 type Tab = 'reviews' | 'prompt';
@@ -161,17 +162,9 @@ function ReviewsTab() {
                     )}
 
                     {/* Submitted self-report */}
-                    <div className="stack" style={{ gap: 6 }}>
+                    <div className="stack" style={{ gap: 8 }}>
                       <div className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><FileText size={11} /> Submitted log</div>
-                      {r.periods.map((p, i) => (
-                        <div key={i} className="tiny" style={{ display: 'flex', gap: 8 }}>
-                          <span style={{ textTransform: 'capitalize', fontWeight: 600, minWidth: 78, color: 'var(--ink-2)' }}>{p.status}</span>
-                          <span style={{ flex: 1 }}>{p.className} · {p.subjectName}{p.topicCovered ? ` — ${p.topicCovered}` : ''}{p.homeworkGiven ? ' · HW' : ''}</span>
-                        </div>
-                      ))}
-                      {r.reflection?.wins && <div className="tiny"><span className="muted">Wins: </span>{r.reflection.wins}</div>}
-                      {r.reflection?.challenges && <div className="tiny"><span className="muted">Challenges: </span>{r.reflection.challenges}</div>}
-                      {r.reflection?.tomorrowPlan && <div className="tiny"><span className="muted">Tomorrow: </span>{r.reflection.tomorrowPlan}</div>}
+                      <SubmittedLog entry={r} />
                     </div>
                   </div>
                 )}
