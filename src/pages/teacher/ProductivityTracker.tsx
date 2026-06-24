@@ -17,6 +17,7 @@ import { db } from '../../firebase';
 import { Spinner } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
+import { buildTeacherContext } from '../../lib/aiContext';
 import {
   deriveTeacherPeriods, saveDailyEntry, requestDailyReview, productivityDocId,
   todayKey, weekdayName, scoreColor, scoreBand, ASSESSMENT_DIMENSIONS,
@@ -68,8 +69,10 @@ export default function ProductivityTracker({ user }: { user: UserProfile }) {
     highlight: '', couldImprove: '', tomorrowPlan: '', extraDuties: '', energyLevel: 3,
   });
   const [lessonCtx, setLessonCtx] = useState<{ count: number; topics: string[] }>({ count: 0, topics: [] });
+  const [portalCtx, setPortalCtx] = useState<any | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [triedSubmit, setTriedSubmit] = useState(false);
   const [showReport, setShowReport] = useState(false);
   // Submission flow: confirm dialog → result modal (loading → done/error).
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -107,6 +110,17 @@ export default function ProductivityTracker({ user }: { user: UserProfile }) {
     return () => unsub();
   }, [teacherId, date]);
 
+  // Objective portal signals (attendance marked today, homework on record, upcoming
+  // exams, class exam performance) so the review is grounded in real data.
+  useEffect(() => {
+    if (!teacherData?.id) return;
+    let active = true;
+    buildTeacherContext(teacherData.id, teacherData.classes || [])
+      .then((c: any) => { if (active) setPortalCtx(c?.summary || null); })
+      .catch(() => { /* non-fatal */ });
+    return () => { active = false; };
+  }, [teacherData?.id]);
+
   const derivedPeriods = useMemo(
     () => teacherId ? deriveTeacherPeriods(teacherId, timetables, timetableConfig, classesMap, subjectsMap, weekday) : [],
     [teacherId, timetables, timetableConfig, classesMap, subjectsMap, weekday],
@@ -135,13 +149,59 @@ export default function ProductivityTracker({ user }: { user: UserProfile }) {
       .filter(d => assess[d.key]?.rating)
       .map(d => ({ key: d.key, label: d.label, rating: assess[d.key].rating!, remark: (assess[d.key].remark || '').trim() }));
 
-  const buildContext = (): ProductivityContext => ({
-    weekday,
-    scheduledPeriodCount: periods.length,
-    lessonLogsCount: lessonCtx.count,
-    lessonTopics: lessonCtx.topics,
-    homeworkAssignedCount: periods.filter(p => p.homeworkStatus === 'given').length,
-  });
+  const buildContext = (): ProductivityContext => {
+    const reviewedAsc = history.filter(h => h.review).sort((a, b) => a.date.localeCompare(b.date));
+    const recentScores = reviewedAsc.slice(-5).map(h => h.review!.score);
+    const prior = reviewedAsc.length ? Math.round(reviewedAsc.reduce((s, h) => s + (h.review!.score || 0), 0) / reviewedAsc.length) : undefined;
+    const raw: any = {
+      weekday,
+      scheduledPeriodCount: periods.length,
+      lessonLogsCount: lessonCtx.count,
+      lessonTopics: lessonCtx.topics,
+      homeworkAssignedCount: periods.filter(p => p.homeworkStatus === 'given').length,
+      presentToday: portalCtx?.presentToday,
+      absentToday: portalCtx?.absentToday,
+      attendanceMarkedToday: portalCtx ? (portalCtx.presentToday + portalCtx.absentToday) : undefined,
+      homeworkActive: portalCtx?.homeworkAssigned,
+      upcomingExams: portalCtx?.upcomingExams,
+      classAvgScore: portalCtx?.avgExamScore ?? undefined,
+      classCount: portalCtx?.classCount,
+      studentCount: portalCtx?.studentCount,
+      recentScores: recentScores.length ? recentScores : undefined,
+      priorAverage: prior,
+    };
+    Object.keys(raw).forEach(k => raw[k] === undefined && delete raw[k]);
+    return raw as ProductivityContext;
+  };
+
+  // All option dimensions must be rated AND justified; conducted periods need a
+  // topic + engagement; missed/partial periods need a reason.
+  const validate = (): string | null => {
+    for (const d of ASSESSMENT_DIMENSIONS) {
+      const a = assess[d.key];
+      if (!a?.rating) return `Please rate “${d.label}”.`;
+      if (!a.remark || !a.remark.trim()) return `Add a remark for “${d.label}” — say why you chose “${a.rating}”.`;
+    }
+    for (const p of periods) {
+      const conducted = p.status === 'conducted' || p.status === 'partial' || p.status === 'substituted';
+      if (conducted) {
+        if (!p.topicCovered || !p.topicCovered.trim()) return `Add the topic covered for ${p.className} · ${p.subjectName}.`;
+        if (!p.engagement) return `Select engagement for ${p.className} · ${p.subjectName}.`;
+      }
+      if ((p.status === 'missed' || p.status === 'partial') && (!p.notes || !p.notes.trim())) {
+        return `Add a reason for ${p.className} · ${p.subjectName} (why ${p.status}).`;
+      }
+    }
+    return null;
+  };
+
+  const onSubmitClick = () => {
+    setTriedSubmit(true);
+    const err = validate();
+    if (err) { setError(err); showToast(err, 'error'); return; }
+    setError(null);
+    setConfirmOpen(true);
+  };
 
   const assembleSubmission = () => {
     const context = buildContext();
@@ -256,7 +316,7 @@ export default function ProductivityTracker({ user }: { user: UserProfile }) {
           periods={periods} updatePeriod={updatePeriod}
           assess={assess} setDim={setDim}
           reflection={reflection} setReflect={setReflect}
-          submitting={modalPhase === 'loading'} error={error} onSubmit={() => setConfirmOpen(true)}
+          submitting={modalPhase === 'loading'} error={error} onSubmit={onSubmitClick} triedSubmit={triedSubmit}
           lessonCount={lessonCtx.count} markedPeriods={markedPeriods} ratedDims={ratedDims}
         />
       )}
@@ -328,17 +388,22 @@ function OptionChips({ options, value, onChange, colorFor }: {
   );
 }
 
-function LineInput({ value, onChange, placeholder }: { value?: string; onChange: (v: string) => void; placeholder: string }) {
+function LineInput({ value, onChange, placeholder, invalid }: { value?: string; onChange: (v: string) => void; placeholder: string; invalid?: boolean }) {
   return (
     <input
       value={value || ''} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      style={{ width: '100%', padding: '9px 11px', borderRadius: 9, border: '1px solid var(--line)', background: 'var(--cream)', fontSize: 13, color: 'var(--ink)', fontFamily: 'inherit' }}
+      style={{ width: '100%', padding: '9px 11px', borderRadius: 9, border: `1px solid ${invalid ? 'var(--coral)' : 'var(--line)'}`, background: invalid ? 'rgba(239,68,68,0.05)' : 'var(--cream)', fontSize: 13, color: 'var(--ink)', fontFamily: 'inherit' }}
     />
   );
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <div className="tiny" style={{ fontWeight: 700, color: 'var(--ink-2)' }}>{children}</div>;
+function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
+  return <div className="tiny" style={{ fontWeight: 700, color: 'var(--ink-2)' }}>{children}{required && <span style={{ color: 'var(--coral)' }}> *</span>}</div>;
+}
+
+function MissingHint({ show, text }: { show: boolean; text: string }) {
+  if (!show) return null;
+  return <span className="tiny" style={{ color: 'var(--coral)' }}>{text}</span>;
 }
 
 function SectionTitle({ icon: Icon, title, meta }: { icon: any; title: string; meta?: string }) {
@@ -357,14 +422,14 @@ function SectionTitle({ icon: Icon, title, meta }: { icon: any; title: string; m
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
 
-function FormView({ periods, updatePeriod, assess, setDim, reflection, setReflect, submitting, error, onSubmit, lessonCount, markedPeriods, ratedDims }: {
+function FormView({ periods, updatePeriod, assess, setDim, reflection, setReflect, submitting, error, onSubmit, triedSubmit, lessonCount, markedPeriods, ratedDims }: {
   periods: ProductivityPeriodReport[];
   updatePeriod: (i: number, patch: Partial<ProductivityPeriodReport>) => void;
   assess: AssessState;
   setDim: (key: string, patch: { rating?: string; remark?: string }) => void;
   reflection: TeacherProductivityEntry['reflection'];
   setReflect: (k: keyof TeacherProductivityEntry['reflection'], v: any) => void;
-  submitting: boolean; error: string | null; onSubmit: () => void;
+  submitting: boolean; error: string | null; onSubmit: () => void; triedSubmit: boolean;
   lessonCount: number; markedPeriods: number; ratedDims: number;
 }) {
   return (
@@ -377,7 +442,7 @@ function FormView({ periods, updatePeriod, assess, setDim, reflection, setReflec
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 15 }}>Log your teaching day</div>
           <div className="tiny" style={{ opacity: 0.75 }}>
-            {periods.length} period{periods.length === 1 ? '' : 's'} · {lessonCount} diary entr{lessonCount === 1 ? 'y' : 'ies'} · select options &amp; add a quick remark
+            {periods.length} period{periods.length === 1 ? '' : 's'} · {lessonCount} diary entr{lessonCount === 1 ? 'y' : 'ies'} · pick an option and say why for each item
           </div>
         </div>
       </div>
@@ -390,6 +455,10 @@ function FormView({ periods, updatePeriod, assess, setDim, reflection, setReflec
         )}
         {periods.map((p, i) => {
           const conducted = p.status === 'conducted' || p.status === 'partial' || p.status === 'substituted';
+          const needReason = p.status === 'missed' || p.status === 'partial';
+          const topicBad = triedSubmit && conducted && !(p.topicCovered || '').trim();
+          const engBad = triedSubmit && conducted && !p.engagement;
+          const reasonBad = triedSubmit && needReason && !(p.notes || '').trim();
           return (
             <div key={`${p.slotId}-${p.classId}-${i}`} className="stack" style={{ gap: 10, padding: 12, borderRadius: 12, border: '1px solid var(--line)', background: 'var(--cream)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
@@ -410,13 +479,14 @@ function FormView({ periods, updatePeriod, assess, setDim, reflection, setReflec
               {conducted && (
                 <>
                   <div className="stack" style={{ gap: 5 }}>
-                    <FieldLabel>Topic / chapter covered</FieldLabel>
-                    <LineInput value={p.topicCovered} onChange={v => updatePeriod(i, { topicCovered: v })} placeholder="e.g. Photosynthesis — light reaction" />
+                    <FieldLabel required>Topic / chapter covered</FieldLabel>
+                    <LineInput value={p.topicCovered} onChange={v => updatePeriod(i, { topicCovered: v })} placeholder="e.g. Photosynthesis — light reaction" invalid={topicBad} />
                   </div>
                   <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                     <div className="stack" style={{ gap: 5 }}>
-                      <FieldLabel>Engagement</FieldLabel>
+                      <FieldLabel required>Engagement</FieldLabel>
                       <OptionChips options={ENGAGEMENT_OPTIONS} value={p.engagement} onChange={v => updatePeriod(i, { engagement: v as any })} />
+                      <MissingHint show={engBad} text="Select one" />
                     </div>
                     <div className="stack" style={{ gap: 5 }}>
                       <FieldLabel>Homework</FieldLabel>
@@ -427,8 +497,9 @@ function FormView({ periods, updatePeriod, assess, setDim, reflection, setReflec
               )}
 
               <div className="stack" style={{ gap: 5 }}>
-                <FieldLabel>Remark <span className="muted" style={{ fontWeight: 400 }}>(optional)</span></FieldLabel>
-                <LineInput value={p.notes} onChange={v => updatePeriod(i, { notes: v })} placeholder={p.status === 'missed' ? 'Reason for missing this period' : 'Anything notable about this period'} />
+                <FieldLabel required={needReason}>{needReason ? 'Reason' : 'Remark'} {!needReason && <span className="muted" style={{ fontWeight: 400 }}>(optional)</span>}</FieldLabel>
+                <LineInput value={p.notes} onChange={v => updatePeriod(i, { notes: v })} invalid={reasonBad}
+                  placeholder={needReason ? `Why was this period ${p.status}? (required)` : 'Anything notable about this period'} />
               </div>
             </div>
           );
@@ -438,18 +509,27 @@ function FormView({ periods, updatePeriod, assess, setDim, reflection, setReflec
       {/* Day assessment */}
       <div className="card stack" style={{ gap: 14 }}>
         <SectionTitle icon={ListChecks} title="Day assessment" meta={`${ratedDims}/${ASSESSMENT_DIMENSIONS.length} rated`} />
-        {ASSESSMENT_DIMENSIONS.map(dim => (
-          <div key={dim.key} className="stack" style={{ gap: 7, paddingBottom: 12, borderBottom: '1px solid var(--line-2)' }}>
-            <FieldLabel>{dim.label}</FieldLabel>
-            <OptionChips
-              options={dim.options.map(o => ({ value: o, label: o }))}
-              value={assess[dim.key]?.rating}
-              onChange={v => setDim(dim.key, { rating: v })}
-              colorFor={(_v, i) => sentimentColor(i, dim.options.length)}
-            />
-            <LineInput value={assess[dim.key]?.remark} onChange={v => setDim(dim.key, { remark: v })} placeholder="Add a remark (optional)" />
-          </div>
-        ))}
+        <div className="tiny muted" style={{ marginTop: -6 }}>Rate each item and add a one-line reason for your choice — all are required.</div>
+        {ASSESSMENT_DIMENSIONS.map(dim => {
+          const rating = assess[dim.key]?.rating;
+          const remark = assess[dim.key]?.remark;
+          const ratingBad = triedSubmit && !rating;
+          const remarkBad = triedSubmit && !(remark || '').trim();
+          return (
+            <div key={dim.key} className="stack" style={{ gap: 7, paddingBottom: 12, borderBottom: '1px solid var(--line-2)' }}>
+              <FieldLabel required>{dim.label}</FieldLabel>
+              <OptionChips
+                options={dim.options.map(o => ({ value: o, label: o }))}
+                value={rating}
+                onChange={v => setDim(dim.key, { rating: v })}
+                colorFor={(_v, i) => sentimentColor(i, dim.options.length)}
+              />
+              <MissingHint show={ratingBad} text="Please select an option" />
+              <LineInput value={remark} onChange={v => setDim(dim.key, { remark: v })} invalid={remarkBad}
+                placeholder={rating ? `Why “${rating}”? (required)` : 'Reason for your rating (required)'} />
+            </div>
+          );
+        })}
       </div>
 
       {/* Reflection */}
