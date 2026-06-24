@@ -206,7 +206,7 @@ export default function CAManagement({ user }: { user: UserProfile }) {
               <CredRow label="Temporary Password" value={DEFAULT_CA_PASSWORD} mono />
             </div>
             <p className="tiny muted">
-              The CA signs in from the <b>Staff / CA</b> tab and will be required to change this password on first login.
+              The CA signs in from the <b>Staff Portal</b> tab on the login screen and will be required to change this password on first login.
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
               <Button variant="secondary" onClick={() => copyCreds(created.email)} className="flex-1">

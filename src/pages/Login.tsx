@@ -13,7 +13,7 @@ import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { auth } from '../firebase';
 import { SCHOOL_NAME, APP_NAME, SCHOOL_DOMAIN, LEGACY_DOMAIN, APP_LOGO } from '../constants';
-import { Users, UserCog, Lock, Mail, Hash, Eye, EyeOff, GraduationCap, ShieldCheck, BarChart3, Bell, Calculator } from 'lucide-react';
+import { Users, UserCog, Lock, Mail, Hash, Eye, EyeOff, GraduationCap, ShieldCheck, BarChart3, Bell } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -25,7 +25,7 @@ const features = [
 ];
 
 export default function Login() {
-  const [activeTab, setActiveTab] = useState<'student-parent' | 'staff' | 'ca'>('student-parent');
+  const [activeTab, setActiveTab] = useState<'student-parent' | 'staff'>('student-parent');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -132,12 +132,6 @@ export default function Login() {
     }
   };
 
-  const tabMeta = {
-    'student-parent': { title: 'Student & Parent Portal', sub: 'Access the academic journey of your child' },
-    'staff': { title: 'Staff Portal', sub: 'Sign in to your staff workspace' },
-    'ca': { title: 'Chartered Accountant Portal', sub: 'Read-only access to the school’s books & statements' },
-  }[activeTab];
-
   return (
     <div className="min-h-screen flex bg-slate-50 font-sans">
       {/* Left Panel */}
@@ -234,28 +228,27 @@ export default function Login() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-slate-900">{tabMeta.title}</h2>
-            <p className="text-slate-500 mt-1 text-sm">{tabMeta.sub}</p>
+            <h2 className="text-2xl font-bold text-slate-900">Student & Parent Portal</h2>
+            <p className="text-slate-500 mt-1 text-sm">Access the academic journey of your child</p>
           </div>
 
           {/* Tabs */}
           <div className="flex bg-slate-100 rounded-xl p-1 mb-6">
             {[
               { key: 'student-parent', label: 'Student / Parent', icon: Users },
-              { key: 'staff', label: 'Staff', icon: UserCog },
-              { key: 'ca', label: 'CA', icon: Calculator },
+              { key: 'staff', label: 'Staff Portal', icon: UserCog },
             ].map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 onClick={() => { setActiveTab(key as any); setError(''); setIdentifier(''); }}
                 className={cn(
-                  'flex-1 min-w-0 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-200 whitespace-nowrap',
+                  'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200',
                   activeTab === key
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-700'
                 )}
               >
-                <Icon className="w-4 h-4 shrink-0" />
+                <Icon className="w-4 h-4" />
                 {label}
               </button>
             ))}
