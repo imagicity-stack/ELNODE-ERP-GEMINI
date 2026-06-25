@@ -345,6 +345,14 @@ service cloud.firestore {
     match /feeStructures/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
     match /feeHeads/{id} { allow read: if isSignedIn(); allow write: if isAnyAdmin(); }
 
+    // Transfer Certificates — issued and managed by admins. Holds an immutable
+    // snapshot of the student record at time of issue; the student is archived
+    // out of the active directory (students.tcIssued / status: 'transferred').
+    match /transferCertificates/{id} {
+      allow read: if isAnyAdmin();
+      allow create, update, delete: if isAnyAdmin();
+    }
+
     // Chartered Accountant roster — provisioned & managed by admins in
     // Super Admin → CA Portal Access. A CA may read only their own metadata doc;
     // the role profile and Firestore reads everywhere else come from users/{uid}.

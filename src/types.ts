@@ -150,6 +150,57 @@ export interface Student {
   gender: 'male' | 'female' | 'other' | '';
   feeStatus: 'paid' | 'pending' | 'overdue';
   photoURL?: string;
+  // Transfer Certificate — once issued the student is archived out of the active
+  // directory but their record (and TC) are retained.
+  status?: 'active' | 'transferred';
+  tcIssued?: boolean;
+  tcNumber?: string;
+  tcIssuedAt?: string;
+}
+
+// ─── Transfer Certificate ─────────────────────────────────────────────────────
+export type TCReason =
+  | "Parent's request" | 'Relocation' | 'Completed schooling' | 'Financial reasons'
+  | 'Transfer to another school' | 'Medical reasons' | 'Disciplinary' | 'Other';
+
+export interface TransferCertificate {
+  id: string;             // == studentId (one active TC per student)
+  tcNumber: string;
+  studentId: string;
+  // ── Immutable student snapshot at time of issue ──
+  studentName: string;
+  admissionNumber: string;
+  schoolNumber: string;
+  classId: string;
+  className: string;
+  section: string;
+  gender?: string;
+  dateOfBirth?: string;
+  fatherName?: string;
+  motherName?: string;
+  parentPhone?: string;
+  // ── TC particulars ──
+  admissionDate?: string;
+  lastAttendanceDate: string;
+  issueDate: string;
+  reason: TCReason;
+  reasonDetail?: string;
+  classLastStudied: string;
+  qualifiedForPromotion: boolean;
+  promotedTo?: string;
+  conduct: string;        // e.g. Excellent / Good / Satisfactory
+  duesCleared: boolean;
+  academicYear: string;
+  workingDays?: number;
+  daysAttended?: number;
+  remarks?: string;
+  // ── Audit ──
+  issuedBy: string;
+  issuedByName: string;
+  createdAt: string;
+  cancelled?: boolean;
+  cancelledAt?: string;
+  cancelledBy?: string;
 }
 
 export interface Teacher {
