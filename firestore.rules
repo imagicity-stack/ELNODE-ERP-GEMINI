@@ -118,9 +118,12 @@ service cloud.firestore {
       );
       allow list: if isAnyAdmin() || isTeacher() || isAccountant() || isGrievanceOfficer() || isCA();
       allow create: if isSignedIn() && (isAnyAdmin() || isAccountant());
+      // A linked parent/student may only self-update safe fields. `feeStatus` is
+      // intentionally NOT here — fee status is derived from real payments and set
+      // by staff / the server, never self-set.
       allow update: if isSignedIn() && (isAnyAdmin() || isAccountant() || isGrievanceOfficer() || (
         isLinkedToStudent(studentId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feeStatus', 'updatedAt', 'fcmTokens', 'lastLogin', 'photoURL'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt', 'fcmTokens', 'lastLogin', 'photoURL'])
       ));
       allow delete: if isAdmin();
     }
@@ -221,18 +224,11 @@ service cloud.firestore {
         isLinkedToStudent(resource.data.get('studentId', ''))
       );
       allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isCA() || isParent() || isStudent();
-      allow create: if isSignedIn() && (isAdmin() || isAccountant() || (
-        isLinkedToStudent(request.resource.data.studentId) &&
-        request.resource.data.method == 'online' &&
-        request.resource.data.amount is number &&
-        request.resource.data.amount > 0 &&
-        request.resource.data.amount <= 1000000 &&
-        request.resource.data.studentId is string &&
-        request.resource.data.feeRequestId is string &&
-        // Verify feeRequest belongs to this student
-        exists(/databases/$(database)/documents/feeRequests/$(request.resource.data.feeRequestId)) &&
-        get(/databases/$(database)/documents/feeRequests/$(request.resource.data.feeRequestId)).data.studentId == request.resource.data.studentId
-      ));
+      // Payments are recorded ONLY by staff or by the server-side Razorpay
+      // verifier/webhook (a service account, which bypasses these rules after it
+      // has confirmed the captured amount with Razorpay). Parents/students must
+      // NEVER write a payment directly — that would let them clear fees for free.
+      allow create: if isSignedIn() && (isAdmin() || isAccountant());
       allow delete: if isAdmin();
     }
 
@@ -245,9 +241,12 @@ service cloud.firestore {
       );
       allow list: if isAdmin() || isAccountant() || isGrievanceOfficer() || isCA() || isParent() || isStudent();
       allow create: if isAdmin() || isAccountant();
+      // Parents/students may ONLY raise a partial-payment request flag. They must
+      // NOT touch paidAmount / status — those reflect actual money received and are
+      // written exclusively by staff or the server-side payment recorder.
       allow update: if isAdmin() || isAccountant() || (
         isLinkedToStudent(resource.data.studentId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paidAmount', 'status', 'updatedAt'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['partialPaymentRequest', 'updatedAt'])
       );
       allow delete: if isAdmin() || isAccountant();
     }

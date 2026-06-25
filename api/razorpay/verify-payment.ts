@@ -268,6 +268,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (expectedSig !== razorpay_signature)
       return res.status(400).json({ error: 'Payment signature verification failed' });
 
+    // ── Bind the claimed amount + invoice to what Razorpay actually captured.
+    // The HMAC only proves the (order, payment) pair is authentic — it does NOT
+    // prove the amount or which fee request. Without this check a genuine ₹1
+    // payment could be submitted claiming ₹50,000 against any invoice. We refetch
+    // the server-created order and require captured amount + notes to match.
+    step = 'verify-order-amount';
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    if (!keyId) return res.status(500).json({ error: 'Payment gateway not configured' });
+    const expectedPaise = Math.round(amount * 100);
+    const orderResp = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(razorpay_order_id)}`, {
+      headers: { Authorization: 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64') },
+    });
+    if (!orderResp.ok)
+      return res.status(502).json({ error: 'Could not verify the payment with the gateway' });
+    const order: any = await orderResp.json();
+    if (Number(order.amount_paid || 0) < Number(order.amount || 0))
+      return res.status(400).json({ error: 'Payment has not been captured' });
+    if (Number(order.amount) !== expectedPaise)
+      return res.status(400).json({ error: 'Payment amount does not match the order' });
+    if ((order.notes?.feeRequestId || '') !== feeRequestId || (order.notes?.studentId || '') !== studentId)
+      return res.status(403).json({ error: 'Payment order does not match this fee request' });
+
     step = 'parse-service-account';
     const sa: ServiceAccount = JSON.parse(saRaw);
     const dbId = process.env.FIREBASE_DATABASE_ID
