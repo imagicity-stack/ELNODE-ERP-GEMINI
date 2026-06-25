@@ -138,6 +138,37 @@ class FSClient {
       throw err;
     }
   }
+
+  /** Atomically increment an integer field and return the NEW value. */
+  async incrementField(col: string, id: string, field: string, by: number): Promise<number> {
+    const r = await fetch(`${this.base}:commit`, {
+      method: 'POST', headers: this.h(),
+      body: JSON.stringify({ writes: [{
+        transform: { document: this.docName(col, id), fieldTransforms: [{ fieldPath: field, increment: { integerValue: String(by) } }] },
+      }] }),
+    });
+    if (!r.ok) throw new Error(`Firestore increment ${col}/${id} → ${r.status}: ${await r.text()}`);
+    const j: any = await r.json();
+    const tr = j.writeResults?.[0]?.transformResults?.[0];
+    return Number(tr?.integerValue ?? tr?.doubleValue ?? 0);
+  }
+}
+
+/** Allocate the next sequential receipt number atomically (see verify-payment.ts). */
+async function allocateReceipt(
+  db: FSClient, counterId: string, prefix: string, existed: boolean, startFrom: number,
+): Promise<string> {
+  if (!existed) {
+    const base = startFrom > 1 ? startFrom - 1 : 0;
+    try {
+      await db.commit([{
+        update: { name: db.docName('counters', counterId), fields: toFSFields({ lastNumber: base }) },
+        currentDocument: { exists: false },
+      }]);
+    } catch { /* already created by a concurrent request */ }
+  }
+  const n = await db.incrementField('counters', counterId, 'lastNumber', 1);
+  return `${prefix}${String(n).padStart(4, '0')}`;
 }
 
 // ── Fine calculation (mirrors verify-payment.ts) ────────────────────────────
@@ -230,9 +261,7 @@ async function handleAdvanceWebhook(opts: {
   const advCfg = (settingsData.receiptConfig as any)?.advanceReceipt || {};
   const advPrefix = advCfg.prefix || 'EHSADV';
   const advStartFrom = Number(advCfg.startFrom ?? 1);
-  const lastAdvNum = advCounterDoc.exists ? Number(advCounterDoc.data.lastNumber || 0) : 0;
-  const nextAdvNum = Math.max(lastAdvNum + 1, advStartFrom);
-  const receiptNumber = `${advPrefix}${String(nextAdvNum).padStart(4, '0')}`;
+  const receiptNumber = await allocateReceipt(db, 'advance', advPrefix, advCounterDoc.exists, advStartFrom);
   const now = new Date().toISOString();
 
   step('adv-commit');
@@ -261,12 +290,6 @@ async function handleAdvanceWebhook(opts: {
         }),
       },
       currentDocument: { exists: false },
-    },
-    {
-      update: {
-        name: db.docName('counters', 'advance'),
-        fields: toFSFields({ lastNumber: nextAdvNum }),
-      },
     },
     // Mark the intent as consumed so it can be cleaned up
     {
@@ -411,9 +434,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const feeReceiptCfg = (settingsData.receiptConfig as any)?.feeReceipt || {};
     const receiptPrefix = feeReceiptCfg.prefix || settingsData.receiptPrefix || 'EHSREC';
     const receiptStartFrom = Number(feeReceiptCfg.startFrom ?? settingsData.receiptStartNumber ?? 1);
-    const lastFeeNum = feeCounterDoc.exists ? Number(feeCounterDoc.data.lastNumber || 0) : 0;
-    const nextFeeNum = Math.max(lastFeeNum + 1, receiptStartFrom);
-    const receiptNumber = `${receiptPrefix}${String(nextFeeNum).padStart(4, '0')}`;
+    const receiptNumber = await allocateReceipt(db, 'fee', receiptPrefix, feeCounterDoc.exists, receiptStartFrom);
 
     step = 'atomic-commit';
     const writes: any[] = [
@@ -444,12 +465,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         update: {
           name: db.docName('feeRequests', feeRequestId),
           fields: toFSFields({ paidAmount: newPaidAmount, status: newStatus, fineAmount, updatedAt: now }),
-        },
-      },
-      {
-        update: {
-          name: db.docName('counters', 'fee'),
-          fields: toFSFields({ lastNumber: nextFeeNum }),
         },
       },
     ];

@@ -7,6 +7,7 @@ import { calculateFine } from '../../services/fineService';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
+import { authHeaders } from '../../lib/authedFetch';
 import { fmtDate } from '../../lib/utils';
 
 interface StudentFeesProps {
@@ -82,7 +83,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
     try {
       const orderRes = await fetch('/api/razorpay/create-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({ amountInPaise, feeRequestId: request.id, studentId: request.studentId }),
       });
       if (!orderRes.ok) throw new Error('Order creation failed');
@@ -105,7 +106,7 @@ export default function StudentFees({ user }: StudentFeesProps) {
         try {
           const verifyRes = await fetch('/api/razorpay/verify-payment', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: await authHeaders(),
             body: JSON.stringify({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: rzpPaymentId,

@@ -176,6 +176,45 @@ class FSClient {
       });
     } catch { /* swallow */ }
   }
+
+  /** Atomically increment an integer field and return the NEW value (server-side
+   *  transform — safe under concurrency, no read-modify-write race). */
+  async incrementField(col: string, id: string, field: string, by: number): Promise<number> {
+    const r = await fetch(`${this.base}:commit`, {
+      method: 'POST', headers: this.h(),
+      body: JSON.stringify({ writes: [{
+        transform: { document: this.docName(col, id), fieldTransforms: [{ fieldPath: field, increment: { integerValue: String(by) } }] },
+      }] }),
+    });
+    if (!r.ok) throw new Error(`Firestore increment ${col}/${id} → ${r.status}: ${await r.text()}`);
+    const j: any = await r.json();
+    const tr = j.writeResults?.[0]?.transformResults?.[0];
+    return Number(tr?.integerValue ?? tr?.doubleValue ?? 0);
+  }
+}
+
+/**
+ * Allocate the next sequential receipt number atomically. Concurrent payments
+ * each get a distinct number (the increment is a server-side transform), so two
+ * simultaneous payments can never share a receipt number. `startFrom` only
+ * applies before the very first receipt of that type exists.
+ */
+async function allocateReceipt(
+  db: FSClient, counterId: string, prefix: string, existed: boolean, startFrom: number,
+): Promise<string> {
+  if (!existed) {
+    // Seed the counter so the first receipt lands on startFrom; race-safe — if a
+    // concurrent request already created it, ignore and just increment below.
+    const base = startFrom > 1 ? startFrom - 1 : 0;
+    try {
+      await db.commit([{
+        update: { name: db.docName('counters', counterId), fields: toFSFields({ lastNumber: base }) },
+        currentDocument: { exists: false },
+      }]);
+    } catch { /* already created by a concurrent request */ }
+  }
+  const n = await db.incrementField('counters', counterId, 'lastNumber', 1);
+  return `${prefix}${String(n).padStart(4, '0')}`;
 }
 
 // ── Fine calculation (server-side, mirrors src/services/fineService.ts) ───────
@@ -230,6 +269,43 @@ async function sendWhatsApp(phone: string, template: string, params: string[]): 
   );
 }
 
+// ── Firebase ID token verification (no firebase-admin) ───────────────────────
+let _fbCerts: { certs: Record<string, string>; exp: number } | null = null;
+async function getFirebaseCerts(): Promise<Record<string, string>> {
+  const now = Date.now();
+  if (_fbCerts && _fbCerts.exp > now) return _fbCerts.certs;
+  const r = await fetch('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com');
+  if (!r.ok) throw new Error('Could not fetch Firebase certs');
+  const certs = await r.json() as Record<string, string>;
+  const m = (r.headers.get('cache-control') || '').match(/max-age=(\d+)/);
+  const ttl = Math.min(m ? Number(m[1]) * 1000 : 3_600_000, 3_600_000);
+  _fbCerts = { certs, exp: now + ttl };
+  return certs;
+}
+function b64urlToBuf(s: string): Buffer { return Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64'); }
+async function verifyFirebaseToken(authHeader: string | undefined, projectId: string): Promise<{ uid: string; email?: string } | null> {
+  if (!authHeader || !authHeader.startsWith('Bearer ') || !projectId) return null;
+  const parts = authHeader.slice(7).trim().split('.');
+  if (parts.length !== 3) return null;
+  let header: any, payload: any;
+  try { header = JSON.parse(b64urlToBuf(parts[0]).toString('utf8')); payload = JSON.parse(b64urlToBuf(parts[1]).toString('utf8')); }
+  catch { return null; }
+  if (header.alg !== 'RS256' || !header.kid) return null;
+  let cert: string | undefined;
+  try { cert = (await getFirebaseCerts())[header.kid]; } catch { return null; }
+  if (!cert) return null;
+  let pubKey: any;
+  try { pubKey = new crypto.X509Certificate(cert).publicKey; } catch { return null; }
+  if (!crypto.verify('RSA-SHA256', Buffer.from(`${parts[0]}.${parts[1]}`), pubKey, b64urlToBuf(parts[2]))) return null;
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.aud !== projectId) return null;
+  if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
+  if (typeof payload.exp !== 'number' || payload.exp < now) return null;
+  if (typeof payload.iat !== 'number' || payload.iat > now + 300) return null;
+  const uid = payload.user_id || payload.sub;
+  return uid ? { uid, email: payload.email } : null;
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Wrap everything — including body parse — in one try/catch so any crash
@@ -259,6 +335,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!saRaw) return res.status(500).json({ error: 'Firebase not configured' });
+
+    // Authenticate the caller (signed-in parent/student) via their Firebase ID token.
+    step = 'authenticate';
+    let authProjectId = '';
+    try { authProjectId = JSON.parse(saRaw).project_id; } catch { /* handled below */ }
+    const caller = await verifyFirebaseToken(req.headers.authorization, authProjectId);
+    if (!caller) return res.status(401).json({ error: 'Authentication required' });
 
     // Verify Razorpay HMAC
     step = 'verify-hmac';
@@ -352,14 +435,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const newStatus = newPaidAmount + 0.001 >= totalRequired ? 'paid' : 'partially_paid';
     const now = new Date().toISOString();
 
-    // ── Build receipt number from configured prefix + sequential counter
+    // ── Receipt number — allocated atomically (see allocateReceipt) so two
+    // concurrent payments can never be assigned the same number.
     const settingsData = settingsDoc.exists ? settingsDoc.data : {};
     const feeReceiptCfg = (settingsData.receiptConfig as any)?.feeReceipt || {};
     const receiptPrefix = feeReceiptCfg.prefix || settingsData.receiptPrefix || 'EHSREC';
     const receiptStartFrom = Number(feeReceiptCfg.startFrom ?? settingsData.receiptStartNumber ?? 1);
-    const lastFeeNum = feeCounterDoc.exists ? Number(feeCounterDoc.data.lastNumber || 0) : 0;
-    const nextFeeNum = Math.max(lastFeeNum + 1, receiptStartFrom);
-    const receiptNumber = `${receiptPrefix}${String(nextFeeNum).padStart(4, '0')}`;
+    step = 'allocate-receipt';
+    const receiptNumber = await allocateReceipt(db, 'fee', receiptPrefix, feeCounterDoc.exists, receiptStartFrom);
 
     // ── Atomic multi-write commit
     step = 'atomic-commit';
@@ -403,14 +486,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
       });
     }
-
-    // Increment fee receipt counter alongside the payment commit
-    writes.push({
-      update: {
-        name: db.docName('counters', 'fee'),
-        fields: toFSFields({ lastNumber: nextFeeNum }),
-      },
-    });
 
     try {
       await db.commit(writes);
