@@ -206,6 +206,21 @@ async function handleAdvanceWebhook(opts: {
     return { status: 200, body: { ok: true, note: 'empty monthlyBreakdown in intent' } };
   }
 
+  // The intent (monthlyBreakdown / totalAmount) is client-written. Bind it to the
+  // amount Razorpay actually captured for this payment (passed in from the signed
+  // webhook payload). If they disagree, do NOT record a fabricated advance —
+  // acknowledge so Razorpay stops retrying and leave it for manual reconciliation.
+  const breakdownSum = monthlyBreakdown.reduce(
+    (s, e) => s + (e.heads || []).reduce((a, h) => a + (h.amount || 0), 0), 0);
+  if (Math.round(breakdownSum * 100) !== Math.round(totalAmount * 100)) {
+    console.error(`[webhook] advance ${razorpay_payment_id}: breakdown sum (${breakdownSum}) != totalAmount (${totalAmount}), skipping`);
+    return { status: 200, body: { ok: true, note: 'breakdown mismatch' } };
+  }
+  if (Math.round(amount * 100) !== Math.round(totalAmount * 100)) {
+    console.error(`[webhook] advance ${razorpay_payment_id}: captured (${amount}) != intent total (${totalAmount}), skipping`);
+    return { status: 200, body: { ok: true, note: 'amount mismatch' } };
+  }
+
   step('adv-load-counter');
   const [settingsDoc, advCounterDoc] = await Promise.all([
     db.getDoc('settings', 'global'),

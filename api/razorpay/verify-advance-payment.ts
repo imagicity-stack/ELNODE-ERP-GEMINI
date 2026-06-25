@@ -213,6 +213,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Total amount does not match monthlyBreakdown sum' });
   }
 
+  // Bind the recorded advance to what Razorpay actually captured. The HMAC proves
+  // the (order, payment) pair is authentic but not the amount; totalAmount and the
+  // monthly breakdown are client-written. Refetch the server-created order and
+  // require captured amount + studentId to match, so a ₹1 payment can't be turned
+  // into a large advance credit.
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  if (!keyId) return res.status(500).json({ error: 'Payment gateway not configured' });
+  const expectedPaise = Math.round(totalAmount * 100);
+  const orderResp = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(razorpay_order_id)}`, {
+    headers: { Authorization: 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64') },
+  });
+  if (!orderResp.ok) return res.status(502).json({ error: 'Could not verify the payment with the gateway' });
+  const order: any = await orderResp.json();
+  if (Number(order.amount_paid || 0) < Number(order.amount || 0))
+    return res.status(400).json({ error: 'Payment has not been captured' });
+  if (Number(order.amount) !== expectedPaise)
+    return res.status(400).json({ error: 'Payment amount does not match the order' });
+  if ((order.notes?.studentId || '') !== studentId)
+    return res.status(403).json({ error: 'Payment order does not match this student' });
+
   let step = 'parse-service-account';
   try {
     const sa: ServiceAccount = JSON.parse(saRaw);
