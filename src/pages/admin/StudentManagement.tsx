@@ -52,6 +52,7 @@ import {
 import { useToast } from '../../components/Toast';
 import { StaggeredList } from '../../components/animations';
 import StudentProfileView from './StudentProfileView';
+import TCIssueModal from './TCIssueModal';
 
 export default function StudentManagement({ user }: { user: UserProfile }) {
   const [students, setStudents] = useState<Student[]>([]);
@@ -80,6 +81,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
   const [showFilters, setShowFilters] = useState(false);
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const [profileStudent, setProfileStudent] = useState<Student | null>(null);
+  const [tcStudent, setTcStudent] = useState<Student | null>(null);
 
   // ─── Export modal state ─────────────────────────────────────────────────────
   const ALL_EXPORT_COLUMNS = [
@@ -1028,6 +1030,7 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
     state === 'any' || (state === 'yes' && hasValue) || (state === 'no' && !hasValue);
 
   const filteredStudents = students.filter(s => {
+    if (s.tcIssued) return false; // TC-issued students are archived out of the active directory
     const q = searchTerm.toLowerCase();
     const matchesSearch = !q ||
       s.name.toLowerCase().includes(q) ||
@@ -1369,6 +1372,9 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
                               </button>
                               {!readOnly && (
                                 <>
+                                  <button className="icon-btn" title="Issue Transfer Certificate" onClick={() => setTcStudent(student)}>
+                                    <FileText size={14} />
+                                  </button>
                                   <button className="icon-btn" title="Edit" onClick={() => handleEdit(student)}>
                                     <Edit2 size={14} />
                                   </button>
@@ -1428,11 +1434,18 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
         subtitle={isEditMode ? 'Update student information' : 'Fill in all details to register a new student'}
         size="xl"
         footer={
-          <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={() => { setIsModalOpen(false); setIsEditMode(false); setEditingStudent(null); }}>Cancel</Button>
-            <Button form="student-form" loading={loading} icon={isEditMode ? Edit2 : UserPlus}>
-              {isEditMode ? 'Update Student' : 'Register Student'}
-            </Button>
+          <div className="flex items-center justify-between gap-3">
+            {isEditMode && editingStudent && !readOnly ? (
+              <Button variant="ghost" icon={FileText} onClick={() => { const s = editingStudent; setIsModalOpen(false); setIsEditMode(false); setEditingStudent(null); setTcStudent(s); }}>
+                Issue TC
+              </Button>
+            ) : <span />}
+            <div className="flex items-center gap-3">
+              <Button variant="secondary" onClick={() => { setIsModalOpen(false); setIsEditMode(false); setEditingStudent(null); }}>Cancel</Button>
+              <Button form="student-form" loading={loading} icon={isEditMode ? Edit2 : UserPlus}>
+                {isEditMode ? 'Update Student' : 'Register Student'}
+              </Button>
+            </div>
           </div>
         }
       >
@@ -1929,6 +1942,16 @@ export default function StudentManagement({ user }: { user: UserProfile }) {
           student={profileStudent}
           user={user}
           onClose={() => setProfileStudent(null)}
+        />
+      )}
+
+      {tcStudent && (
+        <TCIssueModal
+          student={tcStudent}
+          className={getClassName(tcStudent.classId)}
+          user={user}
+          onClose={() => setTcStudent(null)}
+          onIssued={(studentId) => setStudents(prev => prev.map(s => s.id === studentId ? { ...s, tcIssued: true, status: 'transferred' as const } : s))}
         />
       )}
     </>

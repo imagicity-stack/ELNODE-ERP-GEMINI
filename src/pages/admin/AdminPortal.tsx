@@ -34,6 +34,7 @@ import ProfileSettings from '../shared/ProfileSettings';
 import SchoolSettings from './SchoolSettings';
 import CAManagement from './CAManagement';
 import TeacherProductivity from './TeacherProductivity';
+import TransferCertificates from './TransferCertificates';
 import WhatsAppNotifications from './WhatsAppNotifications';
 import NotificationManager from './NotificationManager';
 import GrievanceTracker from '../grievance/GrievanceTracker';
@@ -47,6 +48,7 @@ export default function AdminPortal({ user }: { user: UserProfile }) {
       <Routes>
         <Route path="/" element={<AdminDashboard user={user} />} />
         <Route path="/students" element={<StudentManagement user={user} />} />
+        <Route path="/transfer-certificates" element={<TransferCertificates user={user} />} />
         <Route path="/teachers" element={<TeacherManagement user={user} />} />
         <Route path="/classes" element={<ClassManagement user={user} />} />
         <Route path="/subjects" element={<SubjectManagement user={user} />} />

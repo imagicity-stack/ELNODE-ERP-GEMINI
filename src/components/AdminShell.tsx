@@ -9,7 +9,7 @@ import {
   CreditCard, MessageCircle, Activity, User, LogOut,
   UserCheck, Building2, Award, CalendarDays, CalendarClock, History,
   Receipt, Wallet, TrendingUp, LifeBuoy, PhoneCall, Radio,
-  Banknote, Gavel, Lock, NotebookPen, MoreHorizontal, X, Upload, Calculator, Gauge,
+  Banknote, Gavel, Lock, NotebookPen, MoreHorizontal, X, Upload, Calculator, Gauge, FileCheck,
 } from 'lucide-react';
 import { APP_NAME, SCHOOL_NAME, APP_LOGO } from '../constants';
 import { UserProfile } from '../types';
@@ -34,6 +34,7 @@ const NAV_SECTIONS = [
       { label: 'Staff', icon: UserCheck, path: '/staff' },
       { label: 'Houses', icon: Building2, path: '/houses' },
       { label: 'Admissions', icon: ClipboardCheck, path: '/admissions' },
+      { label: 'Transfer Certificates', icon: FileCheck, path: '/transfer-certificates' },
     ],
   },
   {
