@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { syncStudentContactFromProfile } from '../../lib/profileSync';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { db, storage, auth } from '../../firebase';
@@ -387,6 +388,8 @@ export default function ExtendedProfile({ user, student }: ExtendedProfileProps)
         updatedByName: user.name,
       };
       await setDoc(doc(db, 'studentProfiles', student.id), data, { merge: true });
+      // Keep the canonical student record (used for fee WhatsApp, receipts, contact) in sync.
+      await syncStudentContactFromProfile(student, data);
       setProfile(data);
       setSuccess(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
