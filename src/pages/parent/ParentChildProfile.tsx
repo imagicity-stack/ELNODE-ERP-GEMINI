@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { syncStudentContactFromProfile } from '../../lib/profileSync';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
 import { UserProfile, Student, ExtendedStudentProfile } from '../../types';
@@ -264,6 +265,8 @@ export default function ParentChildProfile({ user, selectedStudent }: Props) {
         updatedByName: user.name,
       } as ExtendedStudentProfile;
       await setDoc(doc(db, 'studentProfiles', selectedStudent.id), updatedProfile, { merge: true });
+      // Keep the canonical student record (fee WhatsApp, receipts, contact) in sync.
+      await syncStudentContactFromProfile(selectedStudent, updatedProfile);
       setProfile(updatedProfile);
       setEditSection(null);
       setSaveSuccess(true);

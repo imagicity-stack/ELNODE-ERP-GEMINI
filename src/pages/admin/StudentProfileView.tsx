@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { syncStudentContactFromProfile } from '../../lib/profileSync';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
 import { UserProfile, Student, ExtendedStudentProfile } from '../../types';
@@ -284,6 +285,8 @@ export default function StudentProfileView({ student, user, onClose }: StudentPr
         updatedByName: user.name,
       };
       await setDoc(doc(db, 'studentProfiles', student.id), data, { merge: true });
+      // Keep the canonical student record (fee WhatsApp, receipts, contact) in sync.
+      await syncStudentContactFromProfile(student, data);
       setProfile(data);
       setEditedProfile(data);
       setEditMode(false);

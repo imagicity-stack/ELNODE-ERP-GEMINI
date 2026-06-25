@@ -118,12 +118,13 @@ service cloud.firestore {
       );
       allow list: if isAnyAdmin() || isTeacher() || isAccountant() || isGrievanceOfficer() || isCA();
       allow create: if isSignedIn() && (isAnyAdmin() || isAccountant());
-      // A linked parent/student may only self-update safe fields. `feeStatus` is
-      // intentionally NOT here — fee status is derived from real payments and set
-      // by staff / the server, never self-set.
+      // A linked parent/student may only self-update safe fields: their own
+      // contact details (parentDetails, synced from the extended profile), push
+      // tokens, photo. `feeStatus` is intentionally NOT here — fee status is
+      // derived from real payments and set by staff / the server, never self-set.
       allow update: if isSignedIn() && (isAnyAdmin() || isAccountant() || isGrievanceOfficer() || (
         isLinkedToStudent(studentId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt', 'fcmTokens', 'lastLogin', 'photoURL'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['parentDetails', 'updatedAt', 'fcmTokens', 'lastLogin', 'photoURL'])
       ));
       allow delete: if isAdmin();
     }

@@ -2,6 +2,7 @@ import { UserProfile, Student, FeeRequest, FeePayment, FineConfig, AdvancePaymen
 import { CreditCard, IndianRupee, Receipt, AlertCircle, CheckCircle2, Clock, Download, Wallet, Scale, ShieldOff, CalendarDays, MessageSquare } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { collection, onSnapshot, getDocs, query, where, doc, orderBy, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { authHeaders } from '../../lib/authedFetch';
 import { calculateFine, getEffectiveTotal } from '../../services/fineService';
 import { getAdvancePaymentsForStudent } from '../../services/advancePaymentService';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
@@ -194,7 +195,7 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
     try {
       const orderRes = await fetch('/api/razorpay/create-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({ amountInPaise, feeRequestId: request.id, studentId: request.studentId }),
       });
       if (!orderRes.ok) throw new Error('Order creation failed');
@@ -217,7 +218,7 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
         try {
           const verifyRes = await fetch('/api/razorpay/verify-payment', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: await authHeaders(),
             body: JSON.stringify({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: rzpPaymentId,
@@ -323,7 +324,7 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
     try {
       const orderRes = await fetch('/api/razorpay/create-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({
           amountInPaise,
           kind: 'advance',
@@ -364,7 +365,7 @@ export default function ParentFees({ user, selectedStudent }: ParentFeesProps) {
           try {
             const verifyRes = await fetch('/api/razorpay/verify-advance-payment', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: await authHeaders(),
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
