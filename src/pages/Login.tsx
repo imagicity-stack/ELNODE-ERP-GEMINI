@@ -41,23 +41,44 @@ export default function Login() {
       await setPersistence(auth, keepSignedIn ? browserLocalPersistence : browserSessionPersistence);
       const cleanId = identifier.trim().toLowerCase();
       if (activeTab === 'student-parent') {
-        const primaryEmail = `${cleanId}@${SCHOOL_DOMAIN}`;
-        try {
-          await signInWithEmailAndPassword(auth, primaryEmail, password);
-        } catch (primaryErr: any) {
-          // If user not found on new domain, try legacy domain
-          if (primaryErr.code === 'auth/invalid-credential' || primaryErr.code === 'auth/user-not-found') {
-            const legacyEmail = `${cleanId}@${LEGACY_DOMAIN}`;
-            try {
-              await signInWithEmailAndPassword(auth, legacyEmail, password);
-            } catch (legacyErr: any) {
-              // If still failed, throw the original error or a combined one
-              throw primaryErr;
+        // Login authenticates against the Firebase Auth email, which is derived
+        // from the school number at the time the account was created. A batch of
+        // accounts were imported with a trailing ".0" (a spreadsheet/numeric
+        // artifact) baked into that email, e.g. "1234567.0@ehs.elnode.in".
+        // Renaming the school number in the admin UI updates Firestore only — it
+        // does NOT rename the Auth account — so those users could no longer log
+        // in with their normal number. To stay resilient we try the entered id
+        // both as-is and with the ".0" toggled (added if missing, stripped if
+        // present), across the current and legacy domains. This covers clean
+        // accounts, ".0" accounts, and parent ids (p<number>) alike.
+        const localParts = [cleanId];
+        const toggled = cleanId.endsWith('.0') ? cleanId.slice(0, -2) : `${cleanId}.0`;
+        if (toggled && toggled !== cleanId) localParts.push(toggled);
+
+        const candidates: string[] = [];
+        for (const domain of [SCHOOL_DOMAIN, LEGACY_DOMAIN]) {
+          for (const local of localParts) candidates.push(`${local}@${domain}`);
+        }
+
+        let signedIn = false;
+        let lastErr: any = null;
+        for (const email of candidates) {
+          try {
+            await signInWithEmailAndPassword(auth, email, password);
+            signedIn = true;
+            break;
+          } catch (attemptErr: any) {
+            lastErr = attemptErr;
+            // Only fall through to the next candidate when this specific
+            // email/password pair simply didn't match. Any other failure
+            // (rate-limit, network, disabled account, etc.) surfaces at once.
+            if (attemptErr.code === 'auth/invalid-credential' || attemptErr.code === 'auth/user-not-found') {
+              continue;
             }
-          } else {
-            throw primaryErr;
+            throw attemptErr;
           }
         }
+        if (!signedIn) throw lastErr;
       } else {
         await signInWithEmailAndPassword(auth, cleanId, password);
       }
