@@ -7,3 +7,7 @@ coverage/
 .env*
 !.env.example
 .claude/
+
+# Local-only service-account keys and migration audit output (contain PII)
+service-account*.json
+dotzero-normalization-report.json

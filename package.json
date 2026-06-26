@@ -10,7 +10,10 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "cap:sync": "npm run build && npx cap sync",
-    "cap:open": "npx cap open android"
+    "cap:open": "npx cap open android",
+    "deploy:rules": "node scripts/deploy-rules.mjs",
+    "fix:dotzero": "node scripts/normalize-dotzero.mjs",
+    "fix:dotzero:apply": "node scripts/normalize-dotzero.mjs --apply"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.0.0",
