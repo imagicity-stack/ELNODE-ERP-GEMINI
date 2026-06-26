@@ -237,9 +237,20 @@ export function computePlan(authUsers, usersDocs, studentDocs, { domains = DOMAI
   const limitedRewrites = Number.isFinite(limit) ? rewrites.slice(0, limit) : rewrites;
   const intendedRewriteByLocal = new Map(limitedRewrites.map((r) => [r.localId, r.to.toLowerCase()]));
 
+  // Conflict accounts (a ".0" account whose clean twin already exists) are
+  // genuine duplicates that need a human decision. We leave them ENTIRELY
+  // untouched — not their Auth, not their users.email, not their schoolNumber,
+  // and not the duplicate student record that shares their number — so the
+  // admin can resolve them by hand. Touching them would desync users.email
+  // from the still-".0" Auth email and create a colliding clean schoolNumber.
+  const conflictLocalIds = new Set(conflicts.map((c) => c.localId));
+  const conflictBases = new Set(); // base school numbers (digits, no "p"/".0")
+  for (const c of conflicts) { const m = c.to.match(/^p?(\d+)@/); if (m) conflictBases.add(m[1]); }
+
   // users/{uid}: email kept in lockstep with Auth + schoolNumber ".0" strip.
   const userUpdates = []; // { id, fields, mask, detail, emailFromRewrite }
   for (const ud of usersDocs) {
+    if (conflictLocalIds.has(ud.id)) continue; // duplicate — leave for manual review
     const fields = {}; const mask = []; const detail = []; let emailFromRewrite = false;
 
     // email: target = clean form of the rewritten Auth email (case a), or the
@@ -265,15 +276,18 @@ export function computePlan(authUsers, usersDocs, studentDocs, { domains = DOMAI
   // students/{id}: schoolNumber + admissionNumber ".0" strip.
   const studentUpdates = []; // { id, fields, mask, detail }
   for (const sd of studentDocs) {
-    const fields = {}; const mask = []; const detail = [];
+    const fields = {}; const mask = []; const detail = []; let base = null;
     for (const f of ['schoolNumber', 'admissionNumber']) {
       if (typeof sd.data[f] === 'string' && DOTZERO_NUM_RE.test(sd.data[f])) {
         const clean = sd.data[f].replace(/\.0$/, '');
+        base = base || clean;
         fields[f] = { stringValue: clean }; mask.push(f);
         detail.push(`${f} ${sd.data[f]} → ${clean}`);
       }
     }
-    if (mask.length) studentUpdates.push({ id: sd.id, fields, mask, detail });
+    if (!mask.length) continue;
+    if (base && conflictBases.has(base)) continue; // duplicate of a conflict — leave for manual review
+    studentUpdates.push({ id: sd.id, fields, mask, detail });
   }
 
   return { rewrites, limitedRewrites, conflicts, userUpdates, studentUpdates, intendedRewriteByLocal };
