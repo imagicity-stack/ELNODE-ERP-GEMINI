@@ -20,6 +20,7 @@ import { useData } from '../../contexts/DataContext';
 import { Spinner } from '../../components/ui';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { buildTeacherContext } from '../../lib/aiContext';
+import { nameFrom } from '../../lib/displayNames';
 
 interface TeacherDashboardProps {
   user: UserProfile;
@@ -246,7 +247,7 @@ export default function TeacherDashboard({ user }: TeacherDashboardProps) {
                         {hw.content}
                       </p>
                       <p className="muted" style={{ fontSize: '0.7rem', marginTop: '0.125rem' }}>
-                        {hw.classId} · {hw.subjectId}
+                        {nameFrom(classes, hw.classId)} · {nameFrom(subjects, hw.subjectId)}
                       </p>
                     </div>
                     <p className="muted mono tiny" style={{ marginLeft: '0.75rem', flexShrink: 0 }}>

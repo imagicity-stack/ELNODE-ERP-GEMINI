@@ -19,6 +19,8 @@ import { db, handleFirestoreError, OperationType } from '../../firebase';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { buildParentContext } from '../../lib/aiContext';
 import { fmtDate } from '../../lib/utils';
+import { useData } from '../../contexts/DataContext';
+import { nameFrom } from '../../lib/displayNames';
 
 interface ParentDashboardProps {
   user: UserProfile;
@@ -35,6 +37,7 @@ const QUICK_ACTIONS = [
 ];
 
 export default function ParentDashboard({ user, selectedStudent }: ParentDashboardProps) {
+  const { subjectsMap } = useData();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [feeRequests, setFeeRequests] = useState<FeeRequest[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -207,7 +210,7 @@ export default function ParentDashboard({ user, selectedStudent }: ParentDashboa
             {homework.slice(0, 2).map(hw => (
               <div key={hw.id} className="card" style={{ padding: '12px 16px' }}>
                 <div className="flex items-center justify-between">
-                  <span className="eyebrow" style={{ color: 'var(--accent)' }}>{hw.subjectId}</span>
+                  <span className="eyebrow" style={{ color: 'var(--accent)' }}>{nameFrom(subjectsMap, hw.subjectId)}</span>
                   <span className="tiny muted">{fmtDate(hw.dueDate)}</span>
                 </div>
                 <p style={{ fontSize: 13, fontWeight: 600, marginTop: 4, color: 'var(--ink)' }}>

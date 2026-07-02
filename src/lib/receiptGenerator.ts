@@ -6,6 +6,7 @@ import { FeePayment, FeeRequest, Student } from '../types';
 import { getSchoolSettings } from '../services/settingsService';
 import { fmtMonthYear } from './utils';
 import { savePdf } from './download';
+import { maskDocId } from './displayNames';
 
 const NAVY: [number, number, number] = [26, 45, 80];
 const GOLD: [number, number, number] = [180, 145, 45];
@@ -64,11 +65,14 @@ async function fetchLogo(): Promise<string | null> {
 }
 
 async function fetchClassName(classId: string): Promise<string> {
+  if (!classId) return '-';
   try {
     const snap = await getDoc(doc(db, 'classes', classId));
-    if (snap.exists()) return (snap.data().name as string) || classId;
+    if (snap.exists()) return (snap.data().name as string) || maskDocId(classId, '-');
   } catch { /* fallback */ }
-  return classId;
+  // Legacy records that stored the class name directly pass through; raw
+  // document ids are never printed on a receipt.
+  return maskDocId(classId, '-');
 }
 
 async function fetchHouseName(houseId?: string): Promise<string> {

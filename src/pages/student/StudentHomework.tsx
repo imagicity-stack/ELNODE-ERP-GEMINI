@@ -8,12 +8,15 @@ import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import { Button, Modal, FormField, Textarea } from '../../components/ui';
+import { useData } from '../../contexts/DataContext';
+import { nameFrom } from '../../lib/displayNames';
 
 interface StudentHomeworkProps {
   user: UserProfile;
 }
 
 export default function StudentHomework({ user }: StudentHomeworkProps) {
+  const { subjectsMap } = useData();
   const [homework, setHomework] = useState<Homework[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -119,7 +122,7 @@ export default function StudentHomework({ user }: StudentHomeworkProps) {
                 {overdue && (
                   <span style={{ position: 'absolute', top: 12, right: 12, background: 'var(--coral)', color: '#fff', borderRadius: 999, padding: '2px 8px', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>DUE</span>
                 )}
-                <div className="eyebrow">{hw.subjectId} · Due {fmtDate(hw.dueDate)}</div>
+                <div className="eyebrow">{nameFrom(subjectsMap, hw.subjectId)} · Due {fmtDate(hw.dueDate)}</div>
                 <div style={{ fontFamily: 'var(--display)', fontWeight: 700, fontSize: 17, marginTop: 6, letterSpacing: '-0.01em', textDecoration: submitted ? 'line-through' : 'none', textDecorationColor: 'var(--ink-3)' }}>
                   {hw.content}
                 </div>

@@ -151,7 +151,7 @@ export async function downloadFeeCollectionPdf(data: FinancialArrays, range: Dat
     head: [['Receipt', 'Date', 'Student', 'Head', 'Mode', 'Amount']],
     body: rows.map(p => [
       p.receiptNumber || '—', p.date,
-      data.studentsMap[p.studentId]?.name || p.studentId,
+      data.studentsMap[p.studentId]?.name || 'Unknown',
       p.feeHead || '—',
       (p.method || '').replace(/_/g, ' ').toUpperCase(),
       rs(p.amount || 0),

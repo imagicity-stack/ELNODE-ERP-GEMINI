@@ -26,6 +26,7 @@ import { useToast } from '../../components/Toast';
 import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { fmtDate } from '../../lib/utils';
 import { saveText, openExternalUrl } from '../../lib/download';
+import { maskDocId } from '../../lib/displayNames';
 import Papa from 'papaparse';
 import {
   Card,
@@ -400,7 +401,7 @@ export default function PaymentHistory({ user }: { user: UserProfile }) {
                 {filteredPayments.map((p) => {
                   const student = globalStudents.find(s => s.id === p.studentId);
                   const req = feeRequests.find(r => r.id === p.feeRequestId);
-                  const className = student ? (classes.find(c => c.id === student.classId)?.name || student.classId) : 'N/A';
+                  const className = student ? (classes.find(c => c.id === student.classId)?.name || maskDocId(student.classId, 'N/A')) : 'N/A';
                   const grossTotal = req?.heads.reduce((s, h) => s + (h.amount || 0), 0) ?? null;
                   const discountTotal = req?.heads.reduce((s, h) => s + (h.discount || 0), 0) ?? 0;
                   const discountedHeads = req?.heads.filter(h => (h.discount || 0) > 0) ?? [];

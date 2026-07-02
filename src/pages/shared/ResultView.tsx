@@ -7,6 +7,7 @@ import { Download, FileText } from 'lucide-react';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { savePdf } from '../../lib/download';
 import { Spinner } from '../../components/ui';
+import { maskDocId } from '../../lib/displayNames';
 
 interface ResultViewProps {
   student: Student;
@@ -212,7 +213,7 @@ export default function ResultView({ student }: ResultViewProps) {
                             : '–';
                           return (
                             <tr key={res.subjectId} style={{ borderBottom: '1px solid var(--line)' }}>
-                              <td style={{ padding: '0.45rem 0.5rem', fontWeight: 500 }}>{subject?.name || res.subjectId}</td>
+                              <td style={{ padding: '0.45rem 0.5rem', fontWeight: 500 }}>{subject?.name || maskDocId(res.subjectId, 'Unknown')}</td>
                               <td style={{ textAlign: 'center', padding: '0.45rem 0.5rem' }} className="t-num">
                                 {isAbsent ? <span className="muted">Absent</span> : isExempt ? <span className="muted">Exempt</span> : `${res.marksObtained} / ${res.maxMarks}`}
                               </td>

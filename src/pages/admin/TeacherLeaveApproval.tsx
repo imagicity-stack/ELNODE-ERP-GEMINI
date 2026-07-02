@@ -36,6 +36,8 @@ import { useToast } from '../../components/Toast';
 import { format, addDays, parseISO, startOfMonth, endOfMonth, isSunday } from 'date-fns';
 import { logActivity } from '../../services/activityService';
 import { fmtDate } from '../../lib/utils';
+import { useData } from '../../contexts/DataContext';
+import { nameFrom } from '../../lib/displayNames';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,6 +86,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
   const { showToast } = useToast();
+  const { classesMap } = useData();
 
   const [leaves, setLeaves] = useState<TeacherLeaveRequest[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -500,7 +503,7 @@ export default function TeacherLeaveApproval({ user }: { user: UserProfile }) {
                               <span className="font-bold text-slate-800">{row.slotLabel}</span>
                               <span className="text-slate-400 ml-1">({row.slotStartTime})</span>
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap text-slate-600 font-bold">{row.classId}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-slate-600 font-bold">{nameFrom(classesMap, row.classId)}</td>
                             <td className="px-3 py-2 min-w-[180px]">
                               <select
                                 value={row.substituteTeacherId}

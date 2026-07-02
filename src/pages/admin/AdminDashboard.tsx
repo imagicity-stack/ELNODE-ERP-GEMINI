@@ -37,6 +37,8 @@ import { Link } from 'react-router-dom';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { createPdf, addFooter, drawInfoBox, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { savePdf } from '../../lib/download';
+import { useData } from '../../contexts/DataContext';
+import { nameFrom } from '../../lib/displayNames';
 
 const GENDER_COLORS = ['#6366f1', '#ec4899'];
 
@@ -45,6 +47,7 @@ interface AdminDashboardProps {
 }
 
 export default function AdminDashboard({ user }: AdminDashboardProps) {
+  const { classesMap } = useData();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [recentAdmissions, setRecentAdmissions] = useState<any[]>([]);
   const [counts, setCounts] = useState({ students: 0, teachers: 0, classes: 0, feeCollection: 0 });
@@ -198,7 +201,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
       const admissionRows = recentAdmissions.map((s: any) => [
         s.name || '-',
-        s.classId || '-',
+        nameFrom(classesMap, s.classId, '-'),
         s.section || '-',
         s.admissionNumber || '-',
         s.feeStatus?.toUpperCase() || '-',
@@ -306,7 +309,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontWeight: 600, fontSize: 14, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</p>
-                <p className="muted tiny" style={{ margin: 0 }}>{s.admissionNumber || '—'} · {s.classId}{s.section ? ` ${s.section}` : ''}</p>
+                <p className="muted tiny" style={{ margin: 0 }}>{s.admissionNumber || '—'} · {nameFrom(classesMap, s.classId)}{s.section ? ` ${s.section}` : ''}</p>
               </div>
             </div>
           )) : (

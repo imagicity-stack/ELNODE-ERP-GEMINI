@@ -118,7 +118,7 @@ export default function AccountsDashboard({ user }: AccountsDashboardProps) {
       return [
         p.receiptNumber || '-',
         p.date,
-        student?.name || p.studentId,
+        student?.name || 'Unknown',
         `₹${(p.amount || 0).toLocaleString('en-IN')}`,
         (p.method || '').replace('_', ' ').toUpperCase(),
       ];

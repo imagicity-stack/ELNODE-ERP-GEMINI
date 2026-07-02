@@ -6,6 +6,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { db, storage, handleFirestoreError, OperationType } from '../../firebase';
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
+import { maskDocId } from '../../lib/displayNames';
 import {
   Spinner,
   Modal,
@@ -132,7 +133,7 @@ export default function TeacherNotes({ user }: TeacherNotesProps) {
 
       await addDoc(collection(db, 'studyMaterials'), materialData);
 
-      const className = classes.find(c => c.id === formData.classId)?.name || formData.classId;
+      const className = classes.find(c => c.id === formData.classId)?.name || maskDocId(formData.classId);
       logActivity(
         user,
         'Study Material Uploaded',
@@ -302,7 +303,7 @@ export default function TeacherNotes({ user }: TeacherNotesProps) {
                       {item.title}
                     </p>
                     <p className="muted" style={{ fontSize: '0.75rem', marginTop: '0.125rem' }}>
-                      Class {item.classId} · {subjects.find(s => s.id === item.subjectId)?.name || item.subjectId}
+                      Class {classes.find(c => c.id === item.classId)?.name || maskDocId(item.classId)} · {subjects.find(s => s.id === item.subjectId)?.name || maskDocId(item.subjectId)}
                     </p>
                     {item.description && (
                       <p className="muted" style={{ fontSize: '0.75rem', marginTop: '0.25rem', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>

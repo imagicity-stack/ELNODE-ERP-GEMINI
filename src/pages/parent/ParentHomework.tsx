@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { Spinner } from '../../components/ui';
+import { useData } from '../../contexts/DataContext';
+import { nameFrom } from '../../lib/displayNames';
 
 interface ParentHomeworkProps {
   user: UserProfile;
@@ -11,6 +13,7 @@ interface ParentHomeworkProps {
 }
 
 export default function ParentHomework({ user: _user, selectedStudent }: ParentHomeworkProps) {
+  const { subjectsMap } = useData();
   const [homework, setHomework] = useState<Homework[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'done'>('all');
@@ -162,7 +165,7 @@ export default function ParentHomework({ user: _user, selectedStudent }: ParentH
                 return (
                   <div key={hw.id} className="card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                      <div className="eyebrow">{hw.subjectId}</div>
+                      <div className="eyebrow">{nameFrom(subjectsMap, hw.subjectId)}</div>
                       <span
                         className="chip"
                         style={{

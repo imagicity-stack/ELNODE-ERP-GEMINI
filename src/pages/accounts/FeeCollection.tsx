@@ -18,6 +18,7 @@ import { generateFeeReceipt } from '../../lib/receiptGenerator';
 import { createPdf, addFooter, TABLE_STYLES } from '../../lib/pdfTemplate';
 import { savePdf } from '../../lib/download';
 import { fmtMonthYear, fmtDate, sortByClassName, sortByName } from '../../lib/utils';
+import { maskDocId } from '../../lib/displayNames';
 import { useToast } from '../../components/Toast';
 import { PaymentSuccess, StaggeredList } from '../../components/animations';
 import { logActivity } from '../../services/activityService';
@@ -162,11 +163,12 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
 
     const rows = payments.map((p) => {
       const student = students.find((s) => s.id === p.studentId);
+      const clsName = student ? (classes.find(c => c.id === student.classId)?.name || maskDocId(student.classId, '')) : '';
       return [
         p.receiptNumber || '-',
         p.date,
-        student?.name || p.studentId,
-        student?.classId ? `${student.classId}-${student.section}` : '-',
+        student?.name || 'Unknown',
+        clsName ? `${clsName}${student?.section ? `-${student.section}` : ''}` : '-',
         p.feeHead || '-',
         (p.method || '').replace('_', ' ').toUpperCase(),
         `₹${(p.amount || 0).toLocaleString('en-IN')}`,
@@ -581,7 +583,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           {
             studentId: selectedStudent.id,
             studentName: selectedStudent.name,
-            studentClass: classes.find(c => c.id === selectedStudent.classId)?.name || selectedStudent.classId,
+            studentClass: classes.find(c => c.id === selectedStudent.classId)?.name || maskDocId(selectedStudent.classId, ''),
             month: requestData.month,
             totalAmount,
             heads: requestData.heads.map(h => ({ name: h.name, amount: h.amount, discount: h.discount, finalAmount: h.finalAmount })),
@@ -659,7 +661,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           {
             studentId: selectedStudent.id,
             studentName: selectedStudent.name,
-            studentClass: classes.find(c => c.id === selectedStudent.classId)?.name || selectedStudent.classId,
+            studentClass: classes.find(c => c.id === selectedStudent.classId)?.name || maskDocId(selectedStudent.classId, ''),
             month: requestData.month,
             totalAmount,
             advanceApplied: advanceApplied > 0 ? advanceApplied : undefined,
@@ -828,7 +830,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
         {
           studentId: advanceStudent.id,
           studentName: advanceStudent.name,
-          studentClass: classes.find(c => c.id === advanceStudent.classId)?.name || advanceStudent.classId,
+          studentClass: classes.find(c => c.id === advanceStudent.classId)?.name || maskDocId(advanceStudent.classId, ''),
           advanceId,
           totalAmount: total,
           method: advanceData.method,
@@ -1152,7 +1154,7 @@ export default function FeeCollection({ user }: FeeCollectionProps) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0.75rem' }}>
             {filteredStudents.slice(0, 50).map((student) => {
               const studentRequests = feeRequests.filter(r => r.studentId === student.id && r.status !== 'paid');
-              const className = classes.find(c => c.id === student.classId)?.name || student.classId;
+              const className = classes.find(c => c.id === student.classId)?.name || maskDocId(student.classId);
               const hasOverdue = studentRequests.some(r => r.dueDate && r.dueDate < today);
               const totalBalance = studentRequests.reduce((sum, r) =>
                 sum + Math.max(0, (r.totalAmount || 0) - (r.waivedAmount || 0) - (r.paidAmount || 0)), 0);

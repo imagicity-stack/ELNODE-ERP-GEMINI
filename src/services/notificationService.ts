@@ -1,5 +1,6 @@
 import { auth, db } from '../firebase';
 import { collection, query, where, onSnapshot, limit, orderBy } from 'firebase/firestore';
+import { getNameMaps, nameFrom } from '../lib/displayNames';
 
 export async function requestNotificationPermission() {
   if (!('Notification' in window)) {
@@ -144,12 +145,22 @@ export function startNotificationListeners(
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const hw = change.doc.data();
-          handleNotify(
-            'New Homework Assigned', 
-            `Homework for ${hw.subjectId} due on ${new Date(hw.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}.`,
-            'info',
-            'new-homework'
-          );
+          const dueStr = new Date(hw.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          // Resolve the subject id to its name so the notification never shows
+          // a raw document id; fall back to a generic message if unresolvable.
+          getNameMaps()
+            .then(maps => nameFrom(maps.subjectNames, hw.subjectId, ''))
+            .catch(() => '')
+            .then(subjectName => {
+              handleNotify(
+                'New Homework Assigned',
+                subjectName
+                  ? `Homework for ${subjectName} due on ${dueStr}.`
+                  : `New homework due on ${dueStr}.`,
+                'info',
+                'new-homework'
+              );
+            });
         }
       });
     });

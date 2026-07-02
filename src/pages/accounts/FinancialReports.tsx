@@ -1,4 +1,4 @@
-import { UserProfile, Expense, FeePayment, Salary } from '../../types';
+import { UserProfile, Expense, FeePayment, Salary, Student } from '../../types';
 import { Download, FileText, PieChart, TrendingUp, Loader2, Sparkles } from 'lucide-react';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { useState, useEffect } from 'react';
@@ -56,6 +56,7 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [salaries, setSalaries] = useState<Salary[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [dateRange, setDateRange] = useState('This Month');
   const [generating, setGenerating] = useState<ReportType | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
@@ -64,14 +65,16 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
   useEffect(() => {
     const fetch = async () => {
       try {
-        const [expSnap, paySnap, salSnap] = await Promise.all([
+        const [expSnap, paySnap, salSnap, stuSnap] = await Promise.all([
           getDocs(query(collection(db, 'expenses'), orderBy('date', 'desc'))),
           getDocs(query(collection(db, 'feePayments'), orderBy('date', 'desc'))),
           getDocs(collection(db, 'salaries')),
+          getDocs(collection(db, 'students')),
         ]);
         setExpenses(expSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Expense)));
         setPayments(paySnap.docs.map((d) => ({ id: d.id, ...d.data() } as FeePayment)));
         setSalaries(salSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Salary)));
+        setStudents(stuSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Student)));
       } catch (err) {
         handleFirestoreError(err, OperationType.LIST, 'financial_reports');
       }
@@ -92,18 +95,21 @@ export default function FinancialReports({ user }: FinancialReportsProps) {
       `Period: ${range.from} to ${range.to}`,
     );
 
-    const rows = filtered.map((p) => [
-      p.receiptNumber || '-',
-      p.date,
-      p.studentId,
-      p.feeHead || '-',
-      (p.method || '').replace('_', ' ').toUpperCase(),
-      `Rs. ${(p.amount || 0).toLocaleString('en-IN')}`,
-    ]);
+    const rows = filtered.map((p) => {
+      const student = students.find((s) => s.id === p.studentId);
+      return [
+        p.receiptNumber || '-',
+        p.date,
+        student ? `${student.name}${student.schoolNumber ? ` (${student.schoolNumber})` : ''}` : 'Unknown',
+        p.feeHead || '-',
+        (p.method || '').replace('_', ' ').toUpperCase(),
+        `Rs. ${(p.amount || 0).toLocaleString('en-IN')}`,
+      ];
+    });
 
     (doc as any).autoTable({
       startY: contentY + 2,
-      head: [['Receipt No', 'Date', 'Student ID', 'Fee Head', 'Method', 'Amount']],
+      head: [['Receipt No', 'Date', 'Student', 'Fee Head', 'Method', 'Amount']],
       body: rows,
       foot: [[
         { content: `Total Collections: ${filtered.length} entries`, colSpan: 5, styles: { fontStyle: 'bold', halign: 'right' } },

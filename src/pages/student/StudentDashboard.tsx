@@ -11,13 +11,14 @@ import { useData } from '../../contexts/DataContext';
 import AIInsightsPanel from '../../components/AIInsightsPanel';
 import { buildStudentContext } from '../../lib/aiContext';
 import { fmtDate } from '../../lib/utils';
+import { nameFrom } from '../../lib/displayNames';
 
 interface StudentDashboardProps {
   user: UserProfile;
 }
 
 export default function StudentDashboard({ user }: StudentDashboardProps) {
-  const { classesMap } = useData();
+  const { classesMap, subjectsMap } = useData();
   const navigate = useNavigate();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
@@ -220,11 +221,11 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
           homework.map((hw) => (
             <button key={hw.id} className="card" style={{ textAlign: 'left', display: 'flex', gap: 14, alignItems: 'center', padding: '14px 16px', width: '100%' }} onClick={() => navigate('/student/homework')}>
               <div style={{ width: 44, height: 44, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'var(--cream-2)', fontFamily: 'var(--display)', fontWeight: 700, fontSize: 16 }}>
-                {(hw.subjectId || '?').slice(0, 2).toUpperCase()}
+                {nameFrom(subjectsMap, hw.subjectId, '?').slice(0, 2).toUpperCase()}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hw.content}</div>
-                <div className="small muted" style={{ marginTop: 2 }}>{hw.subjectId} · Due {fmtDate(hw.dueDate)}</div>
+                <div className="small muted" style={{ marginTop: 2 }}>{nameFrom(subjectsMap, hw.subjectId)} · Due {fmtDate(hw.dueDate)}</div>
               </div>
               <ChevronRight size={16} className="muted" />
             </button>

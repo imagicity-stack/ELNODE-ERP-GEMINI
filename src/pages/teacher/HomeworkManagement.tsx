@@ -7,6 +7,8 @@ import { db, storage, handleFirestoreError, OperationType } from '../../firebase
 import { useToast } from '../../components/Toast';
 import { logActivity } from '../../services/activityService';
 import { cn } from '../../lib/utils';
+import { useData } from '../../contexts/DataContext';
+import { nameFrom } from '../../lib/displayNames';
 import {
   Modal,
   FormField,
@@ -22,6 +24,7 @@ interface HomeworkManagementProps {
 }
 
 export default function HomeworkManagement({ user }: HomeworkManagementProps) {
+  const { classesMap, subjectsMap } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string>('All');
   const [homework, setHomework] = useState<Homework[]>([]);
@@ -147,7 +150,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
         user,
         'Homework Assigned',
         'Teachers',
-        `Assigned homework to Class ${formData.classId} for ${formData.subjectId}`,
+        `Assigned homework to Class ${nameFrom(classesMap, formData.classId)} for ${nameFrom(subjectsMap, formData.subjectId)}`,
         {
           classId: formData.classId,
           subjectId: formData.subjectId,
@@ -208,7 +211,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
             className={cn('chip', activeFilter === sub && 'solid')}
             onClick={() => setActiveFilter(sub)}
           >
-            {sub}
+            {sub === 'All' ? 'All' : nameFrom(subjectsMap, sub)}
           </button>
         ))}
       </div>
@@ -236,14 +239,14 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
                     {/* Subject chip */}
                     <span className="chip solid" style={{ flexShrink: 0, fontSize: '0.7rem' }}>
-                      {hw.subjectId}
+                      {nameFrom(subjectsMap, hw.subjectId)}
                     </span>
 
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontWeight: 700, fontSize: '0.95rem', lineHeight: 1.3 }}>{hw.content}</p>
                       <p className="tiny muted" style={{ marginTop: '0.15rem' }}>
-                        Class {hw.classId}
+                        Class {nameFrom(classesMap, hw.classId)}
                       </p>
                     </div>
 
@@ -369,7 +372,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
                 onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
               >
                 {teacherData?.classes?.map(cls => (
-                  <option key={cls} value={cls}>{cls}</option>
+                  <option key={cls} value={cls}>{nameFrom(classesMap, cls)}</option>
                 ))}
               </Select>
             </FormField>
@@ -379,7 +382,7 @@ export default function HomeworkManagement({ user }: HomeworkManagementProps) {
                 onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
               >
                 {teacherData?.subjects?.map(sub => (
-                  <option key={sub} value={sub}>{sub}</option>
+                  <option key={sub} value={sub}>{nameFrom(subjectsMap, sub)}</option>
                 ))}
               </Select>
             </FormField>

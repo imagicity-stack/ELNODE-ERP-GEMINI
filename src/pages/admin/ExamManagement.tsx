@@ -20,8 +20,6 @@ import {
 import { validateExamSchedule, findExamConflicts, ExamConflict, ValidationIssue } from '../../services/examService';
 import { useToast } from '../../components/Toast';
 import { cn } from '../../lib/utils';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { RefObject } from 'react';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
